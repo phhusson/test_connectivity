@@ -24,10 +24,11 @@ LOCAL_MODULE_PATH := $(TARGET_OUT_DATA_APPS)
 LOCAL_JAVA_LIBRARIES := android.test.runner
 
 # include CtsTestServer as a temporary hack to free net.cts from cts.stub.
-LOCAL_SRC_FILES := $(call all-java-files-under, src) \
-	../../src/android/webkit/cts/CtsTestServer.java
+LOCAL_SRC_FILES := $(call all-java-files-under, src)
 
 LOCAL_PACKAGE_NAME := CtsNetTestCases
+
+LOCAL_STATIC_JAVA_LIBRARIES := ctstestserver
 
 # uncomment when dalvik.annotation.Test* are removed or part of SDK
 #LOCAL_SDK_VERSION := current
