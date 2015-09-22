@@ -16,16 +16,21 @@
 
 package android.net.cts;
 
+import static android.net.NetworkCapabilities.NET_CAPABILITY_IMS;
+import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
+
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
+import android.net.ConnectivityManager.NetworkCallback;
 import android.net.NetworkConfig;
 import android.net.NetworkInfo;
 import android.net.NetworkInfo.DetailedState;
 import android.net.NetworkInfo.State;
+import android.net.NetworkRequest;
 import android.net.wifi.WifiManager;
 import android.test.AndroidTestCase;
 import android.util.Log;
@@ -332,6 +337,25 @@ public class ConnectivityManagerTest extends AndroidTestCase {
 
         public boolean waitForConnection() throws InterruptedException {
             return mReceiveLatch.await(30, TimeUnit.SECONDS);
+        }
+    }
+
+    /** Verify restricted networks cannot be requested. */
+    public void testRestrictedNetworks() {
+        // Verify we can request unrestricted networks:
+        NetworkRequest request = new NetworkRequest.Builder()
+                .addCapability(NET_CAPABILITY_INTERNET).build();
+        NetworkCallback callback = new NetworkCallback();
+        mCm.requestNetwork(request, callback);
+        mCm.unregisterNetworkCallback(callback);
+        // Verify we cannot request restricted networks:
+        request = new NetworkRequest.Builder().addCapability(NET_CAPABILITY_IMS).build();
+        callback = new NetworkCallback();
+        try {
+            mCm.requestNetwork(request, callback);
+            fail("No exception thrown when restricted network requested.");
+        } catch (SecurityException e) {
+            // Expected.
         }
     }
 }
