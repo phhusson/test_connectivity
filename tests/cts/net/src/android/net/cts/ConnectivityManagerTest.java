@@ -16,6 +16,9 @@
 
 package android.net.cts;
 
+import static android.net.NetworkCapabilities.NET_CAPABILITY_IMS;
+import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
+
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -23,6 +26,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
+import android.net.ConnectivityManager.NetworkCallback;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkConfig;
@@ -465,6 +469,25 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         @Override
         public void onAvailable(Network network) {
             mAvailableLatch.countDown();
+        }
+    }
+
+    /** Verify restricted networks cannot be requested. */
+    public void testRestrictedNetworks() {
+        // Verify we can request unrestricted networks:
+        NetworkRequest request = new NetworkRequest.Builder()
+                .addCapability(NET_CAPABILITY_INTERNET).build();
+        NetworkCallback callback = new NetworkCallback();
+        mCm.requestNetwork(request, callback);
+        mCm.unregisterNetworkCallback(callback);
+        // Verify we cannot request restricted networks:
+        request = new NetworkRequest.Builder().addCapability(NET_CAPABILITY_IMS).build();
+        callback = new NetworkCallback();
+        try {
+            mCm.requestNetwork(request, callback);
+            fail("No exception thrown when restricted network requested.");
+        } catch (SecurityException e) {
+            // Expected.
         }
     }
 }
