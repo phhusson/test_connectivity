@@ -19,4 +19,11 @@
         <option name="package" value="android.net.cts" />
         <option name="runner" value="android.support.test.runner.AndroidJUnitRunner" />
     </test>
+
+    <target_preparer class="com.android.compatibility.common.tradefed.targetprep.ApkPreconditionCheck">
+        <option name="apk-name" value="CtsNetPreconditions.apk"/>
+        <option name="package-name" value="android.net.preconditions"/>
+        <option name="runner" value="android.support.test.runner.AndroidJUnitRunner"/>
+    </target_preparer>
+
 </configuration>
