@@ -21,9 +21,8 @@
     </test>
 
     <target_preparer class="com.android.compatibility.common.tradefed.targetprep.ApkPreconditionCheck">
-        <option name="apk-name" value="CtsNetPreconditions.apk"/>
-        <option name="package-name" value="android.net.preconditions"/>
-        <option name="runner" value="android.support.test.runner.AndroidJUnitRunner"/>
+        <option name="apk" value="CtsNetPreconditions.apk"/>
+        <option name="package" value="android.net.preconditions"/>
     </target_preparer>
 
 </configuration>
