@@ -14,15 +14,13 @@
 -->
 <configuration description="Test module config for net apis">
     <include name="common-config" />
+    <target_preparer class="com.android.compatibility.common.tradefed.targetprep.ApkPreconditionCheck">
+        <option name="apk" value="CtsNetPreconditions.apk"/>
+        <option name="package" value="android.net.preconditions"/>
+    </target_preparer>
     <option name="apk-installer:test-file-name" value="CtsNetTestCases.apk" />
     <test class="com.android.tradefed.testtype.InstrumentationTest" >
         <option name="package" value="android.net.cts" />
         <option name="runner" value="android.support.test.runner.AndroidJUnitRunner" />
     </test>
-
-    <target_preparer class="com.android.compatibility.common.tradefed.targetprep.ApkPreconditionCheck">
-        <option name="apk" value="CtsNetPreconditions.apk"/>
-        <option name="package" value="android.net.preconditions"/>
-    </target_preparer>
-
 </configuration>

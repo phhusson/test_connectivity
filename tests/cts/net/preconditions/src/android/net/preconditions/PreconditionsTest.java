@@ -15,9 +15,6 @@
  */
 package android.net.preconditions;
 
-import android.content.Context;
-import android.net.ConnectivityManager;
-import android.net.NetworkInfo;
 import android.test.AndroidTestCase;
 
 import com.android.compatibility.common.preconditions.WifiHelper;
