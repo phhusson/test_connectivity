@@ -16,7 +16,7 @@
 
 package com.android.cts.net;
 
-import com.android.cts.tradefed.build.CtsBuildHelper;
+import com.android.cts.migration.MigrationHelper;
 import com.android.ddmlib.testrunner.RemoteAndroidTestRunner;
 import com.android.ddmlib.testrunner.TestIdentifier;
 import com.android.ddmlib.testrunner.TestResult;
@@ -39,7 +39,7 @@ public class HostsideNetworkTests extends DeviceTestCase implements IAbiReceiver
     private static final String TEST_APK = "CtsHostsideNetworkTestsApp.apk";
 
     private IAbi mAbi;
-    private CtsBuildHelper mCtsBuild;
+    private IBuildInfo mCtsBuild;
 
     @Override
     public void setAbi(IAbi abi) {
@@ -48,7 +48,7 @@ public class HostsideNetworkTests extends DeviceTestCase implements IAbiReceiver
 
     @Override
     public void setBuild(IBuildInfo buildInfo) {
-        mCtsBuild = CtsBuildHelper.createBuildHelper(buildInfo);
+        mCtsBuild = buildInfo;
     }
 
     @Override
@@ -60,7 +60,8 @@ public class HostsideNetworkTests extends DeviceTestCase implements IAbiReceiver
 
         getDevice().uninstallPackage(TEST_PKG);
 
-        assertNull(getDevice().installPackage(mCtsBuild.getTestApp(TEST_APK), false));
+        assertNull(getDevice().installPackage(
+            MigrationHelper.getTestFile(mCtsBuild, TEST_APK), false));
     }
 
     @Override

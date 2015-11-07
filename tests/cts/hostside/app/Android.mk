@@ -29,4 +29,7 @@ LOCAL_PACKAGE_NAME := CtsHostsideNetworkTestsApp
 LOCAL_PROGUARD_ENABLED := disabled
 LOCAL_DEX_PREOPT := false
 
+# Tag this module as a cts_v2 test artifact
+LOCAL_COMPATIBILITY_SUITE := cts_v2
+
 include $(BUILD_CTS_SUPPORT_PACKAGE)
