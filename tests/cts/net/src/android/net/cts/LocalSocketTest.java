@@ -16,11 +16,12 @@
 
 package android.net.cts;
 
+import junit.framework.TestCase;
+
 import android.net.Credentials;
 import android.net.LocalServerSocket;
 import android.net.LocalSocket;
 import android.net.LocalSocketAddress;
-import android.test.AndroidTestCase;
 
 import java.io.FileDescriptor;
 import java.io.IOException;
@@ -29,16 +30,17 @@ import java.io.OutputStream;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-public class LocalSocketTest extends AndroidTestCase{
-    public final static String mSockAddr = "com.android.net.LocalSocketTest";
+public class LocalSocketTest extends TestCase {
+    private final static String ADDRESS_PREFIX = "com.android.net.LocalSocketTest";
 
-    public void testLocalConnections() throws IOException{
+    public void testLocalConnections() throws IOException {
+        String address = ADDRESS_PREFIX + "_testLocalConnections";
         // create client and server socket
-        LocalServerSocket localServerSocket = new LocalServerSocket(mSockAddr);
+        LocalServerSocket localServerSocket = new LocalServerSocket(address);
         LocalSocket clientSocket = new LocalSocket();
 
         // establish connection between client and server
-        LocalSocketAddress locSockAddr = new LocalSocketAddress(mSockAddr);
+        LocalSocketAddress locSockAddr = new LocalSocketAddress(address);
         assertFalse(clientSocket.isConnected());
         clientSocket.connect(locSockAddr);
         assertTrue(clientSocket.isConnected());
@@ -114,9 +116,10 @@ public class LocalSocketTest extends AndroidTestCase{
         }
     }
 
-    public void testAccessors() throws IOException{
+    public void testAccessors() throws IOException {
+        String address = ADDRESS_PREFIX + "_testAccessors";
         LocalSocket socket = new LocalSocket();
-        LocalSocketAddress addr = new LocalSocketAddress(mSockAddr);
+        LocalSocketAddress addr = new LocalSocketAddress(address);
 
         assertFalse(socket.isBound());
         socket.bind(addr);
@@ -175,11 +178,12 @@ public class LocalSocketTest extends AndroidTestCase{
     }
 
     public void testAvailable() throws Exception {
-        LocalServerSocket localServerSocket = new LocalServerSocket(mSockAddr);
+        String address = ADDRESS_PREFIX + "_testAvailable";
+        LocalServerSocket localServerSocket = new LocalServerSocket(address);
         LocalSocket clientSocket = new LocalSocket();
 
         // establish connection between client and server
-        LocalSocketAddress locSockAddr = new LocalSocketAddress(mSockAddr);
+        LocalSocketAddress locSockAddr = new LocalSocketAddress(address);
         clientSocket.connect(locSockAddr);
         assertTrue(clientSocket.isConnected());
         LocalSocket serverSocket = localServerSocket.accept();
@@ -204,11 +208,12 @@ public class LocalSocketTest extends AndroidTestCase{
     }
 
     public void testFlush() throws Exception {
-        LocalServerSocket localServerSocket = new LocalServerSocket(mSockAddr);
+        String address = ADDRESS_PREFIX + "_testFlush";
+        LocalServerSocket localServerSocket = new LocalServerSocket(address);
         LocalSocket clientSocket = new LocalSocket();
 
         // establish connection between client and server
-        LocalSocketAddress locSockAddr = new LocalSocketAddress(mSockAddr);
+        LocalSocketAddress locSockAddr = new LocalSocketAddress(address);
         clientSocket.connect(locSockAddr);
         assertTrue(clientSocket.isConnected());
         LocalSocket serverSocket = localServerSocket.accept();
