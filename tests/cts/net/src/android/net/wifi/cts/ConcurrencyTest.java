@@ -94,8 +94,8 @@ public class ConcurrencyTest extends AndroidTestCase {
         }
         mContext.unregisterReceiver(mReceiver);
 
-        if (mWifiManager.isWifiEnabled()) {
-            assertTrue(mWifiManager.setWifiEnabled(false));
+        if (!mWifiManager.isWifiEnabled()) {
+            assertTrue(mWifiManager.setWifiEnabled(true));
             Thread.sleep(DURATION);
         }
         super.tearDown();
