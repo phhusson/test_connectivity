@@ -27,7 +27,7 @@ LOCAL_MULTILIB := both
 LOCAL_JAVA_LIBRARIES := voip-common conscrypt org.apache.http.legacy
 
 LOCAL_JNI_SHARED_LIBRARIES := libcts_jni libnativedns_jni \
-                              libnativemultinetwork_jni
+                              libnativemultinetwork_jni libnativehelper_compat_libc++
 
 # include CtsTestServer as a temporary hack to free net.cts from cts.stub.
 LOCAL_SRC_FILES := $(call all-java-files-under, src)
