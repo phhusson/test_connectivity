@@ -106,8 +106,8 @@ public final class AbstractVerifierTest extends TestCase {
 
     public void testGetCns_whitespace() {
         assertCns("cn= p", "p");
-        assertCns("cn=\np", "\np");
-        assertCns("cn=\tp", "\tp");
+        assertCns("cn=\np", "p");
+        assertCns("cn=\tp", "p");
     }
 
     public void testGetCnsWithOid() {
@@ -140,7 +140,6 @@ public final class AbstractVerifierTest extends TestCase {
 
     private static void assertCns(String dn, String... expected) {
         String[] result = AbstractVerifier.getCNs(createStubCertificate(dn));
-        System.out.println("Expected is: " + expected.length);
         if (expected.length == 0) {
             assertNull(result);
         } else {
