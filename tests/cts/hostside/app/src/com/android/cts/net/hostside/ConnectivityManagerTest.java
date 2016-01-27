@@ -21,7 +21,6 @@ import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_WHITELISTED;
 import android.app.Activity;
 import android.net.ConnectivityManager;
-import android.net.ConnectivityManager.RestrictBackgroundStatus;
 import android.test.InstrumentationTestCase;
 import android.util.Log;
 
@@ -59,11 +58,11 @@ public class ConnectivityManagerTest extends InstrumentationTestCase {
     private void assertRestrictBackgroundStatus(int expectedStatus) {
         final String expected = toString(expectedStatus);
         Log.d(TAG, getName() + " (expecting " + expected + ")");
-        final @RestrictBackgroundStatus int actualStatus = mCM.getRestrictBackgroundStatus();
+        final int actualStatus = mCM.getRestrictBackgroundStatus();
         assertEquals("wrong status", expected, toString(actualStatus));
     }
 
-    private String toString(@RestrictBackgroundStatus int status) {
+    private String toString(int status) {
         switch (status) {
             case RESTRICT_BACKGROUND_STATUS_DISABLED:
                 return "DISABLED";
