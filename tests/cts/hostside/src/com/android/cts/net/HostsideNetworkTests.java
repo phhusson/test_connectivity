@@ -42,6 +42,9 @@ public class HostsideNetworkTests extends DeviceTestCase implements IAbiReceiver
     private static final String TEST_PKG = "com.android.cts.net.hostside";
     private static final String TEST_APK = "CtsHostsideNetworkTestsApp.apk";
 
+    private static final String TEST_APP2_PKG = "com.android.cts.net.hostside.app2";
+    private static final String TEST_APP2_APK = "CtsHostsideNetworkTestsApp2.apk";
+
     private IAbi mAbi;
     private IBuildInfo mCtsBuild;
 
@@ -63,15 +66,22 @@ public class HostsideNetworkTests extends DeviceTestCase implements IAbiReceiver
         assertNotNull(mCtsBuild);
 
         setRestrictBackground(false);
-        uninstallTestPackage(false);
-        installTestPackage();
+
+        uninstallPackage(TEST_PKG, false);
+        installPackage(TEST_APK);
+        // TODO: split this class into HostsideVpnTests and HostsideConnectivityManagerTests so
+        // the former don't need to unnecessarily install app2.
+        uninstallPackage(TEST_APP2_PKG, false);
+        installPackage(TEST_APP2_APK);
     }
 
     @Override
     protected void tearDown() throws Exception {
         super.tearDown();
 
-        uninstallTestPackage(false);
+        uninstallPackage(TEST_PKG, true);
+        uninstallPackage(TEST_APP2_PKG, true);
+
         setRestrictBackground(false);
     }
 
@@ -80,26 +90,41 @@ public class HostsideNetworkTests extends DeviceTestCase implements IAbiReceiver
     }
 
     public void testConnectivityManager_getRestrictBackgroundStatus_disabled() throws Exception {
+        startBroadcastReceiverService();
         final int uid = getUid(TEST_PKG);
+
         removeRestrictBackgroundWhitelist(uid);
         assertRestrictBackgroundStatusDisabled();
+        assertRestrictBackgroundChangedReceivedOnce();
+
         // Sanity check: make sure status is always disabled, never whitelisted
         addRestrictBackgroundWhitelist(uid);
         assertRestrictBackgroundStatusDisabled();
+        assertRestrictBackgroundChangedReceivedTwice();
     }
 
     public void testConnectivityManager_getRestrictBackgroundStatus_whitelisted() throws Exception {
+        startBroadcastReceiverService();
         final int uid = getUid(TEST_PKG);
+
         setRestrictBackground(true);
+        assertRestrictBackgroundChangedReceivedOnce();
+
         addRestrictBackgroundWhitelist(uid);
         assertRestrictBackgroundStatusWhitelisted();
+        assertRestrictBackgroundChangedReceivedTwice();
     }
 
     public void testConnectivityManager_getRestrictBackgroundStatus_enabled() throws Exception {
+        startBroadcastReceiverService();
         final int uid = getUid(TEST_PKG);
+
         setRestrictBackground(true);
+        assertRestrictBackgroundChangedReceivedOnce();
+
         removeRestrictBackgroundWhitelist(uid);
         assertRestrictBackgroundStatusEnabled();
+        assertRestrictBackgroundChangedReceivedTwice();
     }
 
     public void testConnectivityManager_getRestrictBackgroundStatus_uninstall() throws Exception {
@@ -108,44 +133,66 @@ public class HostsideNetworkTests extends DeviceTestCase implements IAbiReceiver
         addRestrictBackgroundWhitelist(uid);
         assertRestrictBackgroundWhitelist(uid, true);
 
-        uninstallTestPackage(true);
+        uninstallPackage(TEST_PKG, true);
         assertPackageUninstalled(TEST_PKG);
         assertRestrictBackgroundWhitelist(uid, false);
 
-        installTestPackage();
+        installPackage(TEST_APK);
         final int newUid = getUid(TEST_PKG);
         assertRestrictBackgroundWhitelist(uid, false);
         assertRestrictBackgroundWhitelist(newUid, false);
     }
 
-    private void installTestPackage() throws DeviceNotAvailableException, FileNotFoundException {
+    private void installPackage(String apk) throws DeviceNotAvailableException,
+            FileNotFoundException {
         assertNull(getDevice().installPackage(
-                MigrationHelper.getTestFile(mCtsBuild, TEST_APK), false));
+                MigrationHelper.getTestFile(mCtsBuild, apk), false));
     }
 
-    private void uninstallTestPackage(boolean shouldSucceed) throws DeviceNotAvailableException {
-        final String result = getDevice().uninstallPackage(TEST_PKG);
+    private void uninstallPackage(String packageName, boolean shouldSucceed)
+            throws DeviceNotAvailableException {
+        final String result = getDevice().uninstallPackage(packageName);
         if (shouldSucceed) {
-            assertNull("uninstallPackage failed: " + result, result);
+            assertNull("uninstallPackage(" + packageName + ") failed: " + result, result);
         }
     }
 
-    private void assertPackageUninstalled(String packageName) throws DeviceNotAvailableException {
-        final String command = "cmd package list packages -f " + packageName;
+    /**
+     * Starts a service that will register a broadcast receiver to receive
+     * {@code RESTRICT_BACKGROUND_CHANGE} intents.
+     * <p>
+     * The service must run in a separate app because otherwise it would be killed every time
+     * {@link #runDeviceTests(String, String)} is executed.
+     */
+    private void startBroadcastReceiverService() throws DeviceNotAvailableException {
+        runCommand("am startservice " + TEST_APP2_PKG + "/.MyService");
+    }
+
+    private void assertPackageUninstalled(String packageName) throws Exception {
+        final String command = "cmd package list packages " + packageName;
         final int max_tries = 5;
         for (int i = 1; i <= max_tries; i++) {
             final String result = runCommand(command);
             if (result.trim().isEmpty()) {
                 return;
             }
+            // 'list packages' filters by substring, so we need to iterate with the results
+            // and check one by one, otherwise 'com.android.cts.net.hostside' could return
+            // 'com.android.cts.net.hostside.app2'
+            boolean found = false;
+            for (String line : result.split("[\\r\\n]+")) {
+                if (line.endsWith(packageName)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                return;
+            }
             i++;
             Log.v(TAG, "Package " + packageName + " not uninstalled yet (" + result
                     + "); sleeping 1s before polling again");
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+            Thread.sleep(1000);
         }
         fail("Package '" + packageName + "' not uinstalled after " + max_tries + " seconds");
     }
@@ -165,6 +212,16 @@ public class HostsideNetworkTests extends DeviceTestCase implements IAbiReceiver
                 "testGetRestrictBackgroundStatus_enabled");
     }
 
+    private void assertRestrictBackgroundChangedReceivedOnce() throws DeviceNotAvailableException {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".ConnectivityManagerTest",
+                "testRestrictBackgroundChangedReceivedOnce");
+    }
+
+    private void assertRestrictBackgroundChangedReceivedTwice() throws DeviceNotAvailableException {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".ConnectivityManagerTest",
+                "testRestrictBackgroundChangedReceivedTwice");
+    }
+
     public void runDeviceTests(String packageName, String testClassName)
             throws DeviceNotAvailableException {
         runDeviceTests(packageName, testClassName, null);
@@ -176,14 +233,11 @@ public class HostsideNetworkTests extends DeviceTestCase implements IAbiReceiver
                 "android.support.test.runner.AndroidJUnitRunner", getDevice().getIDevice());
 
         if (testClassName != null) {
-            // TODO: figure out why testRunner.setMethodName() / testRunner.setClassName() doesn't
-            // work
-            final StringBuilder runOptions = new StringBuilder("-e class ").append(testClassName);
             if (methodName != null) {
-                runOptions.append('#').append(methodName);
+                testRunner.setMethodName(testClassName, methodName);
+            } else {
+                testRunner.setClassName(testClassName);
             }
-            Log.i(TAG, "Setting runOptions() as " + runOptions);
-            testRunner.setRunOptions(runOptions.toString());
         }
 
         final CollectingTestListener listener = new CollectingTestListener();
@@ -224,27 +278,31 @@ public class HostsideNetworkTests extends DeviceTestCase implements IAbiReceiver
                 + output);
     }
 
-    private void addRestrictBackgroundWhitelist(int uid) throws DeviceNotAvailableException {
+    private void addRestrictBackgroundWhitelist(int uid) throws Exception {
         runCommand("cmd netpolicy add restrict-background-whitelist " + uid);
         assertRestrictBackgroundWhitelist(uid, true);
     }
 
-    private void removeRestrictBackgroundWhitelist(int uid) throws DeviceNotAvailableException {
+    private void removeRestrictBackgroundWhitelist(int uid) throws Exception {
         runCommand("cmd netpolicy remove restrict-background-whitelist " + uid);
         assertRestrictBackgroundWhitelist(uid, false);
     }
 
-    private void assertRestrictBackgroundWhitelist(int uid, boolean expected)
-            throws DeviceNotAvailableException {
-        final String output = runCommand("cmd netpolicy list restrict-background-whitelist ");
-        // TODO: use MoreAsserts
-        if (expected) {
-            assertTrue("Did not find uid '" + uid + "' on '" + output + "'",
-                    output.contains(Integer.toString(uid)));
-        } else {
-            assertFalse("Found uid '" + uid + "' on '" + output + "'",
-                    output.contains(Integer.toString(uid)));
+    private void assertRestrictBackgroundWhitelist(int uid, boolean expected) throws Exception {
+        final int max_tries = 5;
+        boolean actual = false;
+        for (int i = 1; i <= max_tries; i++) {
+            final String output = runCommand("cmd netpolicy list restrict-background-whitelist ");
+            actual = output.contains(Integer.toString(uid));
+            if (expected == actual) {
+                return;
+            }
+            Log.v(TAG, "whitelist check for uid " + uid + " doesn't match yet (expected "
+                    + expected + ", got " + actual + "); sleeping 1s before polling again");
+            Thread.sleep(1000);
         }
+        fail("whitelist check for uid " + uid + " failed: expected "
+                + expected + ", got " + actual);
     }
 
     private void setRestrictBackground(boolean enabled) throws DeviceNotAvailableException {

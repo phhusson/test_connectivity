@@ -16,10 +16,14 @@
 
 package com.android.cts.net.hostside;
 
+import static android.net.ConnectivityManager.ACTION_RESTRICT_BACKGROUND_CHANGED;
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_DISABLED;
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED;
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_WHITELISTED;
+
 import android.app.Activity;
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
 import android.test.InstrumentationTestCase;
 import android.util.Log;
@@ -34,6 +38,9 @@ import android.util.Log;
 public class ConnectivityManagerTest extends InstrumentationTestCase {
     private static final String TAG = "ConnectivityManagerTest";
 
+    static final String MANIFEST_RECEIVER = "ManifestReceiver";
+    static final String DYNAMIC_RECEIVER = "DynamicReceiver";
+
     private ConnectivityManager mCM;
 
     @Override
@@ -41,7 +48,7 @@ public class ConnectivityManagerTest extends InstrumentationTestCase {
         super.setUp();
         mCM = (ConnectivityManager) getInstrumentation().getContext().getSystemService(
                 Activity.CONNECTIVITY_SERVICE);
-    }
+   }
 
     public void testGetRestrictBackgroundStatus_disabled() {
         assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
@@ -53,6 +60,46 @@ public class ConnectivityManagerTest extends InstrumentationTestCase {
 
     public void testGetRestrictBackgroundStatus_enabled() {
         assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_ENABLED);
+    }
+
+    public void testRestrictBackgroundChangedReceivedOnce() throws Exception {
+        assertRestrictBackgroundChangedReceived(DYNAMIC_RECEIVER, 1);
+        assertRestrictBackgroundChangedReceived(MANIFEST_RECEIVER, 0);
+    }
+
+    public void testRestrictBackgroundChangedReceivedTwice() throws Exception {
+        assertRestrictBackgroundChangedReceived(DYNAMIC_RECEIVER, 2);
+        assertRestrictBackgroundChangedReceived(MANIFEST_RECEIVER, 0);
+    }
+
+    private void assertRestrictBackgroundChangedReceived(String receiverName, int expectedCount)
+            throws Exception {
+        int attempts = 0;
+        int count = 0;
+        final int maxAttempts = 5;
+        final int sleepTime = 10;
+        do {
+            attempts++;
+            count = getNumberBroadcastsReceived(getInstrumentation().getContext(), receiverName,
+                    ACTION_RESTRICT_BACKGROUND_CHANGED);
+            if (count == expectedCount) {
+                break;
+            }
+            Log.d(TAG, "Count is " + count + " after " + attempts + " attempts; sleeping "
+                    + sleepTime + " seconds before trying again");
+            Thread.sleep(sleepTime * 1000);
+        } while (attempts <= maxAttempts);
+        assertEquals("Number of expected broadcasts for " + receiverName + " not reached after "
+                + maxAttempts * sleepTime + " seconds", expectedCount, count);
+    }
+
+    static int getNumberBroadcastsReceived(Context context, String receiverName, String action)
+            throws Exception {
+        final Context sharedContext = context.createPackageContext(
+                "com.android.cts.net.hostside.app2", Context.CONTEXT_IGNORE_SECURITY);
+        final SharedPreferences prefs = sharedContext.getSharedPreferences(receiverName,
+                Context.MODE_PRIVATE);
+        return prefs.getInt(action, 0);
     }
 
     private void assertRestrictBackgroundStatus(int expectedStatus) {
