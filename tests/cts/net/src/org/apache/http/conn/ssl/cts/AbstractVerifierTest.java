@@ -107,7 +107,7 @@ public final class AbstractVerifierTest extends TestCase {
     public void testGetCns_whitespace() {
         assertCns("cn= p", "p");
         assertCns("cn=\np", "p");
-        assertCns("cn=\tp", "p");
+        assertCns("cn=\tp", "\tp");
     }
 
     public void testGetCnsWithOid() {
