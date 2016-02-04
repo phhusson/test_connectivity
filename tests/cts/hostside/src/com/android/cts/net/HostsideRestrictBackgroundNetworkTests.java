@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 The Android Open Source Project
+ * Copyright (C) 2016 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,7 +36,8 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class HostsideNetworkTests extends DeviceTestCase implements IAbiReceiver, IBuildReceiver {
+public class HostsideRestrictBackgroundNetworkTests extends DeviceTestCase implements IAbiReceiver,
+        IBuildReceiver {
     private static final boolean DEBUG = false;
     private static final String TAG = "HostsideNetworkTests";
     private static final String TEST_PKG = "com.android.cts.net.hostside";
