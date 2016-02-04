@@ -38,13 +38,10 @@ import java.util.regex.Pattern;
 
 abstract class HostsideNetworkTestCase extends DeviceTestCase implements IAbiReceiver,
         IBuildReceiver {
-    private static final boolean DEBUG = false;
-    private static final String TAG = "HostsideNetworkTests";
-    private static final String TEST_PKG = "com.android.cts.net.hostside";
-    private static final String TEST_APK = "CtsHostsideNetworkTestsApp.apk";
-
-    private static final String TEST_APP2_PKG = "com.android.cts.net.hostside.app2";
-    private static final String TEST_APP2_APK = "CtsHostsideNetworkTestsApp2.apk";
+    protected static final boolean DEBUG = false;
+    protected static final String TAG = "HostsideNetworkTests";
+    protected static final String TEST_PKG = "com.android.cts.net.hostside";
+    protected static final String TEST_APK = "CtsHostsideNetworkTestsApp.apk";
 
     private IAbi mAbi;
     private IBuildInfo mCtsBuild;
@@ -66,14 +63,8 @@ abstract class HostsideNetworkTestCase extends DeviceTestCase implements IAbiRec
         assertNotNull(mAbi);
         assertNotNull(mCtsBuild);
 
-        setRestrictBackground(false);
-
         uninstallPackage(TEST_PKG, false);
         installPackage(TEST_APK);
-        // TODO: split this class into HostsideVpnTests and HostsideConnectivityManagerTests so
-        // the former don't need to unnecessarily install app2.
-        uninstallPackage(TEST_APP2_PKG, false);
-        installPackage(TEST_APP2_APK);
     }
 
     @Override
@@ -81,76 +72,14 @@ abstract class HostsideNetworkTestCase extends DeviceTestCase implements IAbiRec
         super.tearDown();
 
         uninstallPackage(TEST_PKG, true);
-        uninstallPackage(TEST_APP2_PKG, true);
-
-        setRestrictBackground(false);
     }
 
-    public void testVpn() throws Exception {
-        runDeviceTests(TEST_PKG, TEST_PKG + ".VpnTest");
+    protected void installPackage(String apk) throws FileNotFoundException,
+            DeviceNotAvailableException {
+        assertNull(getDevice().installPackage(MigrationHelper.getTestFile(mCtsBuild, apk), false));
     }
 
-    public void testConnectivityManager_getRestrictBackgroundStatus_disabled() throws Exception {
-        startBroadcastReceiverService();
-        final int uid = getUid(TEST_PKG);
-
-        removeRestrictBackgroundWhitelist(uid);
-        assertRestrictBackgroundStatusDisabled();
-        assertRestrictBackgroundChangedReceivedOnce();
-
-        // Sanity check: make sure status is always disabled, never whitelisted
-        addRestrictBackgroundWhitelist(uid);
-        assertRestrictBackgroundStatusDisabled();
-        assertRestrictBackgroundChangedReceivedTwice();
-    }
-
-    public void testConnectivityManager_getRestrictBackgroundStatus_whitelisted() throws Exception {
-        startBroadcastReceiverService();
-        final int uid = getUid(TEST_PKG);
-
-        setRestrictBackground(true);
-        assertRestrictBackgroundChangedReceivedOnce();
-
-        addRestrictBackgroundWhitelist(uid);
-        assertRestrictBackgroundStatusWhitelisted();
-        assertRestrictBackgroundChangedReceivedTwice();
-    }
-
-    public void testConnectivityManager_getRestrictBackgroundStatus_enabled() throws Exception {
-        startBroadcastReceiverService();
-        final int uid = getUid(TEST_PKG);
-
-        setRestrictBackground(true);
-        assertRestrictBackgroundChangedReceivedOnce();
-
-        removeRestrictBackgroundWhitelist(uid);
-        assertRestrictBackgroundStatusEnabled();
-        assertRestrictBackgroundChangedReceivedTwice();
-    }
-
-    public void testConnectivityManager_getRestrictBackgroundStatus_uninstall() throws Exception {
-        final int uid = getUid(TEST_PKG);
-
-        addRestrictBackgroundWhitelist(uid);
-        assertRestrictBackgroundWhitelist(uid, true);
-
-        uninstallPackage(TEST_PKG, true);
-        assertPackageUninstalled(TEST_PKG);
-        assertRestrictBackgroundWhitelist(uid, false);
-
-        installPackage(TEST_APK);
-        final int newUid = getUid(TEST_PKG);
-        assertRestrictBackgroundWhitelist(uid, false);
-        assertRestrictBackgroundWhitelist(newUid, false);
-    }
-
-    private void installPackage(String apk) throws DeviceNotAvailableException,
-            FileNotFoundException {
-        assertNull(getDevice().installPackage(
-                MigrationHelper.getTestFile(mCtsBuild, apk), false));
-    }
-
-    private void uninstallPackage(String packageName, boolean shouldSucceed)
+    protected void uninstallPackage(String packageName, boolean shouldSucceed)
             throws DeviceNotAvailableException {
         final String result = getDevice().uninstallPackage(packageName);
         if (shouldSucceed) {
@@ -158,18 +87,8 @@ abstract class HostsideNetworkTestCase extends DeviceTestCase implements IAbiRec
         }
     }
 
-    /**
-     * Starts a service that will register a broadcast receiver to receive
-     * {@code RESTRICT_BACKGROUND_CHANGE} intents.
-     * <p>
-     * The service must run in a separate app because otherwise it would be killed every time
-     * {@link #runDeviceTests(String, String)} is executed.
-     */
-    private void startBroadcastReceiverService() throws DeviceNotAvailableException {
-        runCommand("am startservice " + TEST_APP2_PKG + "/.MyService");
-    }
-
-    private void assertPackageUninstalled(String packageName) throws Exception {
+    protected void assertPackageUninstalled(String packageName) throws DeviceNotAvailableException,
+            InterruptedException {
         final String command = "cmd package list packages " + packageName;
         final int max_tries = 5;
         for (int i = 1; i <= max_tries; i++) {
@@ -198,37 +117,12 @@ abstract class HostsideNetworkTestCase extends DeviceTestCase implements IAbiRec
         fail("Package '" + packageName + "' not uinstalled after " + max_tries + " seconds");
     }
 
-    private void assertRestrictBackgroundStatusDisabled() throws DeviceNotAvailableException {
-        runDeviceTests(TEST_PKG, TEST_PKG + ".ConnectivityManagerTest",
-                "testGetRestrictBackgroundStatus_disabled");
-    }
-
-    private void assertRestrictBackgroundStatusWhitelisted() throws DeviceNotAvailableException {
-        runDeviceTests(TEST_PKG, TEST_PKG + ".ConnectivityManagerTest",
-                "testGetRestrictBackgroundStatus_whitelisted");
-    }
-
-    private void assertRestrictBackgroundStatusEnabled() throws DeviceNotAvailableException {
-        runDeviceTests(TEST_PKG, TEST_PKG + ".ConnectivityManagerTest",
-                "testGetRestrictBackgroundStatus_enabled");
-    }
-
-    private void assertRestrictBackgroundChangedReceivedOnce() throws DeviceNotAvailableException {
-        runDeviceTests(TEST_PKG, TEST_PKG + ".ConnectivityManagerTest",
-                "testRestrictBackgroundChangedReceivedOnce");
-    }
-
-    private void assertRestrictBackgroundChangedReceivedTwice() throws DeviceNotAvailableException {
-        runDeviceTests(TEST_PKG, TEST_PKG + ".ConnectivityManagerTest",
-                "testRestrictBackgroundChangedReceivedTwice");
-    }
-
-    public void runDeviceTests(String packageName, String testClassName)
+    protected void runDeviceTests(String packageName, String testClassName)
             throws DeviceNotAvailableException {
         runDeviceTests(packageName, testClassName, null);
     }
 
-    public void runDeviceTests(String packageName, String testClassName, String methodName)
+    protected void runDeviceTests(String packageName, String testClassName, String methodName)
             throws DeviceNotAvailableException {
         RemoteAndroidTestRunner testRunner = new RemoteAndroidTestRunner(packageName,
                 "android.support.test.runner.AndroidJUnitRunner", getDevice().getIDevice());
@@ -268,7 +162,7 @@ abstract class HostsideNetworkTestCase extends DeviceTestCase implements IAbiRec
     private static final Pattern UID_PATTERN =
             Pattern.compile(".*userId=([0-9]+)$", Pattern.MULTILINE);
 
-    private int getUid(String packageName) throws DeviceNotAvailableException {
+    protected int getUid(String packageName) throws DeviceNotAvailableException {
         final String output = runCommand("dumpsys package " + packageName);
         final Matcher matcher = UID_PATTERN.matcher(output);
         while (matcher.find()) {
@@ -279,43 +173,7 @@ abstract class HostsideNetworkTestCase extends DeviceTestCase implements IAbiRec
                 + output);
     }
 
-    private void addRestrictBackgroundWhitelist(int uid) throws Exception {
-        runCommand("cmd netpolicy add restrict-background-whitelist " + uid);
-        assertRestrictBackgroundWhitelist(uid, true);
-    }
-
-    private void removeRestrictBackgroundWhitelist(int uid) throws Exception {
-        runCommand("cmd netpolicy remove restrict-background-whitelist " + uid);
-        assertRestrictBackgroundWhitelist(uid, false);
-    }
-
-    private void assertRestrictBackgroundWhitelist(int uid, boolean expected) throws Exception {
-        final int max_tries = 5;
-        boolean actual = false;
-        for (int i = 1; i <= max_tries; i++) {
-            final String output = runCommand("cmd netpolicy list restrict-background-whitelist ");
-            actual = output.contains(Integer.toString(uid));
-            if (expected == actual) {
-                return;
-            }
-            Log.v(TAG, "whitelist check for uid " + uid + " doesn't match yet (expected "
-                    + expected + ", got " + actual + "); sleeping 1s before polling again");
-            Thread.sleep(1000);
-        }
-        fail("whitelist check for uid " + uid + " failed: expected "
-                + expected + ", got " + actual);
-    }
-
-    private void setRestrictBackground(boolean enabled) throws DeviceNotAvailableException {
-        runCommand("cmd netpolicy set restrict-background " + enabled);
-        final String output = runCommand("cmd netpolicy get restrict-background ").trim();
-        final String expectedSuffix = enabled ? "enabled" : "disabled";
-        // TODO: use MoreAsserts?
-        assertTrue("output '" + output + "' should end with '" + expectedSuffix + "'",
-                output.endsWith(expectedSuffix));
-    }
-
-    private String runCommand(String command) throws DeviceNotAvailableException {
+    protected String runCommand(String command) throws DeviceNotAvailableException {
         Log.d(TAG, "Command: '" + command + "'");
         final String output = getDevice().executeShellCommand(command);
         if (DEBUG) Log.v(TAG, "Output: " + output.trim());
