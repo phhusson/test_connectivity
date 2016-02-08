@@ -18,23 +18,29 @@ package com.android.cts.net;
 
 import com.android.ddmlib.Log;
 import com.android.tradefed.device.DeviceNotAvailableException;
+import com.android.tradefed.device.WifiHelper;
 
 public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestCase {
     private static final String TEST_APP2_PKG = "com.android.cts.net.hostside.app2";
     private static final String TEST_APP2_APK = "CtsHostsideNetworkTestsApp2.apk";
 
     private int mUid;
+    private WifiHelper mWifiHelper;
 
     @Override
     protected void setUp() throws Exception {
         super.setUp();
 
+        mUid = getUid(TEST_PKG);
+        mWifiHelper = new WifiHelper(getDevice());
+
+        setWifiMeteredStatus(true);
         setRestrictBackground(false);
+
         uninstallPackage(TEST_APP2_PKG, false);
         installPackage(TEST_APP2_APK);
 
         startBroadcastReceiverService();
-        mUid = getUid(TEST_PKG);
     }
 
     @Override
@@ -43,6 +49,7 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
 
         uninstallPackage(TEST_APP2_PKG, true);
         setRestrictBackground(false);
+        setWifiMeteredStatus(false);
     }
 
     public void testGetRestrictBackgroundStatus_disabled() throws Exception {
@@ -149,6 +156,25 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
         }
         fail("whitelist check for uid " + uid + " failed: expected "
                 + expected + ", got " + actual);
+    }
+
+    private void setWifiMeteredStatus(boolean metered) throws DeviceNotAvailableException {
+        mWifiHelper.enableWifi();
+        // TODO: if it's not guaranteed the device has wi-fi, we need to change the tests
+        // to make the actual verification of restrictions optional.
+        final String netId = mWifiHelper.getSSID();
+        assertNotNull("null SSID", netId);
+        assertFalse("empty SSID", netId.trim().isEmpty());
+
+        Log.i(TAG, "Setting wi-fi network " + netId + " metered status to " + metered);
+        final String setCommand = "cmd netpolicy set metered-network " + netId + " "+ metered;
+        final String result = runCommand(setCommand);
+        assertTrue("Command '" + setCommand + "' failed: " + result, result.trim().isEmpty());
+
+        // Sanity check.
+        final String newStatus = runCommand("cmd netpolicy get metered-network " + netId);
+        assertEquals("Metered status of wi-fi network " + netId + " not set properly",
+                newStatus.trim(), Boolean.toString(metered));
     }
 
     private void setRestrictBackground(boolean enabled) throws DeviceNotAvailableException {
