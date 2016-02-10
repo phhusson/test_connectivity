@@ -25,11 +25,12 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
-import android.net.Network;
 import android.net.NetworkInfo;
 import android.test.InstrumentationTestCase;
 import android.util.Log;
 
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
@@ -48,6 +49,9 @@ public class ConnectivityManagerTest extends InstrumentationTestCase {
 
     private static final String STATUS_NETWORK_UNAVAILABLE_PREFIX = "NetworkUnavailable:";
     private static final String STATUS_NETWORK_AVAILABLE_PREFIX = "NetworkAvailable:";
+
+    private static final int NETWORK_TIMEOUT_MS = 15000;
+    private static final int SLEEP_TIME_SEC = 1;
 
     private ConnectivityManager mCm;
     private int mUid;
@@ -91,7 +95,6 @@ public class ConnectivityManagerTest extends InstrumentationTestCase {
         int attempts = 0;
         int count = 0;
         final int maxAttempts = 5;
-        final int sleepTime = 10;
         do {
             attempts++;
             count = getNumberBroadcastsReceived(getInstrumentation().getContext(), receiverName,
@@ -100,12 +103,13 @@ public class ConnectivityManagerTest extends InstrumentationTestCase {
                 break;
             }
             Log.d(TAG, "Count is " + count + " after " + attempts + " attempts; sleeping "
-                    + sleepTime + " seconds before trying again");
-            Thread.sleep(sleepTime * 1000);
+                    + SLEEP_TIME_SEC + " seconds before trying again");
+            Thread.sleep(SLEEP_TIME_SEC * 1000);
         } while (attempts <= maxAttempts);
         assertEquals("Number of expected broadcasts for " + receiverName + " not reached after "
-                + maxAttempts * sleepTime + " seconds", expectedCount, count);
+                + maxAttempts * SLEEP_TIME_SEC + " seconds", expectedCount, count);
     }
+
 
     static int getNumberBroadcastsReceived(Context context, String receiverName, String action)
             throws Exception {
@@ -129,13 +133,7 @@ public class ConnectivityManagerTest extends InstrumentationTestCase {
         new Thread(new Runnable() {
             @Override
             public void run() {
-              Log.d(TAG, "Running on thread " + Thread.currentThread().getName());
-              final Network network = mCm.getActiveNetwork();
-              final NetworkInfo networkInfo = mCm.getActiveNetworkInfo();
-              Log.d(TAG, "activeNetwork: " + network + " activeNetworkInfo: " + networkInfo);
-              final String prefix = network == null ?
-                      STATUS_NETWORK_UNAVAILABLE_PREFIX : STATUS_NETWORK_AVAILABLE_PREFIX;
-              result.offer(prefix + networkInfo);
+              result.offer(checkNetworkStatus());
             }
         }, "CheckNetworkThread").start();
         final String actualNetworkStatus = result.poll(10, TimeUnit.SECONDS);
@@ -144,6 +142,30 @@ public class ConnectivityManagerTest extends InstrumentationTestCase {
                 STATUS_NETWORK_UNAVAILABLE_PREFIX : STATUS_NETWORK_AVAILABLE_PREFIX;
         assertTrue("Wrong network status for API status " + actualApiStatus + ": "
                 + actualNetworkStatus, actualNetworkStatus.startsWith(expectedPrefix));
+    }
+
+    protected String checkNetworkStatus() {
+        // TODO: connect to a hostside server instead
+        final String address = "http://example.com";
+        final NetworkInfo networkInfo = mCm.getActiveNetworkInfo();
+        Log.d(TAG, "Running checkNetworkStatus() on thread " + Thread.currentThread().getName()
+                + "\n\tactiveNetworkInfo: " + networkInfo + "\n\tURL: " + address);
+        String prefix = STATUS_NETWORK_AVAILABLE_PREFIX;
+        try {
+            final URL url = new URL(address);
+            final HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setReadTimeout(NETWORK_TIMEOUT_MS);
+            conn.setConnectTimeout(NETWORK_TIMEOUT_MS);
+            conn.setRequestMethod("GET");
+            conn.setDoInput(true);
+            conn.connect();
+            final int response = conn.getResponseCode();
+            Log.d(TAG, "HTTP response for " + address + ": " + response);
+        } catch (Exception e) {
+            Log.d(TAG, "Exception getting " + address + ": " + e);
+            prefix = STATUS_NETWORK_UNAVAILABLE_PREFIX;
+        }
+        return prefix + networkInfo;
     }
 
     private String toString(int status) {
