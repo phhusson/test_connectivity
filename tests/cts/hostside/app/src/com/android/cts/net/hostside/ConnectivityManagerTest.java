@@ -80,6 +80,11 @@ public class ConnectivityManagerTest extends InstrumentationTestCase {
         assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_ENABLED);
     }
 
+    public void testRestrictBackgroundChangedNotReceived() throws Exception {
+        assertRestrictBackgroundChangedReceived(DYNAMIC_RECEIVER, 0);
+        assertRestrictBackgroundChangedReceived(MANIFEST_RECEIVER, 0);
+    }
+
     public void testRestrictBackgroundChangedReceivedOnce() throws Exception {
         assertRestrictBackgroundChangedReceived(DYNAMIC_RECEIVER, 1);
         assertRestrictBackgroundChangedReceived(MANIFEST_RECEIVER, 0);

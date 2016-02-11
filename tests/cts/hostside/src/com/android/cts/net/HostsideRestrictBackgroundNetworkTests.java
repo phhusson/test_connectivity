@@ -55,12 +55,13 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
     public void testGetRestrictBackgroundStatus_disabled() throws Exception {
         removeRestrictBackgroundWhitelist(mUid);
         assertRestrictBackgroundStatusDisabled();
-        assertRestrictBackgroundChangedReceivedOnce();
+        // From the app's point of view, nothing changed, it still have access
+        assertRestrictBackgroundChangedNotReceived();
 
         // Sanity check: make sure status is always disabled, never whitelisted
         addRestrictBackgroundWhitelist(mUid);
         assertRestrictBackgroundStatusDisabled();
-        assertRestrictBackgroundChangedReceivedTwice();
+        assertRestrictBackgroundChangedNotReceived();
     }
 
     public void testGetRestrictBackgroundStatus_whitelisted() throws Exception {
@@ -78,7 +79,7 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
 
         removeRestrictBackgroundWhitelist(mUid);
         assertRestrictBackgroundStatusEnabled();
-        assertRestrictBackgroundChangedReceivedTwice();
+        assertRestrictBackgroundChangedReceivedOnce();
     }
 
     public void testGetRestrictBackgroundStatus_uninstall() throws Exception {
@@ -119,6 +120,11 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
     private void assertRestrictBackgroundStatusEnabled() throws DeviceNotAvailableException {
         runDeviceTests(TEST_PKG, TEST_PKG + ".ConnectivityManagerTest",
                 "testGetRestrictBackgroundStatus_enabled");
+    }
+
+    private void assertRestrictBackgroundChangedNotReceived() throws DeviceNotAvailableException {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".ConnectivityManagerTest",
+                "testRestrictBackgroundChangedNotReceived");
     }
 
     private void assertRestrictBackgroundChangedReceivedOnce() throws DeviceNotAvailableException {
