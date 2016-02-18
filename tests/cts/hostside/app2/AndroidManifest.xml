@@ -16,20 +16,28 @@
 -->
 
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.android.cts.net.hostside.app2"
-    android:sharedUserId="com.android.cts.net.hostside.apps" >
+    package="com.android.cts.net.hostside.app2" >
 
-    <!-- This application is used to listen to RESTRICT_BACKGROUND_CHANGED intents and store
-         them in a shared preferences which is then read by the test app.
-         It defines 2 listeners, one in the manifest and another dynamically registered by
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+         This application is used to listen to RESTRICT_BACKGROUND_CHANGED intents and store
+         them in a shared preferences which is then read by the test app. These broadcasts are
+         handled by 2 listeners, one defined the manifest and another dynamically registered by
          a service.
+
+         The manifest-defined listener also handles ordered broadcasts used to share data with the
+         test app.
     -->
     <application>
-        <service android:name=".MyService" />
+        <service android:name=".MyService" android:exported="true"/>
 
         <receiver android:name=".MyBroadcastReceiver" >
             <intent-filter>
                 <action android:name="android.net.conn.RESTRICT_BACKGROUND_CHANGED" />
+                <action android:name="com.android.cts.net.hostside.app2.action.GET_COUNTERS" />
+                <action android:name="com.android.cts.net.hostside.app2.action.CHECK_NETWORK" />
             </intent-filter>
         </receiver>
     </application>

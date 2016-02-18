@@ -18,6 +18,18 @@ package com.android.cts.net.hostside.app2;
 public final class Common {
 
     static final String TAG = "CtsNetApp2";
+
+    // Constants below must match values defined on app's ConnectivityManagerTest.java
     static final String MANIFEST_RECEIVER = "ManifestReceiver";
     static final String DYNAMIC_RECEIVER = "DynamicReceiver";
+    static final String ACTION_GET_COUNTERS =
+            "com.android.cts.net.hostside.app2.action.GET_COUNTERS";
+    static final String ACTION_CHECK_NETWORK =
+            "com.android.cts.net.hostside.app2.action.CHECK_NETWORK";
+    static final String EXTRA_ACTION = "com.android.cts.net.hostside.app2.extra.ACTION";
+    static final String EXTRA_RECEIVER_NAME =
+            "com.android.cts.net.hostside.app2.extra.RECEIVER_NAME";
+    static final char RESULT_SEPARATOR = ';';
+    static final String STATUS_NETWORK_UNAVAILABLE_PREFIX = "NetworkUnavailable:";
+    static final String STATUS_NETWORK_AVAILABLE_PREFIX = "NetworkAvailable:";
 }
