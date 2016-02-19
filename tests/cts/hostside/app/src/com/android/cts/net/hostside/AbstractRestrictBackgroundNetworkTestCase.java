@@ -37,14 +37,10 @@ import android.test.InstrumentationTestCase;
 import android.util.Log;
 
 /**
- * Tests for the {@link ConnectivityManager} API.
- *
- * <p>These tests rely on a host-side test to use {@code adb shell cmd netpolicy} to put the device
- * in the proper state. In fact, they're more like "assertions" than tests per se - the real test
- * logic is done on {@code HostsideNetworkTests}.
+ * Superclass for tests related to background network restrictions.
  */
-public class ConnectivityManagerTest extends InstrumentationTestCase {
-    private static final String TAG = "ConnectivityManagerTest";
+abstract class AbstractRestrictBackgroundNetworkTestCase extends InstrumentationTestCase {
+    protected static final String TAG = "RestrictBackgroundNetworkTests";
 
     private static final String TEST_APP2_PKG = "com.android.cts.net.hostside.app2";
 
@@ -65,11 +61,11 @@ public class ConnectivityManagerTest extends InstrumentationTestCase {
     private static final String STATUS_NETWORK_UNAVAILABLE_PREFIX = "NetworkUnavailable:";
     private static final String STATUS_NETWORK_AVAILABLE_PREFIX = "NetworkAvailable:";
 
-    private Context mContext;
-    private Instrumentation mInstrumentation;
-    private ConnectivityManager mCm;
-    private WifiManager mWfm;
-    private int mUid;
+    protected Context mContext;
+    protected Instrumentation mInstrumentation;
+    protected ConnectivityManager mCm;
+    protected WifiManager mWfm;
+    protected int mUid;
     private boolean mResetMeteredWifi = false;
 
     @Override
@@ -85,10 +81,7 @@ public class ConnectivityManagerTest extends InstrumentationTestCase {
 
         Log.d(TAG, "UIDS: test app=" + myUid + ", app2=" + mUid);
 
-        setRestrictBackground(false);
         setMeteredNetwork();
-
-        registerApp2BroadcastReceiver();
    }
 
     @Override
@@ -100,41 +93,12 @@ public class ConnectivityManagerTest extends InstrumentationTestCase {
         }
     }
 
-    public void testGetRestrictBackgroundStatus_disabled() throws Exception {
-        removeRestrictBackgroundWhitelist(mUid);
-        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
-        assertRestrictBackgroundChangedReceived(0);
-
-        // Sanity check: make sure status is always disabled, never whitelisted
-        addRestrictBackgroundWhitelist(mUid);
-        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
-        assertRestrictBackgroundChangedReceived(0);
-    }
-
-    public void testGetRestrictBackgroundStatus_whitelisted() throws Exception {
-        setRestrictBackground(true);
-        assertRestrictBackgroundChangedReceived(1);
-
-        addRestrictBackgroundWhitelist(mUid);
-        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_WHITELISTED);
-        assertRestrictBackgroundChangedReceived(2);
-    }
-
-    public void testGetRestrictBackgroundStatus_enabled() throws Exception {
-        setRestrictBackground(true);
-        assertRestrictBackgroundChangedReceived(1);
-
-        removeRestrictBackgroundWhitelist(mUid);
-        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_ENABLED);
-        assertRestrictBackgroundChangedReceived(1);
-    }
-
-    public void assertRestrictBackgroundChangedReceived(int expectedCount) throws Exception {
+    protected void assertRestrictBackgroundChangedReceived(int expectedCount) throws Exception {
         assertRestrictBackgroundChangedReceived(DYNAMIC_RECEIVER, expectedCount);
         assertRestrictBackgroundChangedReceived(MANIFEST_RECEIVER, 0);
     }
 
-    private void assertRestrictBackgroundChangedReceived(String receiverName, int expectedCount)
+    protected void assertRestrictBackgroundChangedReceived(String receiverName, int expectedCount)
             throws Exception {
         int attempts = 0;
         int count = 0;
@@ -154,7 +118,7 @@ public class ConnectivityManagerTest extends InstrumentationTestCase {
                 + maxAttempts * SLEEP_TIME_SEC + " seconds", expectedCount, count);
     }
 
-    private String sendOrderedBroadcast(Intent intent) throws Exception {
+    protected String sendOrderedBroadcast(Intent intent) throws Exception {
         final LinkedBlockingQueue<String> result = new LinkedBlockingQueue<>(1);
         Log.d(TAG, "Sending ordered broadcast: " + intent);
         mContext.sendOrderedBroadcast(intent, null, new BroadcastReceiver() {
@@ -176,7 +140,7 @@ public class ConnectivityManagerTest extends InstrumentationTestCase {
         return resultData;
     }
 
-    private int getNumberBroadcastsReceived(String receiverName, String action) throws Exception {
+    protected int getNumberBroadcastsReceived(String receiverName, String action) throws Exception {
         final Intent intent = new Intent(ACTION_GET_COUNTERS);
         intent.putExtra(EXTRA_ACTION, ACTION_RESTRICT_BACKGROUND_CHANGED);
         intent.putExtra(EXTRA_RECEIVER_NAME, receiverName);
@@ -184,7 +148,7 @@ public class ConnectivityManagerTest extends InstrumentationTestCase {
         return Integer.valueOf(resultData);
     }
 
-    private void assertRestrictBackgroundStatus(int expectedApiStatus) throws Exception {
+    protected void assertRestrictBackgroundStatus(int expectedApiStatus) throws Exception {
         final Intent intent = new Intent(ACTION_CHECK_NETWORK);
         final String resultData = sendOrderedBroadcast(intent);
         final String[] resultItems = resultData.split(RESULT_SEPARATOR);
@@ -201,13 +165,13 @@ public class ConnectivityManagerTest extends InstrumentationTestCase {
                 + actualNetworkStatus, actualNetworkStatus.startsWith(expectedPrefix));
     }
 
-    private String executeShellCommand(String command) throws IOException {
+    protected String executeShellCommand(String command) throws IOException {
         final String result = runShellCommand(mInstrumentation, command).trim();
         if (DEBUG) Log.d(TAG, "Command '" + command + "' returned '" + result + "'");
         return result;
     }
 
-    private void setMeteredNetwork() throws IOException {
+    protected void setMeteredNetwork() throws IOException {
         final NetworkInfo info = mCm.getActiveNetworkInfo();
         final boolean metered = mCm.isActiveNetworkMetered();
         if (metered) {
@@ -221,7 +185,7 @@ public class ConnectivityManagerTest extends InstrumentationTestCase {
         mResetMeteredWifi = true;
     }
 
-    private String setWifiMeteredStatus(boolean metered) throws IOException {
+    protected String setWifiMeteredStatus(boolean metered) throws IOException {
         mWfm.setWifiEnabled(true);
         // TODO: if it's not guaranteed the device has wi-fi, we need to change the tests
         // to make the actual verification of restrictions optional.
@@ -242,7 +206,7 @@ public class ConnectivityManagerTest extends InstrumentationTestCase {
         return netId;
     }
 
-    private void setRestrictBackground(boolean enabled) throws IOException {
+    protected void setRestrictBackground(boolean enabled) throws IOException {
         executeShellCommand("cmd netpolicy set restrict-background " + enabled);
         final String output = executeShellCommand("cmd netpolicy get restrict-background ");
         final String expectedSuffix = enabled ? "enabled" : "disabled";
@@ -251,17 +215,17 @@ public class ConnectivityManagerTest extends InstrumentationTestCase {
                 output.endsWith(expectedSuffix));
       }
 
-    private void addRestrictBackgroundWhitelist(int uid) throws Exception {
+    protected void addRestrictBackgroundWhitelist(int uid) throws Exception {
         executeShellCommand("cmd netpolicy add restrict-background-whitelist " + uid);
         assertRestrictBackgroundWhitelist(uid, true);
     }
 
-    private void removeRestrictBackgroundWhitelist(int uid) throws Exception {
+    protected void removeRestrictBackgroundWhitelist(int uid) throws Exception {
         executeShellCommand("cmd netpolicy remove restrict-background-whitelist " + uid);
         assertRestrictBackgroundWhitelist(uid, false);
     }
 
-    private void assertRestrictBackgroundWhitelist(int uid, boolean expected) throws Exception {
+    protected void assertRestrictBackgroundWhitelist(int uid, boolean expected) throws Exception {
         final int maxTries = 5;
         boolean actual = false;
         for (int i = 1; i <= maxTries; i++) {
@@ -285,7 +249,7 @@ public class ConnectivityManagerTest extends InstrumentationTestCase {
      * The service must run in a separate app because otherwise it would be killed every time
      * {@link #runDeviceTests(String, String)} is executed.
      */
-    private void registerApp2BroadcastReceiver() throws IOException {
+    protected void registerApp2BroadcastReceiver() throws IOException {
         executeShellCommand("am startservice com.android.cts.net.hostside.app2/.MyService");
     }
 

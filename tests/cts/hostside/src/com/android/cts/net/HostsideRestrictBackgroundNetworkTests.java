@@ -40,17 +40,17 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
     }
 
     public void testGetRestrictBackgroundStatus_disabled() throws Exception {
-        runDeviceTests(TEST_PKG, TEST_PKG + ".ConnectivityManagerTest",
+        runDeviceTests(TEST_PKG, TEST_PKG + ".DataSaverModeTest",
                 "testGetRestrictBackgroundStatus_disabled");
     }
 
     public void testGetRestrictBackgroundStatus_whitelisted() throws Exception {
-        runDeviceTests(TEST_PKG, TEST_PKG + ".ConnectivityManagerTest",
+        runDeviceTests(TEST_PKG, TEST_PKG + ".DataSaverModeTest",
                 "testGetRestrictBackgroundStatus_whitelisted");
     }
 
     public void testGetRestrictBackgroundStatus_enabled() throws Exception {
-        runDeviceTests(TEST_PKG, TEST_PKG + ".ConnectivityManagerTest",
+        runDeviceTests(TEST_PKG, TEST_PKG + ".DataSaverModeTest",
                 "testGetRestrictBackgroundStatus_enabled");
     }
 
