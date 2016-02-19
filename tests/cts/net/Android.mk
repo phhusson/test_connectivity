@@ -40,8 +40,8 @@ LOCAL_STATIC_JAVA_LIBRARIES := core-tests-support  ctsdeviceutil \
 # uncomment when b/13249961 is fixed
 #LOCAL_SDK_VERSION := current
 
-# Tag this module as a cts_v2 test artifact
-LOCAL_COMPATIBILITY_SUITE := cts_v2
+# Tag this module as a cts test artifact
+LOCAL_COMPATIBILITY_SUITE := cts
 
 include $(BUILD_CTS_PACKAGE)
 
