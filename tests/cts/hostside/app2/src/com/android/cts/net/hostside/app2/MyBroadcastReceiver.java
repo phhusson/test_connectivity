@@ -110,7 +110,10 @@ public class MyBroadcastReceiver extends BroadcastReceiver {
             setResultData(null);
             return;
         }
-        data.append(apiStatus).append(RESULT_SEPARATOR).append(netStatus);
+        data.append(apiStatus).append(RESULT_SEPARATOR);
+        if (netStatus != null) {
+            data.append(netStatus);
+        }
         Log.d(TAG, "checkNetwork: returning " + data);
         setResultData(data.toString());
     }

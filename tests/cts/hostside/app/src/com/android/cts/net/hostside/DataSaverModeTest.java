@@ -30,6 +30,13 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
         registerApp2BroadcastReceiver();
    }
 
+    @Override
+    protected void tearDown() throws Exception {
+        super.tearDown();
+
+        setRestrictBackground(false);
+    }
+
     public void testGetRestrictBackgroundStatus_disabled() throws Exception {
         removeRestrictBackgroundWhitelist(mUid);
         assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
