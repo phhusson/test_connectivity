@@ -22,7 +22,6 @@ import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_DISABLE
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED;
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_WHITELISTED;
 
-import java.io.IOException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
@@ -42,7 +41,8 @@ import android.util.Log;
 abstract class AbstractRestrictBackgroundNetworkTestCase extends InstrumentationTestCase {
     protected static final String TAG = "RestrictBackgroundNetworkTests";
 
-    private static final String TEST_APP2_PKG = "com.android.cts.net.hostside.app2";
+    protected static final String TEST_PKG = "com.android.cts.net.hostside";
+    protected static final String TEST_APP2_PKG = "com.android.cts.net.hostside.app2";
 
     private static final int SLEEP_TIME_SEC = 1;
     private static final boolean DEBUG = true;
@@ -60,6 +60,10 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     private static final String RESULT_SEPARATOR = ";";
     private static final String STATUS_NETWORK_UNAVAILABLE_PREFIX = "NetworkUnavailable:";
     private static final String STATUS_NETWORK_AVAILABLE_PREFIX = "NetworkAvailable:";
+    private static final int NETWORK_TIMEOUT_MS = 15 * 1000;
+
+    // Must be higher than NETWORK_TIMEOUT_MS
+    private static final int ORDERED_BROADCAST_TIMEOUT_MS = NETWORK_TIMEOUT_MS * 4;
 
     protected Context mContext;
     protected Instrumentation mInstrumentation;
@@ -134,8 +138,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             }
         }, null, 0, null, null);
 
-        final String resultData = result.poll(60, TimeUnit.SECONDS);
-        assertNotNull("timeout waiting for ordered broadcast result", resultData);
+        final String resultData = result.poll(ORDERED_BROADCAST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
         Log.d(TAG, "Ordered broadcast response: " + resultData);
         return resultData;
     }
@@ -145,6 +148,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         intent.putExtra(EXTRA_ACTION, ACTION_RESTRICT_BACKGROUND_CHANGED);
         intent.putExtra(EXTRA_RECEIVER_NAME, receiverName);
         final String resultData = sendOrderedBroadcast(intent);
+        assertNotNull("timeout waiting for ordered broadcast result", resultData);
         return Integer.valueOf(resultData);
     }
 
@@ -153,25 +157,73 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         final String resultData = sendOrderedBroadcast(intent);
         final String[] resultItems = resultData.split(RESULT_SEPARATOR);
         final String actualApiStatus = toString(Integer.parseInt(resultItems[0]));
-        final String actualNetworkStatus = resultItems[1];
-
         // First asserts the API returns the proper value...
         assertEquals("wrong status", toString(expectedApiStatus), actualApiStatus);
 
         //...then the actual network status in the background thread.
-        final String expectedPrefix = expectedApiStatus == RESTRICT_BACKGROUND_STATUS_ENABLED ?
-                        STATUS_NETWORK_UNAVAILABLE_PREFIX : STATUS_NETWORK_AVAILABLE_PREFIX;
-        assertTrue("Wrong network status for API status " + actualApiStatus + ": "
-                + actualNetworkStatus, actualNetworkStatus.startsWith(expectedPrefix));
+        final String networkStatus = getNetworkStatus(resultItems);
+        assertNetworkStatus(expectedApiStatus != RESTRICT_BACKGROUND_STATUS_ENABLED, networkStatus);
     }
 
-    protected String executeShellCommand(String command) throws IOException {
+    protected void assertBackgroundNetworkAccess(boolean expectAllowed) throws Exception {
+        final Intent intent = new Intent(ACTION_CHECK_NETWORK);
+        final String resultData = sendOrderedBroadcast(intent);
+        final String[] resultItems = resultData.split(RESULT_SEPARATOR);
+        final String networkStatus = getNetworkStatus(resultItems);
+        assertNetworkStatus(expectAllowed, networkStatus);
+    }
+
+    private String getNetworkStatus(String[] resultItems) {
+        return resultItems.length < 2 ? null : resultItems[1];
+    }
+
+    private void assertNetworkStatus(boolean expectAvailable, String status) throws Exception {
+        if (status == null) {
+            Log.d(TAG, "timeout waiting for ordered broadcast");
+            if (expectAvailable) {
+                fail("did not get network status when access was allowed");
+            }
+            return;
+        }
+        final String expectedPrefix = expectAvailable ?
+                STATUS_NETWORK_AVAILABLE_PREFIX : STATUS_NETWORK_UNAVAILABLE_PREFIX;
+        assertTrue("Wrong network status (" + status + ") when expectedAvailable is "
+                + expectAvailable, status.startsWith(expectedPrefix));
+    }
+
+    protected String executeShellCommand(String command) throws Exception {
         final String result = runShellCommand(mInstrumentation, command).trim();
         if (DEBUG) Log.d(TAG, "Command '" + command + "' returned '" + result + "'");
         return result;
     }
 
-    protected void setMeteredNetwork() throws IOException {
+    /**
+     * Runs a Shell command which is not expected to generate output.
+     */
+    protected void executeSilentShellCommand(String command) throws Exception {
+        final String result = executeShellCommand(command);
+        assertTrue("Command '" + command + "' failed: " + result, result.trim().isEmpty());
+    }
+
+    /**
+     * Asserts the result of a command, wait and re-running it a couple times if necessary.
+     */
+    protected void assertDelayedShellCommand(String command, String expectedResult)
+            throws Exception {
+        final int maxTries = 5;
+        for (int i = 1; i <= maxTries; i++) {
+            final String result = executeShellCommand(command).trim();
+            if (result.equals(expectedResult))
+                return;
+            Log.v(TAG, "Command '" + command + "' returned '" + result + " instead of '"
+                    + expectedResult + "' on attempt #; sleeping 1s before polling again");
+            Thread.sleep(1000);
+        }
+        fail("Command '" + command + "' did not return '" + expectedResult + "' after " + maxTries
+                + " attempts");
+    }
+
+    protected void setMeteredNetwork() throws Exception {
         final NetworkInfo info = mCm.getActiveNetworkInfo();
         final boolean metered = mCm.isActiveNetworkMetered();
         if (metered) {
@@ -185,7 +237,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         mResetMeteredWifi = true;
     }
 
-    protected String setWifiMeteredStatus(boolean metered) throws IOException {
+    protected String setWifiMeteredStatus(boolean metered) throws Exception {
         mWfm.setWifiEnabled(true);
         // TODO: if it's not guaranteed the device has wi-fi, we need to change the tests
         // to make the actual verification of restrictions optional.
@@ -206,7 +258,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         return netId;
     }
 
-    protected void setRestrictBackground(boolean enabled) throws IOException {
+    protected void setRestrictBackground(boolean enabled) throws Exception {
         executeShellCommand("cmd netpolicy set restrict-background " + enabled);
         final String output = executeShellCommand("cmd netpolicy get restrict-background ");
         final String expectedSuffix = enabled ? "enabled" : "disabled";
@@ -242,6 +294,40 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         fail("whitelist check for uid " + uid + " failed: expected " + expected + ", got " + actual);
     }
 
+    protected void assertPowerSaveModeWhitelist(String packageName, boolean expected)
+            throws Exception {
+        // TODO: currently the power-save mode is behaving like idle, but once it changes, we'll
+        // need to use netpolicy for whitelisting
+        assertDelayedShellCommand("dumpsys deviceidle whitelist =" + packageName,
+                Boolean.toString(expected));
+    }
+
+    protected void addPowerSaveModeWhitelist(String packageName) throws Exception {
+        Log.i(TAG, "Adding package " + packageName + " to power-save-mode whitelist");
+        // TODO: currently the power-save mode is behaving like idle, but once it changes, we'll
+        // need to use netpolicy for whitelisting
+        executeShellCommand("dumpsys deviceidle whitelist +" + packageName);
+        assertPowerSaveModeWhitelist(packageName, true); // Sanity check
+    }
+
+    protected void removePowerSaveModeWhitelist(String packageName) throws Exception {
+        Log.i(TAG, "Removing package " + packageName + " from power-save-mode whitelist");
+        // TODO: currently the power-save mode is behaving like idle, but once it changes, we'll
+        // need to use netpolicy for whitelisting
+        executeShellCommand("dumpsys deviceidle whitelist -" + packageName);
+        assertPowerSaveModeWhitelist(packageName, false); // Sanity check
+    }
+
+    protected void setPowerSaveMode(boolean enabled) throws Exception {
+        Log.i(TAG, "Setting power mode to " + enabled);
+        if (enabled) {
+            executeSilentShellCommand("cmd battery unplug");
+            executeSilentShellCommand("settings put global low_power 1");
+        } else {
+            executeSilentShellCommand("cmd battery reset");
+        }
+    }
+
     /**
      * Starts a service that will register a broadcast receiver to receive
      * {@code RESTRICT_BACKGROUND_CHANGE} intents.
@@ -249,7 +335,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
      * The service must run in a separate app because otherwise it would be killed every time
      * {@link #runDeviceTests(String, String)} is executed.
      */
-    protected void registerApp2BroadcastReceiver() throws IOException {
+    protected void registerApp2BroadcastReceiver() throws Exception {
         executeShellCommand("am startservice com.android.cts.net.hostside.app2/.MyService");
     }
 

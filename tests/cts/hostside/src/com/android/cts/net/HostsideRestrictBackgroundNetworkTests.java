@@ -17,6 +17,7 @@
 package com.android.cts.net;
 
 import com.android.ddmlib.Log;
+import com.android.tradefed.device.DeviceNotAvailableException;
 
 public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestCase {
 
@@ -39,24 +40,24 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
         uninstallPackage(TEST_APP2_PKG, true);
     }
 
-    public void testGetRestrictBackgroundStatus_disabled() throws Exception {
+    public void testDataSaverMode_disabled() throws Exception {
         runDeviceTests(TEST_PKG, TEST_PKG + ".DataSaverModeTest",
                 "testGetRestrictBackgroundStatus_disabled");
     }
 
-    public void testGetRestrictBackgroundStatus_whitelisted() throws Exception {
+    public void testDataSaverMode_whitelisted() throws Exception {
         runDeviceTests(TEST_PKG, TEST_PKG + ".DataSaverModeTest",
                 "testGetRestrictBackgroundStatus_whitelisted");
     }
 
-    public void testGetRestrictBackgroundStatus_enabled() throws Exception {
+    public void testDataSaverMode_enabled() throws Exception {
         runDeviceTests(TEST_PKG, TEST_PKG + ".DataSaverModeTest",
                 "testGetRestrictBackgroundStatus_enabled");
     }
 
-    public void testGetRestrictBackgroundStatus_uninstall() throws Exception {
+    public void testDataSaverMode_reinstall() throws Exception {
         final int oldUid = getUid(TEST_PKG);
-        testGetRestrictBackgroundStatus_whitelisted();
+        testDataSaverMode_whitelisted();
 
         uninstallPackage(TEST_PKG, true);
         assertPackageUninstalled(TEST_PKG);
@@ -66,6 +67,32 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
         final int newUid = getUid(TEST_PKG);
         assertRestrictBackgroundWhitelist(oldUid, false);
         assertRestrictBackgroundWhitelist(newUid, false);
+    }
+
+    public void testBatterySaverMode_disabled() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".BatterySaverModeTest",
+                "testBackgroundNetworkAccess_disabled");
+    }
+
+    public void testBatterySaverMode_whitelisted() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".BatterySaverModeTest",
+                "testBackgroundNetworkAccess_whitelisted");
+    }
+
+    public void testBatterySaverMode_enabled() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".BatterySaverModeTest",
+                "testBackgroundNetworkAccess_enabled");
+    }
+
+    public void testBatterySaverMode_reinstall() throws Exception {
+        testBatterySaverMode_whitelisted();
+
+        uninstallPackage(TEST_PKG, true);
+        assertPackageUninstalled(TEST_PKG);
+        assertPowerSaveModeWhitelist(TEST_PKG, false);
+
+        installPackage(TEST_APK);
+        assertPowerSaveModeWhitelist(TEST_PKG, false);
     }
 
     private void assertRestrictBackgroundWhitelist(int uid, boolean expected) throws Exception {
@@ -83,5 +110,30 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
         }
         fail("whitelist check for uid " + uid + " failed: expected "
                 + expected + ", got " + actual);
+    }
+
+    private void assertPowerSaveModeWhitelist(String packageName, boolean expected)
+            throws Exception {
+        // TODO: currently the power-save mode is behaving like idle, but once it changes, we'll
+        // need to use netpolicy for whitelisting
+        assertDelayedCommand("dumpsys deviceidle whitelist =" + packageName,
+                Boolean.toString(expected));
+    }
+
+    /**
+     * Asserts the result of a command, wait and re-running it a couple times if necessary.
+     */
+    private void assertDelayedCommand(String command, String expectedResult)
+            throws InterruptedException, DeviceNotAvailableException {
+        final int maxTries = 5;
+        for (int i = 1; i <= maxTries; i++) {
+            final String result = runCommand(command).trim();
+            if (result.equals(expectedResult)) return;
+            Log.v(TAG, "Command '" + command + "' returned '" + result + " instead of '"
+                    + expectedResult + "' on attempt #; sleeping 1s before polling again");
+            Thread.sleep(1000);
+        }
+        fail("Command '" + command + "' did not return '" + expectedResult + "' after " + maxTries
+                + " attempts");
     }
 }
