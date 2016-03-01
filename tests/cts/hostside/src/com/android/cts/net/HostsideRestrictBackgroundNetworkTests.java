@@ -55,6 +55,11 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
                 "testGetRestrictBackgroundStatus_enabled");
     }
 
+    public void testDataSaverMode_blacklisted() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".DataSaverModeTest",
+                "testGetRestrictBackgroundStatus_blacklisted");
+    }
+
     public void testDataSaverMode_reinstall() throws Exception {
         final int oldUid = getUid(TEST_PKG);
         testDataSaverMode_whitelisted();

@@ -65,4 +65,28 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
         assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_ENABLED);
         assertRestrictBackgroundChangedReceived(1);
     }
+
+    public void testGetRestrictBackgroundStatus_blacklisted() throws Exception {
+        addRestrictBackgroundBlacklist(mUid);
+        assertRestrictBackgroundChangedReceived(1);
+
+        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_ENABLED);
+
+        // TODO: currently whitelist is prevailing, hence remaining of the test below is disabled
+        if (true) return;
+
+        // Make sure blacklist prevails over whitelist.
+        setRestrictBackground(true);
+        assertRestrictBackgroundChangedReceived(2);
+        addRestrictBackgroundWhitelist(mUid);
+        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_ENABLED);
+
+        // Check status after removing blacklist.
+        removeRestrictBackgroundBlacklist(mUid);
+        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_WHITELISTED);
+        assertRestrictBackgroundChangedReceived(3);
+        setRestrictBackground(false);
+        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
+        assertRestrictBackgroundChangedReceived(4);
+    }
 }
