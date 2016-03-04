@@ -19,6 +19,7 @@ package com.android.cts.net.hostside.app2;
 import static android.net.ConnectivityManager.ACTION_RESTRICT_BACKGROUND_CHANGED;
 import static com.android.cts.net.hostside.app2.Common.ACTION_CHECK_NETWORK;
 import static com.android.cts.net.hostside.app2.Common.ACTION_GET_COUNTERS;
+import static com.android.cts.net.hostside.app2.Common.ACTION_RECEIVER_READY;
 import static com.android.cts.net.hostside.app2.Common.EXTRA_ACTION;
 import static com.android.cts.net.hostside.app2.Common.EXTRA_RECEIVER_NAME;
 import static com.android.cts.net.hostside.app2.Common.MANIFEST_RECEIVER;
@@ -75,6 +76,11 @@ public class MyBroadcastReceiver extends BroadcastReceiver {
                 break;
             case ACTION_CHECK_NETWORK:
                 checkNetwork(context, intent);
+                break;
+            case ACTION_RECEIVER_READY:
+                final String message = mName + " is ready to rumble";
+                Log.d(TAG, message);
+                setResultData(message);
                 break;
             default:
                 Log.e(TAG, "received unexpected action: " + action);

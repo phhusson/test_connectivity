@@ -54,13 +54,16 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             "com.android.cts.net.hostside.app2.action.GET_COUNTERS";
     private static final String ACTION_CHECK_NETWORK =
             "com.android.cts.net.hostside.app2.action.CHECK_NETWORK";
+    private static final String ACTION_RECEIVER_READY =
+            "com.android.cts.net.hostside.app2.action.RECEIVER_READY";
     private static final String EXTRA_ACTION = "com.android.cts.net.hostside.app2.extra.ACTION";
     private static final String EXTRA_RECEIVER_NAME =
             "com.android.cts.net.hostside.app2.extra.RECEIVER_NAME";
     private static final String RESULT_SEPARATOR = ";";
     private static final String STATUS_NETWORK_UNAVAILABLE_PREFIX = "NetworkUnavailable:";
     private static final String STATUS_NETWORK_AVAILABLE_PREFIX = "NetworkAvailable:";
-    private static final int NETWORK_TIMEOUT_MS = 15 * 1000;
+    private static final int SECOND_IN_MS = 1000;
+    private static final int NETWORK_TIMEOUT_MS = 15 * SECOND_IN_MS;
 
     // Must be higher than NETWORK_TIMEOUT_MS
     private static final int ORDERED_BROADCAST_TIMEOUT_MS = NETWORK_TIMEOUT_MS * 4;
@@ -116,13 +119,17 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             Log.d(TAG, "Expecting count " + expectedCount + " but actual is " + count + " after "
                     + attempts + " attempts; sleeping "
                     + SLEEP_TIME_SEC + " seconds before trying again");
-            Thread.sleep(SLEEP_TIME_SEC * 1000);
+            Thread.sleep(SLEEP_TIME_SEC * SECOND_IN_MS);
         } while (attempts <= maxAttempts);
         assertEquals("Number of expected broadcasts for " + receiverName + " not reached after "
                 + maxAttempts * SLEEP_TIME_SEC + " seconds", expectedCount, count);
     }
 
     protected String sendOrderedBroadcast(Intent intent) throws Exception {
+        return sendOrderedBroadcast(intent, ORDERED_BROADCAST_TIMEOUT_MS);
+    }
+
+    protected String sendOrderedBroadcast(Intent intent, int timeoutMs) throws Exception {
         final LinkedBlockingQueue<String> result = new LinkedBlockingQueue<>(1);
         Log.d(TAG, "Sending ordered broadcast: " + intent);
         mContext.sendOrderedBroadcast(intent, null, new BroadcastReceiver() {
@@ -138,7 +145,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             }
         }, null, 0, null, null);
 
-        final String resultData = result.poll(ORDERED_BROADCAST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        final String resultData = result.poll(timeoutMs, TimeUnit.MILLISECONDS);
         Log.d(TAG, "Ordered broadcast response: " + resultData);
         return resultData;
     }
@@ -217,7 +224,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
                 return;
             Log.v(TAG, "Command '" + command + "' returned '" + result + " instead of '"
                     + expectedResult + "' on attempt #; sleeping 1s before polling again");
-            Thread.sleep(1000);
+            Thread.sleep(SECOND_IN_MS);
         }
         fail("Command '" + command + "' did not return '" + expectedResult + "' after " + maxTries
                 + " attempts");
@@ -278,20 +285,38 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     }
 
     protected void assertRestrictBackgroundWhitelist(int uid, boolean expected) throws Exception {
+        assertRestrictBackground("restrict-background-whitelist", uid, expected);
+    }
+
+    protected void addRestrictBackgroundBlacklist(int uid) throws Exception {
+        executeShellCommand("cmd netpolicy add restrict-background-blacklist " + uid);
+        assertRestrictBackgroundBlacklist(uid, true);
+    }
+
+    protected void removeRestrictBackgroundBlacklist(int uid) throws Exception {
+        executeShellCommand("cmd netpolicy remove restrict-background-blacklist " + uid);
+        assertRestrictBackgroundBlacklist(uid, false);
+    }
+
+    protected void assertRestrictBackgroundBlacklist(int uid, boolean expected) throws Exception {
+        assertRestrictBackground("restrict-background-blacklist", uid, expected);
+    }
+
+    private void assertRestrictBackground(String list, int uid, boolean expected) throws Exception {
         final int maxTries = 5;
         boolean actual = false;
         for (int i = 1; i <= maxTries; i++) {
             final String output =
-                    executeShellCommand("cmd netpolicy list restrict-background-whitelist ");
+                    executeShellCommand("cmd netpolicy list " + list);
             actual = output.contains(Integer.toString(uid));
             if (expected == actual) {
                 return;
             }
-            Log.v(TAG, "whitelist check for uid " + uid + " doesn't match yet (expected "
+            Log.v(TAG, list + " check for uid " + uid + " doesn't match yet (expected "
                     + expected + ", got " + actual + "); sleeping 1s before polling again");
-            Thread.sleep(1000);
+            Thread.sleep(SECOND_IN_MS);
         }
-        fail("whitelist check for uid " + uid + " failed: expected " + expected + ", got " + actual);
+        fail(list + " check for uid " + uid + " failed: expected " + expected + ", got " + actual);
     }
 
     protected void assertPowerSaveModeWhitelist(String packageName, boolean expected)
@@ -337,6 +362,19 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
      */
     protected void registerApp2BroadcastReceiver() throws Exception {
         executeShellCommand("am startservice com.android.cts.net.hostside.app2/.MyService");
+        // Wait until receiver is ready.
+        final int maxTries = 5;
+        for (int i = 1; i <= maxTries; i++) {
+            final String message =
+                    sendOrderedBroadcast(new Intent(ACTION_RECEIVER_READY), SECOND_IN_MS);
+            Log.d(TAG, "app2 receiver acked: " + message);
+            if (message != null) {
+                return;
+            }
+            Log.v(TAG, "app2 receiver is not ready yet; sleeping 1s before polling again");
+            Thread.sleep(SECOND_IN_MS);
+        }
+        fail("app2 receiver is not ready");
     }
 
     private String toString(int status) {

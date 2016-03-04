@@ -16,9 +16,12 @@
 package com.android.cts.net.hostside.app2;
 
 import static android.net.ConnectivityManager.ACTION_RESTRICT_BACKGROUND_CHANGED;
+import static com.android.cts.net.hostside.app2.Common.ACTION_RECEIVER_READY;
 import static com.android.cts.net.hostside.app2.Common.DYNAMIC_RECEIVER;
 import static com.android.cts.net.hostside.app2.Common.TAG;
+
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.IBinder;
@@ -37,8 +40,11 @@ public class MyService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d(TAG, "onStartCommand: " + intent);
-        getApplicationContext().registerReceiver(new MyBroadcastReceiver(DYNAMIC_RECEIVER),
-                new IntentFilter(ACTION_RESTRICT_BACKGROUND_CHANGED));
+        final Context context = getApplicationContext();
+        final MyBroadcastReceiver myReceiver = new MyBroadcastReceiver(DYNAMIC_RECEIVER);
+        context.registerReceiver(myReceiver, new IntentFilter(ACTION_RECEIVER_READY));
+        context.registerReceiver(myReceiver, new IntentFilter(ACTION_RESTRICT_BACKGROUND_CHANGED));
+        Log.d(TAG, "receiver registered");
         return START_STICKY;
     }
 }
