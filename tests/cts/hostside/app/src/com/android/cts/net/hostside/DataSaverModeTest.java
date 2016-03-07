@@ -26,6 +26,7 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
     public void setUp() throws Exception {
         super.setUp();
 
+        setMeteredNetwork();
         setRestrictBackground(false);
         registerApp2BroadcastReceiver();
    }

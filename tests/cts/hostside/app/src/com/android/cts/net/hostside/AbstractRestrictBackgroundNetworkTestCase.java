@@ -87,8 +87,6 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
                 .getPackageInfo(mContext.getPackageName(), 0).applicationInfo.uid;
 
         Log.d(TAG, "UIDS: test app=" + myUid + ", app2=" + mUid);
-
-        setMeteredNetwork();
    }
 
     @Override

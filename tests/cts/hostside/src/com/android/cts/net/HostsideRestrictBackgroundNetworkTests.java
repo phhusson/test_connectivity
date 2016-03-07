@@ -100,6 +100,21 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
         assertPowerSaveModeWhitelist(TEST_PKG, false);
     }
 
+    public void testBatteryBatterySaverModeNonMeteredTest_disabled() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".BatterySaverModeNonMeteredTest",
+                "testBackgroundNetworkAccess_disabled");
+    }
+
+    public void testBatteryBatterySaverModeNonMeteredTest_whitelisted() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".BatterySaverModeNonMeteredTest",
+                "testBackgroundNetworkAccess_whitelisted");
+    }
+
+    public void testBatteryBatterySaverModeNonMeteredTest_enabled() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".BatterySaverModeNonMeteredTest",
+                "testBackgroundNetworkAccess_enabled");
+    }
+
     private void assertRestrictBackgroundWhitelist(int uid, boolean expected) throws Exception {
         final int max_tries = 5;
         boolean actual = false;
