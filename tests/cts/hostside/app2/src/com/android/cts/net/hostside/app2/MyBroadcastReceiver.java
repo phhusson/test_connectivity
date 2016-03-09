@@ -27,6 +27,7 @@ import static com.android.cts.net.hostside.app2.Common.RESULT_SEPARATOR;
 import static com.android.cts.net.hostside.app2.Common.STATUS_NETWORK_AVAILABLE_PREFIX;
 import static com.android.cts.net.hostside.app2.Common.STATUS_NETWORK_UNAVAILABLE_PREFIX;
 import static com.android.cts.net.hostside.app2.Common.TAG;
+import static com.android.cts.net.hostside.app2.Common.getUid;
 
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -110,7 +111,7 @@ public class MyBroadcastReceiver extends BroadcastReceiver {
         final int apiStatus = cm.getRestrictBackgroundStatus();
         String netStatus;
         try {
-            netStatus = checkNetworkStatus(cm);
+            netStatus = checkNetworkStatus(context, cm);
         } catch (InterruptedException e) {
             Log.e(TAG, "Timeout checking network status");
             setResultData(null);
@@ -124,7 +125,8 @@ public class MyBroadcastReceiver extends BroadcastReceiver {
         setResultData(data.toString());
     }
 
-    private String checkNetworkStatus(final ConnectivityManager cm) throws InterruptedException {
+    private String checkNetworkStatus(final Context context, final ConnectivityManager cm)
+            throws InterruptedException {
         final LinkedBlockingQueue<String> result = new LinkedBlockingQueue<>(1);
         new Thread(new Runnable() {
 
@@ -134,7 +136,7 @@ public class MyBroadcastReceiver extends BroadcastReceiver {
                 final String address = "http://example.com";
                 final NetworkInfo networkInfo = cm.getActiveNetworkInfo();
                 Log.d(TAG, "Running checkNetworkStatus() on thread "
-                        + Thread.currentThread().getName()
+                        + Thread.currentThread().getName() + " for UID " + getUid(context)
                         + "\n\tactiveNetworkInfo: " + networkInfo + "\n\tURL: " + address);
                 String prefix = STATUS_NETWORK_AVAILABLE_PREFIX;
                 try {
@@ -151,7 +153,9 @@ public class MyBroadcastReceiver extends BroadcastReceiver {
                     Log.d(TAG, "Exception getting " + address + ": " + e);
                     prefix = STATUS_NETWORK_UNAVAILABLE_PREFIX + "Exception " + e + ":";
                 }
-                result.offer(prefix + networkInfo);
+                final String netInfo = prefix + networkInfo;
+                Log.d(TAG, "Offering " + netInfo);
+                result.offer(netInfo);
             }
         }, mName).start();
         return result.poll(NETWORK_TIMEOUT_MS * 2, TimeUnit.MILLISECONDS);

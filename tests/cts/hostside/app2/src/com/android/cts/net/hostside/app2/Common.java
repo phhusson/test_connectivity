@@ -15,6 +15,10 @@
  */
 package com.android.cts.net.hostside.app2;
 
+import android.content.Context;
+import android.content.pm.PackageManager.NameNotFoundException;
+import android.util.Log;
+
 public final class Common {
 
     static final String TAG = "CtsNetApp2";
@@ -35,4 +39,13 @@ public final class Common {
     static final char RESULT_SEPARATOR = ';';
     static final String STATUS_NETWORK_UNAVAILABLE_PREFIX = "NetworkUnavailable:";
     static final String STATUS_NETWORK_AVAILABLE_PREFIX = "NetworkAvailable:";
+
+    static int getUid(Context context) {
+        final String packageName = context.getPackageName();
+        try {
+            return context.getPackageManager().getPackageUid(packageName, 0);
+        } catch (NameNotFoundException e) {
+            throw new IllegalStateException("Could not get UID for " + packageName, e);
+        }
+    }
 }
