@@ -16,14 +16,13 @@
 
 package com.android.cts.net.hostside;
 
-//TODO: move this and BatterySaverModeNonMeteredTest's logic into a common superclass
-public class BatterySaverModeTest extends AbstractRestrictBackgroundNetworkTestCase {
+//TODO: move this and BatterySaverModeTest's logic into a common superclass
+public class BatterySaverModeNonMeteredTest extends AbstractRestrictBackgroundNetworkTestCase {
 
     @Override
     public void setUp() throws Exception {
         super.setUp();
 
-        setMeteredNetwork();
         setPowerSaveMode(false);
         assertPowerSaveModeWhitelist(TEST_APP2_PKG, false); // Sanity check
         registerApp2BroadcastReceiver();
