@@ -373,7 +373,7 @@ public class WifiManagerTest extends AndroidTestCase {
             assertTrue(notExist != pos);
 
             // Enable & disable network
-            boolean disableOthers = false;
+            boolean disableOthers = true;
             assertTrue(mWifiManager.enableNetwork(netId, disableOthers));
             wifiConfiguration = mWifiManager.getConfiguredNetworks().get(pos);
             assertDisableOthers(wifiConfiguration, disableOthers);
