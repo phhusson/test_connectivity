@@ -484,6 +484,9 @@ public class WifiManagerTest extends AndroidTestCase {
         }
         assertTrue(mWifiManager.isWifiEnabled());
 
+        // This will generate a distinct stack trace if the initial connection fails.
+        connectWifi();
+
         int i = 0;
         for (; i < 15; i++) {
             // Wait for a WiFi connection
