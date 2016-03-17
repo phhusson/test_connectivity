@@ -221,7 +221,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             if (result.equals(expectedResult))
                 return;
             Log.v(TAG, "Command '" + command + "' returned '" + result + " instead of '"
-                    + expectedResult + "' on attempt #; sleeping 1s before polling again");
+                    + expectedResult + "' on attempt #" + i + "; sleeping 1s before trying again");
             Thread.sleep(SECOND_IN_MS);
         }
         fail("Command '" + command + "' did not return '" + expectedResult + "' after " + maxTries
@@ -253,13 +253,12 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
 
         Log.i(TAG, "Setting wi-fi network " + netId + " metered status to " + metered);
         final String setCommand = "cmd netpolicy set metered-network " + netId + " " + metered;
-        final String result = executeShellCommand(setCommand);
-        assertTrue("Command '" + setCommand + "' failed: " + result, result.isEmpty());
+        assertDelayedShellCommand(setCommand, "");
 
         // Sanity check.
-        final String newStatus = executeShellCommand("cmd netpolicy get metered-network " + netId);
-        assertEquals("Metered status of wi-fi network " + netId + " not set properly",
-                newStatus.trim(), Boolean.toString(metered));
+        final  String getCommand = "cmd netpolicy get metered-network " + netId;
+        assertDelayedShellCommand(getCommand, Boolean.toString(metered));
+
         return netId;
     }
 
