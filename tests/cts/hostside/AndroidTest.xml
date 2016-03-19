@@ -16,5 +16,6 @@
 <configuration description="Config for CTS net host test cases">
     <test class="com.android.compatibility.common.tradefed.testtype.JarHostTest" >
         <option name="jar" value="CtsHostsideNetworkTests.jar" />
+        <option name="runtime-hint" value="3m56s" />
     </test>
 </configuration>
