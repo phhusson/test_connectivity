@@ -296,6 +296,8 @@ public class WifiManagerTest extends AndroidTestCase {
         for (int i = 0; i < WIFI_SCAN_TEST_ITERATIONS; ++i) {
             startScan();
             // Make sure at least one AP is found.
+            assertTrue("mScanResult should not be null. This may be due to a scan timeout",
+                       mScanResults != null);
             assertFalse("empty scan results!", mScanResults.isEmpty());
             long nowMillis = SystemClock.elapsedRealtime();
             // Keep track of how many APs are fresh in one scan.
