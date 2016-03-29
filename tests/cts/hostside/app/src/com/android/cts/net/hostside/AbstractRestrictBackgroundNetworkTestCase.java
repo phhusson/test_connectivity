@@ -82,9 +82,8 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         mContext = mInstrumentation.getContext();
         mCm = (ConnectivityManager) mContext.getSystemService(Context.CONNECTIVITY_SERVICE);
         mWfm = (WifiManager) mContext.getSystemService(Context.WIFI_SERVICE);
-        mUid = mContext.getPackageManager().getPackageInfo(TEST_APP2_PKG, 0).applicationInfo.uid;
-        final int myUid = mContext.getPackageManager()
-                .getPackageInfo(mContext.getPackageName(), 0).applicationInfo.uid;
+        mUid = getUid(TEST_APP2_PKG);
+        final int myUid = getUid(mContext.getPackageName());
 
         Log.d(TAG, "UIDS: test app=" + myUid + ", app2=" + mUid);
    }
@@ -96,6 +95,10 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         if (mResetMeteredWifi) {
             setWifiMeteredStatus(false);
         }
+    }
+
+    protected int getUid(String packageName) throws Exception {
+        return mContext.getPackageManager().getPackageUid(packageName, 0);
     }
 
     protected void assertRestrictBackgroundChangedReceived(int expectedCount) throws Exception {
