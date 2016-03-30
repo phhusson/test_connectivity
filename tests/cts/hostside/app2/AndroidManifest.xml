@@ -32,6 +32,7 @@
     -->
     <application>
         <service android:name=".MyService" android:exported="true"/>
+        <service android:name=".MyForegroundService" android:exported="true"/>
 
         <receiver android:name=".MyBroadcastReceiver" >
             <intent-filter>
