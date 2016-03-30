@@ -30,7 +30,6 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
 
         uninstallPackage(TEST_APP2_PKG, false);
         installPackage(TEST_APP2_APK);
-
     }
 
     @Override

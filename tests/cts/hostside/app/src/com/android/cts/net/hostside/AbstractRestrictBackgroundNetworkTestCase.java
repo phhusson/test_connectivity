@@ -25,6 +25,7 @@ import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_WHITELI
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
+import android.app.ActivityManager;
 import android.app.Instrumentation;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -86,7 +87,9 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         final int myUid = mContext.getPackageManager()
                 .getPackageInfo(mContext.getPackageName(), 0).applicationInfo.uid;
 
-        Log.d(TAG, "UIDS: test app=" + myUid + ", app2=" + mUid);
+        Log.i(TAG, "Apps status on " + getName() + ":\n"
+                + "\ttest app: uid=" + myUid + ", state=" + getProcessStateByUid(myUid) + "\n"
+                + "\tapp2: uid=" + mUid + ", state=" + getProcessStateByUid(mUid));
    }
 
     @Override
@@ -158,6 +161,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     }
 
     protected void assertRestrictBackgroundStatus(int expectedApiStatus) throws Exception {
+        assertBackgroundState(); // Sanity check.
         final Intent intent = new Intent(ACTION_CHECK_NETWORK);
         final String resultData = sendOrderedBroadcast(intent);
         final String[] resultItems = resultData.split(RESULT_SEPARATOR);
@@ -171,11 +175,26 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     }
 
     protected void assertBackgroundNetworkAccess(boolean expectAllowed) throws Exception {
+        assertBackgroundState(); // Sanity check.
         final Intent intent = new Intent(ACTION_CHECK_NETWORK);
         final String resultData = sendOrderedBroadcast(intent);
         final String[] resultItems = resultData.split(RESULT_SEPARATOR);
         final String networkStatus = getNetworkStatus(resultItems);
         assertNetworkStatus(expectAllowed, networkStatus);
+    }
+
+    protected final void assertBackgroundState() throws Exception {
+        final ProcessState state = getProcessStateByUid(mUid);
+        Log.v(TAG, "assertBackgroundState(): status for app2 (" + mUid + "): " + state);
+        final boolean isBackground = isBackground(state.state);
+        assertTrue("App2 is not on background state: " + state, isBackground);
+    }
+
+    /**
+     * Returns whether an app state should be considered "background" for restriction purposes.
+     */
+    protected boolean isBackground(int state) {
+        return state > 4; // ActivityManager.PROCESS_STATE_FOREGROUND_SERVICE;
     }
 
     private String getNetworkStatus(String[] resultItems) {
@@ -384,6 +403,29 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
                 return "ENABLED";
             default:
                 return "UNKNOWN_STATUS_" + status;
+        }
+    }
+
+    private ProcessState getProcessStateByUid(int uid) throws Exception {
+        return new ProcessState(executeShellCommand("cmd activity get-uid-state " + uid));
+    }
+
+    private static class ProcessState {
+        private final String fullState;
+        final int state;
+
+        ProcessState(String fullState) {
+            this.fullState = fullState;
+            try {
+                this.state = Integer.parseInt(fullState.split(" ")[0]);
+            } catch (Exception e) {
+                throw new IllegalArgumentException("Could not parse " + fullState);
+            }
+        }
+
+        @Override
+        public String toString() {
+            return fullState;
         }
     }
 }
