@@ -37,7 +37,7 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
 
         setMeteredNetwork();
         setRestrictBackground(false);
-        registerApp2BroadcastReceiver();
+        registerBroadcastReceiver();
    }
 
     @Override
@@ -75,6 +75,12 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
         removeRestrictBackgroundWhitelist(mUid);
         assertRestrictBackgroundChangedReceived(1);
         assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_ENABLED);
+
+        // Make sure app is allowed if running a foreground service.
+        assertBackgroundNetworkAccess(false);
+        startForegroundService();
+        assertForegroundServiceState();
+        assertBackgroundNetworkAccess(true);
     }
 
     public void testGetRestrictBackgroundStatus_blacklisted() throws Exception {

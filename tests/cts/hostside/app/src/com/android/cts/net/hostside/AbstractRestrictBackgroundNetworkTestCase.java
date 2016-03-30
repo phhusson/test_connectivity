@@ -65,6 +65,8 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     private static final String STATUS_NETWORK_AVAILABLE_PREFIX = "NetworkAvailable:";
     private static final int SECOND_IN_MS = 1000;
     private static final int NETWORK_TIMEOUT_MS = 15 * SECOND_IN_MS;
+    private static final int PROCESS_STATE_FOREGROUND_SERVICE = 4;
+
 
     // Must be higher than NETWORK_TIMEOUT_MS
     private static final int ORDERED_BROADCAST_TIMEOUT_MS = NETWORK_TIMEOUT_MS * 4;
@@ -193,11 +195,18 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         assertTrue("App2 is not on background state: " + state, isBackground);
     }
 
+    protected final void assertForegroundServiceState() throws Exception {
+        final ProcessState state = getProcessState(mUid);
+        Log.v(TAG, "assertForegroundServiceState(): status for app2 (" + mUid + "): " + state);
+        assertEquals("App2 is not on foreground service state: " + state,
+                PROCESS_STATE_FOREGROUND_SERVICE, state.state);
+    }
+
     /**
      * Returns whether an app state should be considered "background" for restriction purposes.
      */
     protected boolean isBackground(int state) {
-        return state > 4; // ActivityManager.PROCESS_STATE_FOREGROUND_SERVICE;
+        return state >= PROCESS_STATE_FOREGROUND_SERVICE;
     }
 
     private String getNetworkStatus(String[] resultItems) {
@@ -379,7 +388,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
      * The service must run in a separate app because otherwise it would be killed every time
      * {@link #runDeviceTests(String, String)} is executed.
      */
-    protected void registerApp2BroadcastReceiver() throws Exception {
+    protected void registerBroadcastReceiver() throws Exception {
         executeShellCommand("am startservice com.android.cts.net.hostside.app2/.MyService");
         // Wait until receiver is ready.
         final int maxTries = 5;
@@ -394,6 +403,11 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             Thread.sleep(SECOND_IN_MS);
         }
         fail("app2 receiver is not ready");
+    }
+
+    protected void startForegroundService() throws Exception {
+        executeShellCommand(
+                "am startservice com.android.cts.net.hostside.app2/.MyForegroundService");
     }
 
     private String toString(int status) {

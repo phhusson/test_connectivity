@@ -26,7 +26,7 @@ public class BatterySaverModeTest extends AbstractRestrictBackgroundNetworkTestC
         setMeteredNetwork();
         setPowerSaveMode(false);
         assertPowerSaveModeWhitelist(TEST_APP2_PKG, false); // Sanity check
-        registerApp2BroadcastReceiver();
+        registerBroadcastReceiver();
     }
 
     @Override
@@ -39,6 +39,11 @@ public class BatterySaverModeTest extends AbstractRestrictBackgroundNetworkTestC
     public void testBackgroundNetworkAccess_enabled() throws Exception {
         setPowerSaveMode(true);
         assertBackgroundNetworkAccess(false);
+
+        // Make sure app is allowed if running a foreground service.
+        startForegroundService();
+        assertForegroundServiceState();
+        assertBackgroundNetworkAccess(true);
     }
 
     public void testBackgroundNetworkAccess_whitelisted() throws Exception {
