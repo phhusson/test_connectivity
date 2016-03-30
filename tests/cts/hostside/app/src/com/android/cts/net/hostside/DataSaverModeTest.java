@@ -24,7 +24,10 @@ import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_WHITELI
  * TODO: need to add more scenarios:
  * - test access on foreground app
  * - test access on foreground service app
- * - make sure it tests transition of data saver status while app is on foreground
+ * - make sure it works when app is on foreground and state is transitioned:
+ *   - data saver is enabled
+ *   - app is added/removed to blacklist
+ *
  */
 public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase {
 
@@ -46,13 +49,13 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
 
     public void testGetRestrictBackgroundStatus_disabled() throws Exception {
         removeRestrictBackgroundWhitelist(mUid);
-        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
         assertRestrictBackgroundChangedReceived(0);
+        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
 
         // Sanity check: make sure status is always disabled, never whitelisted
         addRestrictBackgroundWhitelist(mUid);
-        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
         assertRestrictBackgroundChangedReceived(0);
+        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
     }
 
     public void testGetRestrictBackgroundStatus_whitelisted() throws Exception {
@@ -60,40 +63,39 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
         assertRestrictBackgroundChangedReceived(1);
 
         addRestrictBackgroundWhitelist(mUid);
-        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_WHITELISTED);
         assertRestrictBackgroundChangedReceived(2);
+        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_WHITELISTED);
     }
 
     public void testGetRestrictBackgroundStatus_enabled() throws Exception {
         setRestrictBackground(true);
         assertRestrictBackgroundChangedReceived(1);
+        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_ENABLED);
 
         removeRestrictBackgroundWhitelist(mUid);
-        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_ENABLED);
         assertRestrictBackgroundChangedReceived(1);
+        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_ENABLED);
     }
 
     public void testGetRestrictBackgroundStatus_blacklisted() throws Exception {
         addRestrictBackgroundBlacklist(mUid);
         assertRestrictBackgroundChangedReceived(1);
-
         assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_ENABLED);
-
-        // TODO: currently whitelist is prevailing, hence remaining of the test below is disabled
-        if (true) return;
 
         // Make sure blacklist prevails over whitelist.
         setRestrictBackground(true);
         assertRestrictBackgroundChangedReceived(2);
+        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_ENABLED);
         addRestrictBackgroundWhitelist(mUid);
+        assertRestrictBackgroundChangedReceived(3);
         assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_ENABLED);
 
         // Check status after removing blacklist.
         removeRestrictBackgroundBlacklist(mUid);
-        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_WHITELISTED);
-        assertRestrictBackgroundChangedReceived(3);
-        setRestrictBackground(false);
-        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
         assertRestrictBackgroundChangedReceived(4);
+        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_WHITELISTED);
+        setRestrictBackground(false);
+        assertRestrictBackgroundChangedReceived(5);
+        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
     }
 }
