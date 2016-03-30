@@ -20,6 +20,12 @@ import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_DISABLE
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED;
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_WHITELISTED;
 
+/*
+ * TODO: need to add more scenarios:
+ * - test access on foreground app
+ * - test access on foreground service app
+ * - make sure it tests transition of data saver status while app is on foreground
+ */
 public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase {
 
     @Override
