@@ -196,7 +196,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     }
 
     protected final void assertForegroundServiceState() throws Exception {
-        final ProcessState state = getProcessState(mUid);
+        final ProcessState state = getProcessStateByUid(mUid);
         Log.v(TAG, "assertForegroundServiceState(): status for app2 (" + mUid + "): " + state);
         assertEquals("App2 is not on foreground service state: " + state,
                 PROCESS_STATE_FOREGROUND_SERVICE, state.state);
