@@ -244,19 +244,36 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     /**
      * Asserts the result of a command, wait and re-running it a couple times if necessary.
      */
-    protected void assertDelayedShellCommand(String command, String expectedResult)
+    protected void assertDelayedShellCommand(String command, final String expectedResult)
+            throws Exception {
+        assertDelayedShellCommand(command, new ExpectResultChecker() {
+
+            @Override
+            public boolean isExpected(String result) {
+                return expectedResult.equals(result);
+            }
+
+            @Override
+            public String getExpected() {
+                return expectedResult;
+            }
+        });
+    }
+
+    protected void assertDelayedShellCommand(String command, ExpectResultChecker checker)
             throws Exception {
         final int maxTries = 5;
         String result = "";
         for (int i = 1; i <= maxTries; i++) {
             result = executeShellCommand(command).trim();
-            if (result.equals(expectedResult))
-                return;
+            if (checker.isExpected(result)) return;
             Log.v(TAG, "Command '" + command + "' returned '" + result + " instead of '"
-                    + expectedResult + "' on attempt #" + i + "; sleeping 1s before trying again");
+                    + checker.getExpected() + "' on attempt #" + i
+                    + "; sleeping 1s before trying again");
             Thread.sleep(SECOND_IN_MS);
         }
-        fail("Command '" + command + "' did not return '" + expectedResult + "' after " + maxTries
+        fail("Command '" + command + "' did not return '" + checker.getExpected() + "' after "
+                + maxTries
                 + " attempts. Last result: '" + result + "'");
     }
 
@@ -274,9 +291,11 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
                 + mCm.getActiveNetworkInfo() +")", mCm.isActiveNetworkMetered());
         // Set flag so status is reverted on teardown.
         mResetMeteredWifi = true;
+        // Sanity check.
+        assertMeteredNetwork(netId, true);
     }
 
-    protected String setWifiMeteredStatus(boolean metered) throws Exception {
+    private String setWifiMeteredStatus(boolean metered) throws Exception {
         // We could call setWifiEnabled() here, but it might take sometime to be in a consistent
         // state (for example, if one of the saved network is not properly authenticated), so it's
         // better to let the hostside test take care of that.
@@ -292,11 +311,24 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         final String setCommand = "cmd netpolicy set metered-network " + netId + " " + metered;
         assertDelayedShellCommand(setCommand, "");
 
-        // Sanity check.
-        final  String getCommand = "cmd netpolicy get metered-network " + netId;
-        assertDelayedShellCommand(getCommand, Boolean.toString(metered));
-
         return netId;
+    }
+
+    private void assertMeteredNetwork(String netId, boolean status) throws Exception {
+        final String command = "cmd netpolicy list wifi-networks";
+        final String expectedLine = netId + ";" + status;
+        assertDelayedShellCommand(command, new ExpectResultChecker() {
+
+            @Override
+            public boolean isExpected(String result) {
+                return result.contains(expectedLine);
+            }
+
+            @Override
+            public String getExpected() {
+                return "line containing " + expectedLine;
+            }
+        });
     }
 
     protected void setRestrictBackground(boolean enabled) throws Exception {
@@ -450,5 +482,10 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         public String toString() {
             return fullState;
         }
+    }
+
+    protected static interface ExpectResultChecker {
+        boolean isExpected(String result);
+        String getExpected();
     }
 }
