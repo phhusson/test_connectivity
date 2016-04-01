@@ -247,8 +247,9 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     protected void assertDelayedShellCommand(String command, String expectedResult)
             throws Exception {
         final int maxTries = 5;
+        String result = "";
         for (int i = 1; i <= maxTries; i++) {
-            final String result = executeShellCommand(command).trim();
+            result = executeShellCommand(command).trim();
             if (result.equals(expectedResult))
                 return;
             Log.v(TAG, "Command '" + command + "' returned '" + result + " instead of '"
@@ -256,7 +257,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             Thread.sleep(SECOND_IN_MS);
         }
         fail("Command '" + command + "' did not return '" + expectedResult + "' after " + maxTries
-                + " attempts");
+                + " attempts. Last result: '" + result + "'");
     }
 
     protected void setMeteredNetwork() throws Exception {
@@ -265,6 +266,8 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         if (metered) {
             Log.d(TAG, "Active network already metered: " + info);
             return;
+        } else {
+            Log.w(TAG, "Active network not metered: " + info);
         }
         final String netId = setWifiMeteredStatus(true);
         assertTrue("Could not set wifi '" + netId + "' as metered ("
@@ -274,7 +277,10 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     }
 
     protected String setWifiMeteredStatus(boolean metered) throws Exception {
-        mWfm.setWifiEnabled(true);
+        // We could call setWifiEnabled() here, but it might take sometime to be in a consistent
+        // state (for example, if one of the saved network is not properly authenticated), so it's
+        // better to let the hostside test take care of that.
+        assertTrue("wi-fi is disabled", mWfm.isWifiEnabled());
         // TODO: if it's not guaranteed the device has wi-fi, we need to change the tests
         // to make the actual verification of restrictions optional.
         final String ssid = mWfm.getConnectionInfo().getSSID();
