@@ -265,13 +265,16 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         }
 
         // We will register for a WIFI network being available or lost.
-        NetworkRequest request = new NetworkRequest.Builder()
+        final NetworkRequest request = new NetworkRequest.Builder()
                 .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
                 .build();
-        TestNetworkCallback callback = new TestNetworkCallback();
+        final TestNetworkCallback callback = new TestNetworkCallback();
         mCm.registerNetworkCallback(request, callback);
 
-        boolean previousWifiEnabledState = mWifiManager.isWifiEnabled();
+        final TestNetworkCallback defaultTrackingCallback = new TestNetworkCallback();
+        mCm.registerDefaultNetworkCallback(defaultTrackingCallback);
+
+        final boolean previousWifiEnabledState = mWifiManager.isWifiEnabled();
 
         try {
             // Make sure WiFi is connected to an access point to start with.
@@ -284,12 +287,16 @@ public class ConnectivityManagerTest extends AndroidTestCase {
             // is registered.
             assertTrue("Did not receive NetworkCallback.onAvailable for TRANSPORT_WIFI",
                     callback.waitForAvailable());
+
+            assertTrue("Did not receive NetworkCallback.onAvailable for any default network",
+                    defaultTrackingCallback.waitForAvailable());
         } catch (InterruptedException e) {
             fail("Broadcast receiver or NetworkCallback wait was interrupted.");
         } finally {
             mCm.unregisterNetworkCallback(callback);
+            mCm.unregisterNetworkCallback(defaultTrackingCallback);
 
-            // Return WiFI to its original enabled/disabled state.
+            // Return WiFi to its original enabled/disabled state.
             if (!previousWifiEnabledState) {
                 disconnectFromWifi();
             }
@@ -327,7 +334,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
                 .build();
         mCm.registerNetworkCallback(request, pendingIntent);
 
-        boolean previousWifiEnabledState = mWifiManager.isWifiEnabled();
+        final boolean previousWifiEnabledState = mWifiManager.isWifiEnabled();
 
         try {
             // Make sure WiFi is connected to an access point to start with.
@@ -347,7 +354,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
             pendingIntent.cancel();
             mContext.unregisterReceiver(receiver);
 
-            // Return WiFI to its original enabled/disabled state.
+            // Return WiFi to its original enabled/disabled state.
             if (!previousWifiEnabledState) {
                 disconnectFromWifi();
             }
