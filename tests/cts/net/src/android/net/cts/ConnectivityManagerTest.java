@@ -361,6 +361,36 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         }
     }
 
+    /**
+     * Tests reporting of connectivity changed.
+     */
+    public void testConnectivityChanged() {
+        // We are going to ensure that we *don't* see the connectivity in the manifest.
+        ConnectivityReceiver.prepare();
+
+        // We will toggle the state of wifi to generate a connectivity change.
+        final boolean previousWifiEnabledState = mWifiManager.isWifiEnabled();
+        if (previousWifiEnabledState) {
+            disconnectFromWifi();
+        } else {
+            connectToWifi();
+        }
+
+        // The connectivity broadcast has been sent; push through a terminal broadcast
+        // to wait for in the receive to confirm it didn't see the connectivity change.
+        Intent finalIntent = new Intent(ConnectivityReceiver.FINAL_ACTION);
+        finalIntent.setClass(mContext, ConnectivityReceiver.class);
+        mContext.sendBroadcast(finalIntent);
+        assertFalse(ConnectivityReceiver.waitForBroadcast());
+
+        // Now restore previous state.
+        if (previousWifiEnabledState) {
+            connectToWifi();
+        } else {
+            disconnectFromWifi();
+        }
+    }
+
     /** Enable WiFi and wait for it to become connected to a network. */
     private void connectToWifi() {
         ConnectivityActionReceiver receiver = new ConnectivityActionReceiver(
