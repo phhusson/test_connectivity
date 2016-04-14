@@ -33,7 +33,11 @@ public class BatterySaverModeTest extends AbstractRestrictBackgroundNetworkTestC
     protected void tearDown() throws Exception {
         super.tearDown();
 
-        setPowerSaveMode(false);
+        try {
+            resetMeteredNetwork();
+        } finally {
+            setPowerSaveMode(false);
+        }
     }
 
     public void testBackgroundNetworkAccess_enabled() throws Exception {
