@@ -44,7 +44,11 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
     protected void tearDown() throws Exception {
         super.tearDown();
 
-        setRestrictBackground(false);
+        try {
+            resetMeteredNetwork();
+        } finally {
+            setRestrictBackground(false);
+        }
     }
 
     public void testGetRestrictBackgroundStatus_disabled() throws Exception {

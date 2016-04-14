@@ -76,11 +76,12 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     protected ConnectivityManager mCm;
     protected WifiManager mWfm;
     protected int mUid;
-    private boolean mResetMeteredWifi = false;
+    private String mMeteredWifi;
 
     @Override
     public void setUp() throws Exception {
         super.setUp();
+
         mInstrumentation = getInstrumentation();
         mContext = mInstrumentation.getContext();
         mCm = (ConnectivityManager) mContext.getSystemService(Context.CONNECTIVITY_SERVICE);
@@ -92,15 +93,6 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
                 + "\ttest app: uid=" + myUid + ", state=" + getProcessStateByUid(myUid) + "\n"
                 + "\tapp2: uid=" + mUid + ", state=" + getProcessStateByUid(mUid));
    }
-
-    @Override
-    protected void tearDown() throws Exception {
-        super.tearDown();
-
-        if (mResetMeteredWifi) {
-            setWifiMeteredStatus(false);
-        }
-    }
 
     protected int getUid(String packageName) throws Exception {
         return mContext.getPackageManager().getPackageUid(packageName, 0);
@@ -289,10 +281,19 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         final String netId = setWifiMeteredStatus(true);
         assertTrue("Could not set wifi '" + netId + "' as metered ("
                 + mCm.getActiveNetworkInfo() +")", mCm.isActiveNetworkMetered());
-        // Set flag so status is reverted on teardown.
-        mResetMeteredWifi = true;
+        // Set flag so status is reverted on resetMeteredNetwork();
+        mMeteredWifi = netId;
         // Sanity check.
         assertMeteredNetwork(netId, true);
+    }
+
+    protected void resetMeteredNetwork() throws Exception {
+        if (mMeteredWifi == null) {
+            Log.d(TAG, "resetMeteredNetwork(): wifi not set as metered");
+            return;
+        }
+        Log.i(TAG, "resetMeteredNetwork(): resetting " + mMeteredWifi);
+        setWifiMeteredStatus(mMeteredWifi, false);
     }
 
     private String setWifiMeteredStatus(boolean metered) throws Exception {
@@ -303,6 +304,10 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         // TODO: if it's not guaranteed the device has wi-fi, we need to change the tests
         // to make the actual verification of restrictions optional.
         final String ssid = mWfm.getConnectionInfo().getSSID();
+        return setWifiMeteredStatus(ssid, metered);
+    }
+
+    private String setWifiMeteredStatus(String ssid, boolean metered) throws Exception {
         assertNotNull("null SSID", ssid);
         final String netId = ssid.trim().replaceAll("\"", ""); // remove quotes, if any.
         assertFalse("empty SSID", ssid.isEmpty());
