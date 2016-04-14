@@ -279,12 +279,13 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             Log.w(TAG, "Active network not metered: " + info);
         }
         final String netId = setWifiMeteredStatus(true);
-        assertTrue("Could not set wifi '" + netId + "' as metered ("
-                + mCm.getActiveNetworkInfo() +")", mCm.isActiveNetworkMetered());
+
         // Set flag so status is reverted on resetMeteredNetwork();
         mMeteredWifi = netId;
         // Sanity check.
-        assertMeteredNetwork(netId, true);
+        assertWifiMeteredStatus(netId, true);
+        assertTrue("Could not set wifi '" + netId + "' as metered ("
+                + mCm.getActiveNetworkInfo() +")", mCm.isActiveNetworkMetered());
     }
 
     protected void resetMeteredNetwork() throws Exception {
@@ -319,7 +320,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         return netId;
     }
 
-    private void assertMeteredNetwork(String netId, boolean status) throws Exception {
+    private void assertWifiMeteredStatus(String netId, boolean status) throws Exception {
         final String command = "cmd netpolicy list wifi-networks";
         final String expectedLine = netId + ";" + status;
         assertDelayedShellCommand(command, new ExpectResultChecker() {
