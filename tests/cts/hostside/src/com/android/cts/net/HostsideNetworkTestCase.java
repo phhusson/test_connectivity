@@ -42,6 +42,8 @@ abstract class HostsideNetworkTestCase extends DeviceTestCase implements IAbiRec
     protected static final String TAG = "HostsideNetworkTests";
     protected static final String TEST_PKG = "com.android.cts.net.hostside";
     protected static final String TEST_APK = "CtsHostsideNetworkTestsApp.apk";
+    protected static final String TEST_APP2_PKG = "com.android.cts.net.hostside.app2";
+    protected static final String TEST_APP2_APK = "CtsHostsideNetworkTestsApp2.apk";
 
     private IAbi mAbi;
     private IBuildInfo mCtsBuild;
