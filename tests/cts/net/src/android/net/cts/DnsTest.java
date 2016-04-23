@@ -62,7 +62,8 @@ public class DnsTest extends AndroidTestCase {
         try {
             addrs = InetAddress.getAllByName("www.google.com");
         } catch (UnknownHostException e) {}
-        assertTrue(addrs.length != 0);
+        assertTrue("[RERUN] DNS could not resolve www.gooogle.com. Check internet connection",
+            addrs.length != 0);
         boolean foundV4 = false, foundV6 = false;
         for (InetAddress addr : addrs) {
             if (addr instanceof Inet4Address) foundV4 = true;
