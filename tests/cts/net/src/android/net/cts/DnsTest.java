@@ -97,7 +97,8 @@ public class DnsTest extends AndroidTestCase {
             if (DBG) Log.e(TAG, "ipv6.google.com gave " + addr.toString());
         }
 
-        assertTrue(foundV4 == false);
+        assertTrue("[RERUN] ipv6.google.com returned an ipv4 address, check your network's DNS connection.",
+            foundV4 == false);
         assertTrue(foundV6 == true);
 
         assertTrue(testNativeDns());
