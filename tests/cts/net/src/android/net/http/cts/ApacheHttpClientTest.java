@@ -146,7 +146,8 @@ public class ApacheHttpClientTest extends AndroidTestCase {
             mContext.registerReceiver(receiver, filter);
 
             assertTrue(mWifiManager.setWifiEnabled(true));
-            assertTrue("Wifi must be configured to connect to an access point for this test.",
+            assertTrue(
+                    "[RERUN] Wifi must be configured to connect to an access point for this test.",
                     receiver.waitForStateChange());
 
             mContext.unregisterReceiver(receiver);
@@ -165,9 +166,11 @@ public class ApacheHttpClientTest extends AndroidTestCase {
             mContext.registerReceiver(connectMobileReceiver, filter);
             mContext.registerReceiver(disconnectWifiReceiver, filter);
 
-            assertTrue(mWifiManager.setWifiEnabled(false));
-            assertTrue(disconnectWifiReceiver.waitForStateChange());
-            assertTrue(connectMobileReceiver.waitForStateChange());
+            assertTrue("Wifi did not disconnect.", mWifiManager.setWifiEnabled(false));
+            assertTrue("Timeout waiting for wifi to disconnect.",
+                    disconnectWifiReceiver.waitForStateChange());
+            assertTrue("[RERUN] Timeout waiting for mobile network. Check signal and SIM.",
+                    connectMobileReceiver.waitForStateChange());
 
             mContext.unregisterReceiver(connectMobileReceiver);
             mContext.unregisterReceiver(disconnectWifiReceiver);
@@ -204,7 +207,10 @@ public class ApacheHttpClientTest extends AndroidTestCase {
         }
 
         private boolean hasExpectedState() {
-            return mExpectedState == mConnectivityManager.getNetworkInfo(mNetworkType).getState();
+            NetworkInfo network = mConnectivityManager.getNetworkInfo(mNetworkType);
+            assertNotNull("Network type should be supported but it is not. Type: " + mNetworkType,
+                    network);
+            return mExpectedState == network.getState();
         }
     }
 }
