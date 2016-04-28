@@ -31,6 +31,10 @@ import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_WHITELI
  */
 public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase {
 
+    private static final String[] REQUIRED_WHITELISTED_PACKAGES = {
+        "com.android.providers.downloads"
+    };
+
     @Override
     public void setUp() throws Exception {
         super.setUp();
@@ -107,5 +111,25 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
         setRestrictBackground(false);
         assertRestrictBackgroundChangedReceived(5);
         assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
+    }
+
+    public void testGetRestrictBackgroundStatus_requiredWhitelistedPackages() throws Exception {
+        final StringBuilder error = new StringBuilder();
+        for (String packageName : REQUIRED_WHITELISTED_PACKAGES) {
+            int uid = -1;
+            try {
+                uid = getUid(packageName);
+                assertRestrictBackgroundWhitelist(uid, true);
+            } catch (Throwable t) {
+                error.append("\nFailed for '").append(packageName).append("'");
+                if (uid > 0) {
+                    error.append(" (uid ").append(uid).append(")");
+                }
+                error.append(": ").append(t).append("\n");
+            }
+        }
+        if (error.length() > 0) {
+            fail(error.toString());
+        }
     }
 }
