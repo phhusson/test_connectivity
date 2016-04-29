@@ -377,18 +377,24 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     private void assertRestrictBackground(String list, int uid, boolean expected) throws Exception {
         final int maxTries = 5;
         boolean actual = false;
+        final String expectedUid = Integer.toString(uid);
+        String uids = "";
         for (int i = 1; i <= maxTries; i++) {
             final String output =
                     executeShellCommand("cmd netpolicy list " + list);
-            actual = output.contains(Integer.toString(uid));
-            if (expected == actual) {
-                return;
+            uids = output.split(":")[1];
+            for (String candidate : uids.split(" ")) {
+                actual = candidate.trim().equals(expectedUid);
+                if (expected == actual) {
+                    return;
+                }
             }
             Log.v(TAG, list + " check for uid " + uid + " doesn't match yet (expected "
                     + expected + ", got " + actual + "); sleeping 1s before polling again");
             Thread.sleep(SECOND_IN_MS);
         }
-        fail(list + " check for uid " + uid + " failed: expected " + expected + ", got " + actual);
+        fail(list + " check for uid " + uid + " failed: expected " + expected + ", got " + actual
+                + ". Full list: " + uids);
     }
 
     protected void assertPowerSaveModeWhitelist(String packageName, boolean expected)

@@ -73,6 +73,11 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
         assertRestrictBackgroundWhitelist(newUid, false);
     }
 
+    public void testDataSaverMode_requiredWhitelistedPackages() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".DataSaverModeTest",
+                "testGetRestrictBackgroundStatus_requiredWhitelistedPackages");
+    }
+
     public void testBatterySaverMode_disabled() throws Exception {
         runDeviceTests(TEST_PKG, TEST_PKG + ".BatterySaverModeTest",
                 "testBackgroundNetworkAccess_disabled");
