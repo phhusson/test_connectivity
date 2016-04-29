@@ -25,13 +25,14 @@ import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_WHITELI
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-import android.app.ActivityManager;
 import android.app.Instrumentation;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
+import android.net.NetworkInfo.DetailedState;
+import android.net.NetworkInfo.State;
 import android.net.wifi.WifiManager;
 import android.test.InstrumentationTestCase;
 import android.util.Log;
@@ -61,8 +62,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     private static final String EXTRA_RECEIVER_NAME =
             "com.android.cts.net.hostside.app2.extra.RECEIVER_NAME";
     private static final String RESULT_SEPARATOR = ";";
-    private static final String STATUS_NETWORK_UNAVAILABLE_PREFIX = "NetworkUnavailable:";
-    private static final String STATUS_NETWORK_AVAILABLE_PREFIX = "NetworkAvailable:";
+    private static final String NETWORK_STATUS_SEPARATOR = "\\|";
     private static final int SECOND_IN_MS = 1000;
     private static final int NETWORK_TIMEOUT_MS = 15 * SECOND_IN_MS;
     private static final int PROCESS_STATE_FOREGROUND_SERVICE = 4;
@@ -144,7 +144,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         }, null, 0, null, null);
 
         final String resultData = result.poll(timeoutMs, TimeUnit.MILLISECONDS);
-        Log.d(TAG, "Ordered broadcast response: " + resultData);
+        Log.d(TAG, "Ordered broadcast response after " + timeoutMs + "ms: " + resultData );
         return resultData;
     }
 
@@ -206,17 +206,30 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     }
 
     private void assertNetworkStatus(boolean expectAvailable, String status) throws Exception {
-        if (status == null) {
-            Log.d(TAG, "timeout waiting for ordered broadcast");
-            if (expectAvailable) {
-                fail("did not get network status when access was allowed");
-            }
-            return;
+        assertNotNull("timeout waiting for ordered broadcast", status);
+
+        // Network status format is described on MyBroadcastReceiver.checkNetworkStatus()
+        final String[] parts = status.split(NETWORK_STATUS_SEPARATOR);
+        assertEquals("Wrong network status: " + status, 5, parts.length); // Sanity check
+        final State state = State.valueOf(parts[0]);
+        final DetailedState detailedState = DetailedState.valueOf(parts[1]);
+        final boolean connected = Boolean.valueOf(parts[2]);
+        final String connectionCheckDetails = parts[3];
+        final String networkInfo = parts[4];
+
+        if (expectAvailable) {
+            assertTrue("should be connected: " + connectionCheckDetails
+                    + " (network info: " + networkInfo + ")", connected);
+            assertEquals("wrong state for " + networkInfo, State.CONNECTED, state);
+            assertEquals("wrong detailed state for " + networkInfo,
+                    DetailedState.CONNECTED, detailedState);
+        } else {
+            assertFalse("should not be connected: " + connectionCheckDetails
+                    + " (network info: " + networkInfo + ")", connected);
+            assertEquals("wrong state for " + networkInfo, State.DISCONNECTED, state);
+            assertEquals("wrong detailed state for " + networkInfo,
+                    DetailedState.BLOCKED, detailedState);
         }
-        final String expectedPrefix = expectAvailable ?
-                STATUS_NETWORK_AVAILABLE_PREFIX : STATUS_NETWORK_UNAVAILABLE_PREFIX;
-        assertTrue("Wrong network status (" + status + ") when expectedAvailable is "
-                + expectAvailable, status.startsWith(expectedPrefix));
     }
 
     protected String executeShellCommand(String command) throws Exception {

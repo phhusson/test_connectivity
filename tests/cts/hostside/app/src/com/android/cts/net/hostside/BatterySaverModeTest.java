@@ -42,6 +42,7 @@ public class BatterySaverModeTest extends AbstractRestrictBackgroundNetworkTestC
 
     public void testBackgroundNetworkAccess_enabled() throws Exception {
         setPowerSaveMode(true);
+
         assertBackgroundNetworkAccess(false);
 
         // Make sure app is allowed if running a foreground service.
