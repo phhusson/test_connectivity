@@ -104,17 +104,17 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
         assertPowerSaveModeWhitelist(TEST_PKG, false);
     }
 
-    public void testBatteryBatterySaverModeNonMeteredTest_disabled() throws Exception {
+    public void testBatterySaverModeNonMetered_disabled() throws Exception {
         runDeviceTests(TEST_PKG, TEST_PKG + ".BatterySaverModeNonMeteredTest",
                 "testBackgroundNetworkAccess_disabled");
     }
 
-    public void testBatteryBatterySaverModeNonMeteredTest_whitelisted() throws Exception {
+    public void testBatterySaverModeNonMeteredt_whitelisted() throws Exception {
         runDeviceTests(TEST_PKG, TEST_PKG + ".BatterySaverModeNonMeteredTest",
                 "testBackgroundNetworkAccess_whitelisted");
     }
 
-    public void testBatteryBatterySaverModeNonMeteredTest_enabled() throws Exception {
+    public void testBatterySaverModeNonMetered_enabled() throws Exception {
         runDeviceTests(TEST_PKG, TEST_PKG + ".BatterySaverModeNonMeteredTest",
                 "testBackgroundNetworkAccess_enabled");
     }
