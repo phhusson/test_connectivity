@@ -17,7 +17,6 @@ package com.android.cts.net.hostside.app2;
 
 import android.content.Context;
 import android.content.pm.PackageManager.NameNotFoundException;
-import android.util.Log;
 
 public final class Common {
 
@@ -37,8 +36,6 @@ public final class Common {
     static final String EXTRA_RECEIVER_NAME =
             "com.android.cts.net.hostside.app2.extra.RECEIVER_NAME";
     static final char RESULT_SEPARATOR = ';';
-    static final String STATUS_NETWORK_UNAVAILABLE_PREFIX = "NetworkUnavailable:";
-    static final String STATUS_NETWORK_AVAILABLE_PREFIX = "NetworkAvailable:";
 
     static int getUid(Context context) {
         final String packageName = context.getPackageName();
