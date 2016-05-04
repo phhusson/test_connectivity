@@ -24,8 +24,6 @@ import static com.android.cts.net.hostside.app2.Common.EXTRA_ACTION;
 import static com.android.cts.net.hostside.app2.Common.EXTRA_RECEIVER_NAME;
 import static com.android.cts.net.hostside.app2.Common.MANIFEST_RECEIVER;
 import static com.android.cts.net.hostside.app2.Common.RESULT_SEPARATOR;
-import static com.android.cts.net.hostside.app2.Common.STATUS_NETWORK_AVAILABLE_PREFIX;
-import static com.android.cts.net.hostside.app2.Common.STATUS_NETWORK_UNAVAILABLE_PREFIX;
 import static com.android.cts.net.hostside.app2.Common.TAG;
 import static com.android.cts.net.hostside.app2.Common.getUid;
 
@@ -125,6 +123,38 @@ public class MyBroadcastReceiver extends BroadcastReceiver {
         setResultData(data.toString());
     }
 
+
+    private static final String NETWORK_STATUS_TEMPLATE = "%s|%s|%s|%s|%s";
+
+    /**
+     * Checks whether the network is available and return a string which can then be send as a
+     * result data for the ordered broadcast.
+     *
+     * <p>
+     * The string has the following format:
+     *
+     * <p><pre><code>
+     * NetinfoState|NetinfoDetailedState|RealConnectionCheck|RealConnectionCheckDetails|Netinfo
+     * </code></pre>
+     *
+     * <p>Where:
+     *
+     * <ul>
+     * <li>{@code NetinfoState}: enum value of {@link NetworkInfo.State}.
+     * <li>{@code NetinfoDetailedState}: enum value of {@link NetworkInfo.DetailedState}.
+     * <li>{@code RealConnectionCheck}: boolean value of a real connection check (i.e., an attempt
+     *     to access an external website.
+     * <li>{@code RealConnectionCheckDetails}: if HTTP output core or exception string of the real
+     *     connection attempt
+     * <li>{@code Netinfo}: string representation of the {@link NetworkInfo}.
+     * </ul>
+     *
+     * For example, if the connection was established fine, the result would be something like:
+     * <p><pre><code>
+     * CONNECTED|CONNECTED|true|200|[type: WIFI[], state: CONNECTED/CONNECTED, reason: ...]
+     * </code></pre>
+     *
+     */
     private String checkNetworkStatus(final Context context, final ConnectivityManager cm)
             throws InterruptedException {
         final LinkedBlockingQueue<String> result = new LinkedBlockingQueue<>(1);
@@ -138,24 +168,29 @@ public class MyBroadcastReceiver extends BroadcastReceiver {
                 Log.d(TAG, "Running checkNetworkStatus() on thread "
                         + Thread.currentThread().getName() + " for UID " + getUid(context)
                         + "\n\tactiveNetworkInfo: " + networkInfo + "\n\tURL: " + address);
-                String prefix = STATUS_NETWORK_AVAILABLE_PREFIX;
+                boolean checkStatus = false;
+                String checkDetails = "N/A";
                 try {
                     final URL url = new URL(address);
                     final HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                     conn.setReadTimeout(NETWORK_TIMEOUT_MS);
-                    conn.setConnectTimeout(NETWORK_TIMEOUT_MS);
+                    conn.setConnectTimeout(NETWORK_TIMEOUT_MS / 2);
                     conn.setRequestMethod("GET");
                     conn.setDoInput(true);
                     conn.connect();
                     final int response = conn.getResponseCode();
-                    Log.d(TAG, "HTTP response for " + address + ": " + response);
+                    checkStatus = true;
+                    checkDetails = "HTTP response for " + address + ": " + response;
                 } catch (Exception e) {
-                    Log.d(TAG, "Exception getting " + address + ": " + e);
-                    prefix = STATUS_NETWORK_UNAVAILABLE_PREFIX + "Exception " + e + ":";
+                    checkStatus = false;
+                    checkDetails = "Exception getting " + address + ": " + e;
                 }
-                final String netInfo = prefix + networkInfo;
-                Log.d(TAG, "Offering " + netInfo);
-                result.offer(netInfo);
+                Log.d(TAG, checkDetails);
+                final String status = String.format(NETWORK_STATUS_TEMPLATE,
+                        networkInfo.getState().name(), networkInfo.getDetailedState().name(),
+                        Boolean.toString(checkStatus), checkDetails, networkInfo);
+                Log.d(TAG, "Offering " + status);
+                result.offer(status);
             }
         }, mName).start();
         return result.poll(NETWORK_TIMEOUT_MS * 2, TimeUnit.MILLISECONDS);
