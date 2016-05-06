@@ -15,14 +15,33 @@
  */
 package com.android.cts.net.hostside.app2;
 
+import static com.android.cts.net.hostside.app2.Common.ACTION_FINISH_ACTIVITY;
 import static com.android.cts.net.hostside.app2.Common.TAG;
+
 import android.app.Activity;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.os.Bundle;
 import android.util.Log;
 
 /**
  * Activity used to bring process to foreground.
  */
 public class MyActivity extends Activity {
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        registerReceiver(new BroadcastReceiver() {
+
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                Log.d(TAG, "Finishing MyActivity");
+                MyActivity.this.finish();
+            }}, new IntentFilter(ACTION_FINISH_ACTIVITY));
+    }
 
     @Override
     protected void onStart() {

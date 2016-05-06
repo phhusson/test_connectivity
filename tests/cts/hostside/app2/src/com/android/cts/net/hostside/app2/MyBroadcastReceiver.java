@@ -17,6 +17,7 @@
 package com.android.cts.net.hostside.app2;
 
 import static android.net.ConnectivityManager.ACTION_RESTRICT_BACKGROUND_CHANGED;
+
 import static com.android.cts.net.hostside.app2.Common.ACTION_CHECK_NETWORK;
 import static com.android.cts.net.hostside.app2.Common.ACTION_GET_COUNTERS;
 import static com.android.cts.net.hostside.app2.Common.ACTION_GET_RESTRICT_BACKGROUND_STATUS;
@@ -24,7 +25,6 @@ import static com.android.cts.net.hostside.app2.Common.ACTION_RECEIVER_READY;
 import static com.android.cts.net.hostside.app2.Common.EXTRA_ACTION;
 import static com.android.cts.net.hostside.app2.Common.EXTRA_RECEIVER_NAME;
 import static com.android.cts.net.hostside.app2.Common.MANIFEST_RECEIVER;
-import static com.android.cts.net.hostside.app2.Common.RESULT_SEPARATOR;
 import static com.android.cts.net.hostside.app2.Common.TAG;
 import static com.android.cts.net.hostside.app2.Common.getUid;
 

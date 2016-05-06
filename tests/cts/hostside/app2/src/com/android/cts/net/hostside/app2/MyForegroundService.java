@@ -35,7 +35,7 @@ public class MyForegroundService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        Log.d(TAG, "MyForegroundService.onStartCommand: " + intent);
+        Log.d(TAG, "MyForegroundService.onStartCommand(): " + intent);
         startForeground(42, new Notification.Builder(this)
             .setSmallIcon(R.drawable.ic_dialog_alert) // any icon is fine
             .build());

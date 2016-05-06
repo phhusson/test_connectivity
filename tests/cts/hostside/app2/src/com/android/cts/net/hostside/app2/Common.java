@@ -34,10 +34,11 @@ public final class Common {
             "com.android.cts.net.hostside.app2.action.CHECK_NETWORK";
     static final String ACTION_RECEIVER_READY =
             "com.android.cts.net.hostside.app2.action.RECEIVER_READY";
+    static final String ACTION_FINISH_ACTIVITY =
+            "com.android.cts.net.hostside.app2.action.FINISH_ACTIVITY";
     static final String EXTRA_ACTION = "com.android.cts.net.hostside.app2.extra.ACTION";
     static final String EXTRA_RECEIVER_NAME =
             "com.android.cts.net.hostside.app2.extra.RECEIVER_NAME";
-    static final char RESULT_SEPARATOR = ';';
 
     static int getUid(Context context) {
         final String packageName = context.getPackageName();
