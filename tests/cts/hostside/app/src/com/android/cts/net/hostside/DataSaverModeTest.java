@@ -73,7 +73,11 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
         addRestrictBackgroundWhitelist(mUid);
         assertRestrictBackgroundChangedReceived(2);
         assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_WHITELISTED);
-    }
+
+        removeRestrictBackgroundWhitelist(mUid);
+        assertRestrictBackgroundChangedReceived(3);
+        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_ENABLED);
+   }
 
     public void testGetRestrictBackgroundStatus_enabled() throws Exception {
         setRestrictBackground(true);
