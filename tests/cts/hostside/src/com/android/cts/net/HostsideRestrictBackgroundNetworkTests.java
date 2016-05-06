@@ -60,15 +60,17 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
     }
 
     public void testDataSaverMode_reinstall() throws Exception {
-        final int oldUid = getUid(TEST_PKG);
-        testDataSaverMode_whitelisted();
+        final int oldUid = getUid(TEST_APP2_PKG);
 
-        uninstallPackage(TEST_PKG, true);
-        assertPackageUninstalled(TEST_PKG);
+        // Make sure whitelist is revoked when package is removed
+        addRestrictBackgroundWhitelist(oldUid);
+
+        uninstallPackage(TEST_APP2_PKG, true);
+        assertPackageUninstalled(TEST_APP2_PKG);
         assertRestrictBackgroundWhitelist(oldUid, false);
 
-        installPackage(TEST_APK);
-        final int newUid = getUid(TEST_PKG);
+        installPackage(TEST_APP2_APK);
+        final int newUid = getUid(TEST_APP2_PKG);
         assertRestrictBackgroundWhitelist(oldUid, false);
         assertRestrictBackgroundWhitelist(newUid, false);
     }
@@ -94,14 +96,14 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
     }
 
     public void testBatterySaverMode_reinstall() throws Exception {
-        testBatterySaverMode_whitelisted();
+        addPowerSaveModeWhitelist(TEST_APP2_PKG);
 
-        uninstallPackage(TEST_PKG, true);
-        assertPackageUninstalled(TEST_PKG);
-        assertPowerSaveModeWhitelist(TEST_PKG, false);
+        uninstallPackage(TEST_APP2_PKG, true);
+        assertPackageUninstalled(TEST_APP2_PKG);
+        assertPowerSaveModeWhitelist(TEST_APP2_PKG, false);
 
-        installPackage(TEST_APK);
-        assertPowerSaveModeWhitelist(TEST_PKG, false);
+        installPackage(TEST_APP2_APK);
+        assertPowerSaveModeWhitelist(TEST_APP2_PKG, false);
     }
 
     public void testBatterySaverModeNonMetered_disabled() throws Exception {
@@ -159,5 +161,18 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
         }
         fail("Command '" + command + "' did not return '" + expectedResult + "' after " + maxTries
                 + " attempts");
+    }
+
+    protected void addRestrictBackgroundWhitelist(int uid) throws Exception {
+        runCommand("cmd netpolicy add restrict-background-whitelist " + uid);
+        assertRestrictBackgroundWhitelist(uid, true);
+    }
+
+    private void addPowerSaveModeWhitelist(String packageName) throws Exception {
+        Log.i(TAG, "Adding package " + packageName + " to power-save-mode whitelist");
+        // TODO: currently the power-save mode is behaving like idle, but once it changes, we'll
+        // need to use netpolicy for whitelisting
+        runCommand("dumpsys deviceidle whitelist +" + packageName);
+        assertPowerSaveModeWhitelist(packageName, true); // Sanity check
     }
 }
