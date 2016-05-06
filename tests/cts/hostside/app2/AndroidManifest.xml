@@ -31,6 +31,7 @@
          test app.
     -->
     <application>
+        <activity android:name=".MyActivity" android:exported="true"/>
         <service android:name=".MyService" android:exported="true"/>
         <service android:name=".MyForegroundService" android:exported="true"/>
 
@@ -38,6 +39,7 @@
             <intent-filter>
                 <action android:name="android.net.conn.RESTRICT_BACKGROUND_CHANGED" />
                 <action android:name="com.android.cts.net.hostside.app2.action.GET_COUNTERS" />
+                <action android:name="com.android.cts.net.hostside.app2.action.GET_RESTRICT_BACKGROUND_STATUS" />
                 <action android:name="com.android.cts.net.hostside.app2.action.CHECK_NETWORK" />
             </intent-filter>
         </receiver>

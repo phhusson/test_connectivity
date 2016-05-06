@@ -28,6 +28,8 @@ public final class Common {
     static final String DYNAMIC_RECEIVER = "DynamicReceiver";
     static final String ACTION_GET_COUNTERS =
             "com.android.cts.net.hostside.app2.action.GET_COUNTERS";
+    static final String ACTION_GET_RESTRICT_BACKGROUND_STATUS =
+            "com.android.cts.net.hostside.app2.action.GET_RESTRICT_BACKGROUND_STATUS";
     static final String ACTION_CHECK_NETWORK =
             "com.android.cts.net.hostside.app2.action.CHECK_NETWORK";
     static final String ACTION_RECEIVER_READY =

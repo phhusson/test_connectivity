@@ -58,12 +58,16 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
     public void testGetRestrictBackgroundStatus_disabled() throws Exception {
         removeRestrictBackgroundWhitelist(mUid);
         assertRestrictBackgroundChangedReceived(0);
-        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
+        assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_DISABLED);
 
         // Sanity check: make sure status is always disabled, never whitelisted
         addRestrictBackgroundWhitelist(mUid);
         assertRestrictBackgroundChangedReceived(0);
-        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
+        assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_DISABLED);
+
+        // Should always have access when running on foreground
+        launchApp2Activity();
+        assertForegroundNetworkAccess();
     }
 
     public void testGetRestrictBackgroundStatus_whitelisted() throws Exception {
@@ -72,49 +76,64 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
 
         addRestrictBackgroundWhitelist(mUid);
         assertRestrictBackgroundChangedReceived(2);
-        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_WHITELISTED);
+        assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_WHITELISTED);
 
         removeRestrictBackgroundWhitelist(mUid);
         assertRestrictBackgroundChangedReceived(3);
         assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_ENABLED);
-   }
+
+        // Should always have access when running on foreground
+        launchApp2Activity();
+        assertForegroundNetworkAccess();
+    }
 
     public void testGetRestrictBackgroundStatus_enabled() throws Exception {
         setRestrictBackground(true);
         assertRestrictBackgroundChangedReceived(1);
-        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_ENABLED);
+        assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_ENABLED);
 
         removeRestrictBackgroundWhitelist(mUid);
         assertRestrictBackgroundChangedReceived(1);
-        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_ENABLED);
+        assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_ENABLED);
 
         // Make sure app is allowed if running a foreground service.
         assertBackgroundNetworkAccess(false);
         startForegroundService();
         assertForegroundServiceState();
         assertBackgroundNetworkAccess(true);
+
+        // Should always have access when running on foreground
+        launchApp2Activity();
+        assertForegroundNetworkAccess();
     }
 
     public void testGetRestrictBackgroundStatus_blacklisted() throws Exception {
         addRestrictBackgroundBlacklist(mUid);
         assertRestrictBackgroundChangedReceived(1);
-        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_ENABLED);
+        assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_ENABLED);
 
         // Make sure blacklist prevails over whitelist.
         setRestrictBackground(true);
         assertRestrictBackgroundChangedReceived(2);
-        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_ENABLED);
+        assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_ENABLED);
         addRestrictBackgroundWhitelist(mUid);
         assertRestrictBackgroundChangedReceived(3);
-        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_ENABLED);
+        assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_ENABLED);
 
         // Check status after removing blacklist.
         removeRestrictBackgroundBlacklist(mUid);
         assertRestrictBackgroundChangedReceived(4);
-        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_WHITELISTED);
+        assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_WHITELISTED);
         setRestrictBackground(false);
         assertRestrictBackgroundChangedReceived(5);
-        assertRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
+        assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_DISABLED);
+
+        // Should always have access when running on foreground
+        addRestrictBackgroundBlacklist(mUid);
+        assertRestrictBackgroundChangedReceived(6);
+        assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_ENABLED);
+        launchApp2Activity();
+        assertForegroundNetworkAccess();
     }
 
     public void testGetRestrictBackgroundStatus_requiredWhitelistedPackages() throws Exception {
@@ -135,5 +154,10 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
         if (error.length() > 0) {
             fail(error.toString());
         }
+    }
+
+    private void assertDataSaverStatusOnBackground(int expectedStatus) throws Exception {
+        assertRestrictBackgroundStatus(expectedStatus);
+        assertBackgroundNetworkAccess(expectedStatus != RESTRICT_BACKGROUND_STATUS_ENABLED);
     }
 }
