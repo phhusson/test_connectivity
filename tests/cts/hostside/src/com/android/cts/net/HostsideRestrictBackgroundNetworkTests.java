@@ -111,7 +111,7 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
                 "testBackgroundNetworkAccess_disabled");
     }
 
-    public void testBatterySaverModeNonMeteredt_whitelisted() throws Exception {
+    public void testBatterySaverModeNonMetered_whitelisted() throws Exception {
         runDeviceTests(TEST_PKG, TEST_PKG + ".BatterySaverModeNonMeteredTest",
                 "testBackgroundNetworkAccess_whitelisted");
     }

@@ -54,6 +54,8 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     private static final String DYNAMIC_RECEIVER = "DynamicReceiver";
     private static final String ACTION_GET_COUNTERS =
             "com.android.cts.net.hostside.app2.action.GET_COUNTERS";
+    private static final String ACTION_GET_RESTRICT_BACKGROUND_STATUS =
+            "com.android.cts.net.hostside.app2.action.GET_RESTRICT_BACKGROUND_STATUS";
     private static final String ACTION_CHECK_NETWORK =
             "com.android.cts.net.hostside.app2.action.CHECK_NETWORK";
     private static final String ACTION_RECEIVER_READY =
@@ -61,7 +63,6 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     private static final String EXTRA_ACTION = "com.android.cts.net.hostside.app2.extra.ACTION";
     private static final String EXTRA_RECEIVER_NAME =
             "com.android.cts.net.hostside.app2.extra.RECEIVER_NAME";
-    private static final String RESULT_SEPARATOR = ";";
     private static final String NETWORK_STATUS_SEPARATOR = "\\|";
     private static final int SECOND_IN_MS = 1000;
     private static final int NETWORK_TIMEOUT_MS = 15 * SECOND_IN_MS;
@@ -70,8 +71,6 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
 
     // Must be higher than NETWORK_TIMEOUT_MS
     private static final int ORDERED_BROADCAST_TIMEOUT_MS = NETWORK_TIMEOUT_MS * 4;
-
-    private static final boolean ASSERT_NETWORK_INFO_STATE = false;
 
     protected Context mContext;
     protected Instrumentation mInstrumentation;
@@ -159,27 +158,22 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         return Integer.valueOf(resultData);
     }
 
-    protected void assertRestrictBackgroundStatus(int expectedApiStatus) throws Exception {
-        assertBackgroundState(); // Sanity check.
-        final Intent intent = new Intent(ACTION_CHECK_NETWORK);
+    protected void assertRestrictBackgroundStatus(int expectedStatus) throws Exception {
+        final Intent intent = new Intent(ACTION_GET_RESTRICT_BACKGROUND_STATUS);
         final String resultData = sendOrderedBroadcast(intent);
-        final String[] resultItems = resultData.split(RESULT_SEPARATOR);
-        final String actualApiStatus = toString(Integer.parseInt(resultItems[0]));
-        // First asserts the API returns the proper value...
-        assertEquals("wrong status", toString(expectedApiStatus), actualApiStatus);
-
-        //...then the actual network status in the background thread.
-        final String networkStatus = getNetworkStatus(resultItems);
-        assertNetworkStatus(expectedApiStatus != RESTRICT_BACKGROUND_STATUS_ENABLED, networkStatus);
+        assertNotNull("timeout waiting for ordered broadcast result", resultData);
+        final String actualStatus = toString(Integer.parseInt(resultData));
+        assertEquals("wrong status", toString(expectedStatus), actualStatus);
     }
 
     protected void assertBackgroundNetworkAccess(boolean expectAllowed) throws Exception {
         assertBackgroundState(); // Sanity check.
-        final Intent intent = new Intent(ACTION_CHECK_NETWORK);
-        final String resultData = sendOrderedBroadcast(intent);
-        final String[] resultItems = resultData.split(RESULT_SEPARATOR);
-        final String networkStatus = getNetworkStatus(resultItems);
-        assertNetworkStatus(expectAllowed, networkStatus);
+        assertNetworkAccess(expectAllowed);
+    }
+
+    protected void assertForegroundNetworkAccess() throws Exception {
+        assertForegroundState(); // Sanity check.
+        assertNetworkAccess(true);
     }
 
     protected final void assertBackgroundState() throws Exception {
@@ -187,6 +181,13 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         Log.v(TAG, "assertBackgroundState(): status for app2 (" + mUid + "): " + state);
         final boolean isBackground = isBackground(state.state);
         assertTrue("App2 is not on background state: " + state, isBackground);
+    }
+
+    protected final void assertForegroundState() throws Exception {
+        final ProcessState state = getProcessStateByUid(mUid);
+        Log.v(TAG, "assertForegroundState(): status for app2 (" + mUid + "): " + state);
+        final boolean isForeground = !isBackground(state.state);
+        assertTrue("App2 is not on foreground state: " + state, isForeground);
     }
 
     protected final void assertForegroundServiceState() throws Exception {
@@ -203,39 +204,54 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         return state >= PROCESS_STATE_FOREGROUND_SERVICE;
     }
 
-    private String getNetworkStatus(String[] resultItems) {
-        return resultItems.length < 2 ? null : resultItems[1];
-    }
+    private void assertNetworkAccess(boolean expectAvailable) throws Exception {
+        final Intent intent = new Intent(ACTION_CHECK_NETWORK);
 
-    private void assertNetworkStatus(boolean expectAvailable, String status) throws Exception {
-        assertNotNull("timeout waiting for ordered broadcast", status);
+        // When the network info state change, it's possible the app still get the previous value,
+        // so we need to retry a couple times.
+        final int maxTries = 5;
+        String resultData = null;
+        for (int i = 1; i <= maxTries; i++) {
+            resultData = sendOrderedBroadcast(intent);
+            assertNotNull("timeout waiting for ordered broadcast", resultData);
 
-        // Network status format is described on MyBroadcastReceiver.checkNetworkStatus()
-        final String[] parts = status.split(NETWORK_STATUS_SEPARATOR);
-        assertEquals("Wrong network status: " + status, 5, parts.length); // Sanity check
-        final State state = State.valueOf(parts[0]);
-        final DetailedState detailedState = DetailedState.valueOf(parts[1]);
-        final boolean connected = Boolean.valueOf(parts[2]);
-        final String connectionCheckDetails = parts[3];
-        final String networkInfo = parts[4];
+            // Network status format is described on MyBroadcastReceiver.checkNetworkStatus()
+            final String[] parts = resultData.split(NETWORK_STATUS_SEPARATOR);
+            assertEquals("Wrong network status: " + resultData, 5, parts.length); // Sanity check
+            final State state = State.valueOf(parts[0]);
+            final DetailedState detailedState = DetailedState.valueOf(parts[1]);
+            final boolean connected = Boolean.valueOf(parts[2]);
+            final String connectionCheckDetails = parts[3];
+            final String networkInfo = parts[4];
 
-        if (expectAvailable) {
-            assertTrue("should be connected: " + connectionCheckDetails
-                    + " (network info: " + networkInfo + ")", connected);
-            if (ASSERT_NETWORK_INFO_STATE) {
-                assertEquals("wrong state for " + networkInfo, State.CONNECTED, state);
-                assertEquals("wrong detailed state for " + networkInfo,
-                        DetailedState.CONNECTED, detailedState);
-            }
-        } else {
-            assertFalse("should not be connected: " + connectionCheckDetails
-                    + " (network info: " + networkInfo + ")", connected);
-            if (ASSERT_NETWORK_INFO_STATE) {
-                assertEquals("wrong state for " + networkInfo, State.DISCONNECTED, state);
-                assertEquals("wrong detailed state for " + networkInfo,
-                        DetailedState.BLOCKED, detailedState);
+            if (expectAvailable) {
+                assertTrue("should be connected: " + connectionCheckDetails
+                        + " (network info: " + networkInfo + ")", connected);
+                if (state != State.CONNECTED) {
+                    Log.d(TAG, "State (" + state + ") not set to CONNECTED on attempt #" + i
+                            + "; sleeping 1s before trying again");
+                    Thread.sleep(SECOND_IN_MS);
+                } else {
+                    assertEquals("wrong detailed state for " + networkInfo,
+                            DetailedState.CONNECTED, detailedState);
+                    return;
+                }
+                return;
+            } else {
+                assertFalse("should not be connected: " + connectionCheckDetails
+                        + " (network info: " + networkInfo + ")", connected);
+                if (state != State.DISCONNECTED) {
+                    Log.d(TAG, "State (" + state + ") not set to DISCONNECTED on attempt #" + i
+                            + "; sleeping 1s before trying again");
+                    Thread.sleep(SECOND_IN_MS);
+                } else {
+                    assertEquals("wrong detailed state for " + networkInfo,
+                            DetailedState.BLOCKED, detailedState);
+                   return;
+                }
             }
         }
+        fail("Invalid state after " + maxTries + " attempts. Last data: " + resultData);
     }
 
     protected String executeShellCommand(String command) throws Exception {
@@ -477,6 +493,13 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     protected void startForegroundService() throws Exception {
         executeShellCommand(
                 "am startservice com.android.cts.net.hostside.app2/.MyForegroundService");
+    }
+
+    /**
+     * Launches an activity on app2 so its process is elevated to foreground status.
+     */
+    protected void launchApp2Activity() throws Exception {
+        executeShellCommand("am start com.android.cts.net.hostside.app2/.MyActivity");
     }
 
     private String toString(int status) {
