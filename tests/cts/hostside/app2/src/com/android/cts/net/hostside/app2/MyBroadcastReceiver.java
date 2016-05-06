@@ -19,6 +19,7 @@ package com.android.cts.net.hostside.app2;
 import static android.net.ConnectivityManager.ACTION_RESTRICT_BACKGROUND_CHANGED;
 import static com.android.cts.net.hostside.app2.Common.ACTION_CHECK_NETWORK;
 import static com.android.cts.net.hostside.app2.Common.ACTION_GET_COUNTERS;
+import static com.android.cts.net.hostside.app2.Common.ACTION_GET_RESTRICT_BACKGROUND_STATUS;
 import static com.android.cts.net.hostside.app2.Common.ACTION_RECEIVER_READY;
 import static com.android.cts.net.hostside.app2.Common.EXTRA_ACTION;
 import static com.android.cts.net.hostside.app2.Common.EXTRA_RECEIVER_NAME;
@@ -73,6 +74,9 @@ public class MyBroadcastReceiver extends BroadcastReceiver {
             case ACTION_GET_COUNTERS:
                 setResultDataFromCounter(context, intent);
                 break;
+            case ACTION_GET_RESTRICT_BACKGROUND_STATUS:
+                getRestrictBackgroundStatus(context, intent);
+                break;
             case ACTION_CHECK_NETWORK:
                 checkNetwork(context, intent);
                 break;
@@ -101,31 +105,30 @@ public class MyBroadcastReceiver extends BroadcastReceiver {
         return value;
     }
 
+    private void getRestrictBackgroundStatus(Context context, Intent intent) {
+        final ConnectivityManager cm = (ConnectivityManager) context
+                .getSystemService(Context.CONNECTIVITY_SERVICE);
+        final int apiStatus = cm.getRestrictBackgroundStatus();
+        Log.d(TAG, "getRestrictBackgroundStatus: returning " + apiStatus);
+        setResultData(Integer.toString(apiStatus));
+    }
+
     private void checkNetwork(final Context context, Intent intent) {
         final ConnectivityManager cm = (ConnectivityManager) context
                 .getSystemService(Context.CONNECTIVITY_SERVICE);
 
-        final StringBuilder data = new StringBuilder();
-        final int apiStatus = cm.getRestrictBackgroundStatus();
-        String netStatus;
+        String netStatus = null;
         try {
             netStatus = checkNetworkStatus(context, cm);
         } catch (InterruptedException e) {
             Log.e(TAG, "Timeout checking network status");
-            setResultData(null);
-            return;
         }
-        data.append(apiStatus).append(RESULT_SEPARATOR);
-        if (netStatus != null) {
-            data.append(netStatus);
-        }
-        Log.d(TAG, "checkNetwork: returning " + data);
-        setResultData(data.toString());
+        Log.d(TAG, "checkNetwork(): returning " + netStatus);
+        setResultData(netStatus);
     }
 
 
     private static final String NETWORK_STATUS_TEMPLATE = "%s|%s|%s|%s|%s";
-
     /**
      * Checks whether the network is available and return a string which can then be send as a
      * result data for the ordered broadcast.

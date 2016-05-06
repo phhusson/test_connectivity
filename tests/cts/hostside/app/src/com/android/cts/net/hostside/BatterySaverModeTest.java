@@ -49,6 +49,10 @@ public class BatterySaverModeTest extends AbstractRestrictBackgroundNetworkTestC
         startForegroundService();
         assertForegroundServiceState();
         assertBackgroundNetworkAccess(true);
+
+        // Should always have access when running on foreground
+        launchApp2Activity();
+        assertForegroundNetworkAccess();
     }
 
     public void testBackgroundNetworkAccess_whitelisted() throws Exception {
@@ -58,10 +62,18 @@ public class BatterySaverModeTest extends AbstractRestrictBackgroundNetworkTestC
         assertBackgroundNetworkAccess(true);
         removePowerSaveModeWhitelist(TEST_APP2_PKG);
         assertBackgroundNetworkAccess(false);
+
+        // Should always have access when running on foreground
+        launchApp2Activity();
+        assertForegroundNetworkAccess();
     }
 
     public void testBackgroundNetworkAccess_disabled() throws Exception {
         setPowerSaveMode(false);
         assertBackgroundNetworkAccess(true);
+
+        // Should always have access when running on foreground
+        launchApp2Activity();
+        assertForegroundNetworkAccess();
     }
 }
