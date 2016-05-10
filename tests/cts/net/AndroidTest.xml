@@ -13,7 +13,6 @@
      limitations under the License.
 -->
 <configuration description="Config for CTS Net test cases">
-    <target_preparer class="com.android.compatibility.common.tradefed.targetprep.WifiCheck" />
     <target_preparer class="com.android.compatibility.common.tradefed.targetprep.ApkInstaller">
         <option name="cleanup-apks" value="true" />
         <option name="test-file-name" value="CtsNetTestCases.apk" />
