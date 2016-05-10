@@ -28,6 +28,9 @@ import android.util.Log;
  */
 public class MyForegroundService extends Service {
 
+    private static final int FLAG_START_FOREGROUND = 1;
+    private static final int FLAG_STOP_FOREGROUND = 2;
+
     @Override
     public IBinder onBind(Intent intent) {
         return null;
@@ -35,10 +38,21 @@ public class MyForegroundService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        Log.d(TAG, "MyForegroundService.onStartCommand(): " + intent);
-        startForeground(42, new Notification.Builder(this)
-            .setSmallIcon(R.drawable.ic_dialog_alert) // any icon is fine
-            .build());
+        Log.v(TAG, "MyForegroundService.onStartCommand(): " + intent);
+        switch (intent.getFlags()) {
+            case FLAG_START_FOREGROUND:
+                Log.d(TAG, "Starting foreground");
+                startForeground(42, new Notification.Builder(this)
+                        .setSmallIcon(R.drawable.ic_dialog_alert) // any icon is fine
+                        .build());
+                break;
+            case FLAG_STOP_FOREGROUND:
+                Log.d(TAG, "Stopping foreground");
+                stopForeground(true);
+                break;
+            default:
+                Log.wtf(TAG, "Invalid flag on intent " + intent);
+        }
         return START_STICKY;
     }
 }

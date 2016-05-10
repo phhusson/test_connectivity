@@ -39,6 +39,10 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
         uninstallPackage(TEST_APP2_PKG, true);
     }
 
+    /**************************
+     * Data Saver Mode tests. *
+     **************************/
+
     public void testDataSaverMode_disabled() throws Exception {
         runDeviceTests(TEST_PKG, TEST_PKG + ".DataSaverModeTest",
                 "testGetRestrictBackgroundStatus_disabled");
@@ -80,18 +84,22 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
                 "testGetRestrictBackgroundStatus_requiredWhitelistedPackages");
     }
 
-    public void testBatterySaverMode_disabled() throws Exception {
-        runDeviceTests(TEST_PKG, TEST_PKG + ".BatterySaverModeTest",
+    /*****************************
+     * Battery Saver Mode tests. *
+     *****************************/
+
+    public void testBatterySaverModeMetered_disabled() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".BatterySaverModeMeteredTest",
                 "testBackgroundNetworkAccess_disabled");
     }
 
-    public void testBatterySaverMode_whitelisted() throws Exception {
-        runDeviceTests(TEST_PKG, TEST_PKG + ".BatterySaverModeTest",
+    public void testBatterySaverModeMetered_whitelisted() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".BatterySaverModeMeteredTest",
                 "testBackgroundNetworkAccess_whitelisted");
     }
 
-    public void testBatterySaverMode_enabled() throws Exception {
-        runDeviceTests(TEST_PKG, TEST_PKG + ".BatterySaverModeTest",
+    public void testBatterySaverModeMetered_enabled() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".BatterySaverModeMeteredTest",
                 "testBackgroundNetworkAccess_enabled");
     }
 
@@ -121,6 +129,88 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
                 "testBackgroundNetworkAccess_enabled");
     }
 
+    /*******************
+     * App idle tests. *
+     *******************/
+
+    public void testAppIdleMetered_disabled() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".AppIdleMeteredTest",
+                "testBackgroundNetworkAccess_disabled");
+    }
+
+    public void testAppIdleMetered_whitelisted() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".AppIdleMeteredTest",
+                "testBackgroundNetworkAccess_whitelisted");
+    }
+
+    public void testAppIdleMetered_enabled() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".AppIdleMeteredTest",
+                "testBackgroundNetworkAccess_enabled");
+    }
+
+    // TODO: currently power-save mode and idle uses the same whitelist, so this test would be
+    // redundant (as it would be testing the same as testBatterySaverMode_reinstall())
+    //    public void testAppIdle_reinstall() throws Exception {
+    //    }
+
+    public void testAppIdleNonMetered_disabled() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".AppIdleNonMeteredTest",
+                "testBackgroundNetworkAccess_disabled");
+    }
+
+    public void testAppIdleNonMetered_whitelisted() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".AppIdleNonMeteredTest",
+                "testBackgroundNetworkAccess_whitelisted");
+    }
+
+    public void testAppIdleNonMetered_enabled() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".AppIdleNonMeteredTest",
+                "testBackgroundNetworkAccess_enabled");
+    }
+
+    /********************
+     * Doze Mode tests. *
+     ********************/
+
+    public void testDozeModeMetered_disabled() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".DozeModeMeteredTest",
+                "testBackgroundNetworkAccess_disabled");
+    }
+
+    public void testDozeModeMetered_whitelisted() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".DozeModeMeteredTest",
+                "testBackgroundNetworkAccess_whitelisted");
+    }
+
+    public void testDozeModeMetered_enabled() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".DozeModeMeteredTest",
+                "testBackgroundNetworkAccess_enabled");
+    }
+
+    // TODO: currently power-save mode and idle uses the same whitelist, so this test would be
+    // redundant (as it would be testing the same as testBatterySaverMode_reinstall())
+    //    public void testDozeMode_reinstall() throws Exception {
+    //    }
+
+    public void testDozeModeNonMetered_disabled() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".DozeModeNonMeteredTest",
+                "testBackgroundNetworkAccess_disabled");
+    }
+
+    public void testDozeModeNonMetered_whitelisted() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".DozeModeNonMeteredTest",
+                "testBackgroundNetworkAccess_whitelisted");
+    }
+
+    public void testDozeModeNonMetered_enabled() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".DozeModeNonMeteredTest",
+                "testBackgroundNetworkAccess_enabled");
+    }
+
+    /**********************
+     * Mixed modes tests. *
+     **********************/
+
     public void testDataAndBatterySaverModes_meteredNetwork() throws Exception {
         runDeviceTests(TEST_PKG, TEST_PKG + ".MixedModesTest",
                 "testDataAndBatterySaverModes_meteredNetwork");
@@ -130,6 +220,10 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
         runDeviceTests(TEST_PKG, TEST_PKG + ".MixedModesTest",
                 "testDataAndBatterySaverModes_nonMeteredNetwork");
     }
+
+    /*******************
+     * Helper methods. *
+     *******************/
 
     private void assertRestrictBackgroundWhitelist(int uid, boolean expected) throws Exception {
         final int max_tries = 5;
