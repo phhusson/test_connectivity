@@ -176,34 +176,90 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         assertNetworkAccess(true);
     }
 
+    protected void assertForegroundServiceNetworkAccess() throws Exception {
+        assertForegroundServiceState(); // Sanity check.
+        assertNetworkAccess(true);
+    }
+
+    /**
+     * Asserts that an app always have access while on foreground or running a foreground service.
+     *
+     * <p>This method will launch an activity and a foreground service to make the assertion, but
+     * will finish the activity / stop the service afterwards.
+     */
+    protected void assertsForegroundAlwaysHasNetworkAccess() throws Exception{
+        // Checks foreground first.
+        launchActivity();
+        assertForegroundNetworkAccess();
+        finishActivity();
+
+        // Then foreground service
+        startForegroundService();
+        assertForegroundServiceNetworkAccess();
+        stopForegroundService();
+    }
+
     protected final void assertBackgroundState() throws Exception {
-        final ProcessState state = getProcessStateByUid(mUid);
-        Log.v(TAG, "assertBackgroundState(): status for app2 (" + mUid + "): " + state);
-        final boolean isBackground = isBackground(state.state);
-        assertTrue("App2 is not on background state: " + state, isBackground);
+        final int maxTries = 30;
+        ProcessState state = null;
+        for (int i = 1; i <= maxTries; i++) {
+            state = getProcessStateByUid(mUid);
+            Log.v(TAG, "assertBackgroundState(): status for app2 (" + mUid + ") on attempt #" + i
+                    + ": " + state);
+            if (isBackground(state.state)) {
+                return;
+            }
+            Log.d(TAG, "App not on background state on attempt #" + i
+                    + "; sleeping 1s before trying again");
+            Thread.sleep(SECOND_IN_MS);
+        }
+        fail("App2 is not on background state after " + maxTries + " attempts: " + state );
     }
 
     protected final void assertForegroundState() throws Exception {
-        final ProcessState state = getProcessStateByUid(mUid);
-        Log.v(TAG, "assertForegroundState(): status for app2 (" + mUid + "): " + state);
-        final boolean isForeground = !isBackground(state.state);
-        assertTrue("App2 is not on foreground state: " + state, isForeground);
+        final int maxTries = 30;
+        ProcessState state = null;
+        for (int i = 1; i <= maxTries; i++) {
+            state = getProcessStateByUid(mUid);
+            Log.v(TAG, "assertForegroundState(): status for app2 (" + mUid + ") on attempt #" + i
+                    + ": " + state);
+            if (!isBackground(state.state)) {
+                return;
+            }
+            Log.d(TAG, "App not on foreground state on attempt #" + i
+                    + "; sleeping 1s before trying again");
+            Thread.sleep(SECOND_IN_MS);
+        }
+        fail("App2 is not on foreground state after " + maxTries + " attempts: " + state );
     }
 
     protected final void assertForegroundServiceState() throws Exception {
-        final ProcessState state = getProcessStateByUid(mUid);
-        Log.v(TAG, "assertForegroundServiceState(): status for app2 (" + mUid + "): " + state);
-        assertEquals("App2 is not on foreground service state: " + state,
-                PROCESS_STATE_FOREGROUND_SERVICE, state.state);
+        final int maxTries = 30;
+        ProcessState state = null;
+        for (int i = 1; i <= maxTries; i++) {
+            state = getProcessStateByUid(mUid);
+            Log.v(TAG, "assertForegroundServiceState(): status for app2 (" + mUid + ") on attempt #"
+                    + i + ": " + state);
+            if (state.state == PROCESS_STATE_FOREGROUND_SERVICE) {
+                return;
+            }
+            Log.d(TAG, "App not on foreground service state on attempt #" + i
+                    + "; sleeping 1s before trying again");
+            Thread.sleep(SECOND_IN_MS);
+        }
+        fail("App2 is not on foreground service state after " + maxTries + " attempts: " + state );
     }
 
     /**
      * Returns whether an app state should be considered "background" for restriction purposes.
      */
     protected boolean isBackground(int state) {
-        return state >= PROCESS_STATE_FOREGROUND_SERVICE;
+        return state > PROCESS_STATE_FOREGROUND_SERVICE;
     }
 
+    /**
+     * Asserts whether the active network is available or not.
+     */
     private void assertNetworkAccess(boolean expectAvailable) throws Exception {
         final Intent intent = new Intent(ACTION_CHECK_NETWORK);
 
@@ -495,11 +551,25 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
                 "am startservice com.android.cts.net.hostside.app2/.MyForegroundService");
     }
 
+    protected void stopForegroundService() throws Exception {
+        executeShellCommand(
+                "am stopservice com.android.cts.net.hostside.app2/.MyForegroundService");
+    }
+
     /**
      * Launches an activity on app2 so its process is elevated to foreground status.
      */
-    protected void launchApp2Activity() throws Exception {
+    protected void launchActivity() throws Exception {
         executeShellCommand("am start com.android.cts.net.hostside.app2/.MyActivity");
+    }
+
+    /**
+     * Finishes an activity on app2 so its process is demoted fromforeground status.
+     */
+    protected void finishActivity() throws Exception {
+        executeShellCommand("am broadcast -a "
+                + " com.android.cts.net.hostside.app2.action.FINISH_ACTIVITY "
+                + "--receiver-foreground --receiver-registered-only");
     }
 
     private String toString(int status) {
