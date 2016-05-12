@@ -23,9 +23,11 @@ public class BatterySaverModeTest extends AbstractRestrictBackgroundNetworkTestC
     public void setUp() throws Exception {
         super.setUp();
 
+        // Set initial state.
         setMeteredNetwork();
+        removePowerSaveModeWhitelist(TEST_APP2_PKG);
         setPowerSaveMode(false);
-        assertPowerSaveModeWhitelist(TEST_APP2_PKG, false); // Sanity check
+
         registerBroadcastReceiver();
     }
 
@@ -42,38 +44,48 @@ public class BatterySaverModeTest extends AbstractRestrictBackgroundNetworkTestC
 
     public void testBackgroundNetworkAccess_enabled() throws Exception {
         setPowerSaveMode(true);
-
         assertBackgroundNetworkAccess(false);
 
-        // Make sure app is allowed if running a foreground service.
-        startForegroundService();
-        assertForegroundServiceState();
-        assertBackgroundNetworkAccess(true);
+        assertsForegroundAlwaysHasNetworkAccess();
+        assertBackgroundNetworkAccess(false);
 
-        // Should always have access when running on foreground
-        launchApp2Activity();
+        // Make sure foreground app doesn't lose access upon enabling it.
+        setPowerSaveMode(false);
+        launchActivity();
         assertForegroundNetworkAccess();
+        setPowerSaveMode(true);
+        assertForegroundNetworkAccess();
+        finishActivity();
+        assertBackgroundNetworkAccess(false);
+
+        // Same for foreground service.
+        setPowerSaveMode(false);
+        startForegroundService();
+        assertForegroundNetworkAccess();
+        setPowerSaveMode(true);
+        assertForegroundNetworkAccess();
+        stopForegroundService();
+        assertBackgroundNetworkAccess(false);
     }
 
     public void testBackgroundNetworkAccess_whitelisted() throws Exception {
         setPowerSaveMode(true);
         assertBackgroundNetworkAccess(false);
+
         addPowerSaveModeWhitelist(TEST_APP2_PKG);
         assertBackgroundNetworkAccess(true);
+
         removePowerSaveModeWhitelist(TEST_APP2_PKG);
         assertBackgroundNetworkAccess(false);
 
-        // Should always have access when running on foreground
-        launchApp2Activity();
-        assertForegroundNetworkAccess();
+        assertsForegroundAlwaysHasNetworkAccess();
+        assertBackgroundNetworkAccess(false);
     }
 
     public void testBackgroundNetworkAccess_disabled() throws Exception {
-        setPowerSaveMode(false);
         assertBackgroundNetworkAccess(true);
 
-        // Should always have access when running on foreground
-        launchApp2Activity();
-        assertForegroundNetworkAccess();
+        assertsForegroundAlwaysHasNetworkAccess();
+        assertBackgroundNetworkAccess(true);
     }
 }

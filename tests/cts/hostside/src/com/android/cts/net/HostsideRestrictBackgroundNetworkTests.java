@@ -121,6 +121,16 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
                 "testBackgroundNetworkAccess_enabled");
     }
 
+    public void testDataAndBatterySaverModes_meteredNetwork() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".MixedModesTest",
+                "testDataAndBatterySaverModes_meteredNetwork");
+    }
+
+    public void testDataAndBatterySaverModes_nonMeteredNetwork() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".MixedModesTest",
+                "testDataAndBatterySaverModes_nonMeteredNetwork");
+    }
+
     private void assertRestrictBackgroundWhitelist(int uid, boolean expected) throws Exception {
         final int max_tries = 5;
         boolean actual = false;
