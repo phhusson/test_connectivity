@@ -47,7 +47,7 @@ public class MixedModesTest extends AbstractRestrictBackgroundNetworkTestCase {
         try {
             setRestrictBackground(false);
         } finally {
-            setPowerSaveMode(false);
+            setBatterySaverMode(false);
         }
     }
 
@@ -60,7 +60,7 @@ public class MixedModesTest extends AbstractRestrictBackgroundNetworkTestCase {
 
         try {
             setRestrictBackground(true);
-            setPowerSaveMode(true);
+            setBatterySaverMode(true);
 
             Log.v(TAG, "Not whitelisted for any.");
             assertBackgroundNetworkAccess(false);
@@ -126,7 +126,7 @@ public class MixedModesTest extends AbstractRestrictBackgroundNetworkTestCase {
         }
         Log.i(TAG, "testDataAndBatterySaverModes_nonMeteredNetwork() tests");
         setRestrictBackground(true);
-        setPowerSaveMode(true);
+        setBatterySaverMode(true);
 
         Log.v(TAG, "Not whitelisted for any.");
         assertBackgroundNetworkAccess(false);
