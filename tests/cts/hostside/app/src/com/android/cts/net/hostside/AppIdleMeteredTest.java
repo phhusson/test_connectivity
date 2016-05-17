@@ -16,10 +16,15 @@
 
 package com.android.cts.net.hostside;
 
-public class BatterySaverModeNonMeteredTest extends AbstractBatterySaverModeTestCase {
+public class AppIdleMeteredTest extends AbstractAppIdleTestCase {
 
     @Override
     protected void setUpMeteredNetwork() throws Exception {
+        setMeteredNetwork();
+    }
+
+    @Override
+    protected void tearDownMeteredNetwork() throws Exception {
         resetMeteredNetwork();
     }
 }

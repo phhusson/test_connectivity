@@ -16,7 +16,7 @@
 
 package com.android.cts.net.hostside;
 
-public class BatterySaverModeNonMeteredTest extends AbstractBatterySaverModeTestCase {
+public class AppIdleNonMeteredTest extends AbstractAppIdleTestCase {
 
     @Override
     protected void setUpMeteredNetwork() throws Exception {
