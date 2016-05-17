@@ -80,7 +80,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     private String mMeteredWifi;
 
     @Override
-    public void setUp() throws Exception {
+    protected void setUp() throws Exception {
         super.setUp();
 
         mInstrumentation = getInstrumentation();
@@ -329,7 +329,12 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
      */
     protected void assertDelayedShellCommand(String command, final String expectedResult)
             throws Exception {
-        assertDelayedShellCommand(command, new ExpectResultChecker() {
+        assertDelayedShellCommand(command, 5, 1, expectedResult);
+    }
+
+    protected void assertDelayedShellCommand(String command, int maxTries, int napTimeSeconds,
+            final String expectedResult) throws Exception {
+        assertDelayedShellCommand(command, maxTries, napTimeSeconds, new ExpectResultChecker() {
 
             @Override
             public boolean isExpected(String result) {
@@ -345,21 +350,28 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
 
     protected void assertDelayedShellCommand(String command, ExpectResultChecker checker)
             throws Exception {
-        final int maxTries = 5;
+        assertDelayedShellCommand(command, 5, 1, checker);
+    }
+    protected void assertDelayedShellCommand(String command, int maxTries, int napTimeSeconds,
+            ExpectResultChecker checker) throws Exception {
         String result = "";
         for (int i = 1; i <= maxTries; i++) {
             result = executeShellCommand(command).trim();
             if (checker.isExpected(result)) return;
             Log.v(TAG, "Command '" + command + "' returned '" + result + " instead of '"
                     + checker.getExpected() + "' on attempt #" + i
-                    + "; sleeping 1s before trying again");
-            Thread.sleep(SECOND_IN_MS);
+                    + "; sleeping " + napTimeSeconds + "s before trying again");
+            Thread.sleep(napTimeSeconds * SECOND_IN_MS);
         }
         fail("Command '" + command + "' did not return '" + checker.getExpected() + "' after "
                 + maxTries
                 + " attempts. Last result: '" + result + "'");
     }
 
+    /**
+     * Puts the device in a state where the active network is metered, or fail if it can't achieve
+     * that state.
+     */
     protected void setMeteredNetwork() throws Exception {
         final NetworkInfo info = mCm.getActiveNetworkInfo();
         final boolean metered = mCm.isActiveNetworkMetered();
@@ -375,17 +387,37 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         mMeteredWifi = netId;
         // Sanity check.
         assertWifiMeteredStatus(netId, true);
-        assertTrue("Could not set wifi '" + netId + "' as metered ("
-                + mCm.getActiveNetworkInfo() +")", mCm.isActiveNetworkMetered());
+        assertActiveNetworkMetered(true);
     }
 
+    /**
+     * Puts the device in a state where the active network is not metered, or fail if it can't
+     * achieve that state.
+     * <p>It assumes the device has a valid WI-FI connection.
+     */
     protected void resetMeteredNetwork() throws Exception {
-        if (mMeteredWifi == null) {
-            Log.d(TAG, "resetMeteredNetwork(): wifi not set as metered");
-            return;
+        if (mMeteredWifi != null) {
+            Log.i(TAG, "resetMeteredNetwork(): SID '" + mMeteredWifi
+                    + "' was set as metered by test case; resetting it");
+            setWifiMeteredStatus(mMeteredWifi, false);
+        } else {
+            final NetworkInfo info = mCm.getActiveNetworkInfo();
+            assertNotNull("Could not get active network", info);
+            if (!info.isMetered()) {
+                Log.d(TAG, "Active network is not metered: " + info);
+            } else if (info.getType() == ConnectivityManager.TYPE_WIFI) {
+                Log.i(TAG, "Setting active WI-FI network as metered: " + info );
+                setWifiMeteredStatus(false);
+            } else {
+                fail("Active network is not WI-FI hence cannot be set as non-metered: " + info);
+            }
         }
-        Log.i(TAG, "resetMeteredNetwork(): resetting " + mMeteredWifi);
-        setWifiMeteredStatus(mMeteredWifi, false);
+        assertActiveNetworkMetered(false); // Sanity check.
+    }
+
+    private void assertActiveNetworkMetered(boolean expected) {
+        final NetworkInfo info = mCm.getActiveNetworkInfo();
+        assertEquals("Wrong metered status for active network " + info, expected, info.isMetered());
     }
 
     private String setWifiMeteredStatus(boolean metered) throws Exception {
@@ -512,14 +544,61 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         assertPowerSaveModeWhitelist(packageName, false); // Sanity check
     }
 
-    protected void setPowerSaveMode(boolean enabled) throws Exception {
-        Log.i(TAG, "Setting power mode to " + enabled);
+    protected void turnBatteryOff() throws Exception {
+        executeSilentShellCommand("cmd battery unplug");
+    }
+
+    protected void turnBatteryOn() throws Exception {
+        executeSilentShellCommand("cmd battery reset");
+    }
+
+    protected void turnScreenOff() throws Exception {
+        executeSilentShellCommand("input keyevent KEYCODE_SLEEP");
+    }
+
+    protected void turnScreenOn() throws Exception {
+        executeSilentShellCommand("input keyevent KEYCODE_WAKEUP");
+        executeSilentShellCommand("wm dismiss-keyguard");
+    }
+
+    protected void setBatterySaverMode(boolean enabled) throws Exception {
+        Log.i(TAG, "Setting Battery Saver Mode to " + enabled);
         if (enabled) {
+            turnBatteryOff();
             executeSilentShellCommand("cmd battery unplug");
             executeSilentShellCommand("settings put global low_power 1");
         } else {
-            executeSilentShellCommand("cmd battery reset");
+            turnBatteryOn();
         }
+    }
+
+    protected void setDozeMode(boolean enabled) throws Exception {
+        Log.i(TAG, "Setting Doze Mode to " + enabled);
+        if (enabled) {
+            turnBatteryOff();
+            turnScreenOff();
+            executeShellCommand("dumpsys deviceidle force-idle deep");
+        } else {
+            turnScreenOn();
+            turnBatteryOn();
+            executeShellCommand("dumpsys deviceidle unforce");
+        }
+        // Sanity check.
+        assertDozeMode(enabled);
+    }
+
+    protected void assertDozeMode(boolean enabled) throws Exception {
+        assertDelayedShellCommand("dumpsys deviceidle get deep", enabled ? "IDLE" : "ACTIVE");
+    }
+
+    protected void setAppIdle(boolean enabled) throws Exception {
+        Log.i(TAG, "Setting app idle to " + enabled);
+        executeSilentShellCommand("am set-inactive " + TEST_APP2_PKG + " " + enabled );
+        assertAppIdle(enabled); // Sanity check
+    }
+
+    protected void assertAppIdle(boolean enabled) throws Exception {
+        assertDelayedShellCommand("am get-inactive " + TEST_APP2_PKG, 10, 2, "Idle=" + enabled);
     }
 
     /**
@@ -548,19 +627,23 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
 
     protected void startForegroundService() throws Exception {
         executeShellCommand(
-                "am startservice com.android.cts.net.hostside.app2/.MyForegroundService");
+                "am startservice -f 1 com.android.cts.net.hostside.app2/.MyForegroundService");
+        assertForegroundServiceState();
     }
 
     protected void stopForegroundService() throws Exception {
         executeShellCommand(
-                "am stopservice com.android.cts.net.hostside.app2/.MyForegroundService");
+                "am startservice -f 2 com.android.cts.net.hostside.app2/.MyForegroundService");
+        // NOTE: cannot assert state because it depends on whether activity was on top before.
     }
 
     /**
      * Launches an activity on app2 so its process is elevated to foreground status.
      */
     protected void launchActivity() throws Exception {
+        turnScreenOn();
         executeShellCommand("am start com.android.cts.net.hostside.app2/.MyActivity");
+        assertForegroundState();
     }
 
     /**
@@ -608,8 +691,17 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         }
     }
 
+    /**
+     * Helper class used to assert the result of a Shell command.
+     */
     protected static interface ExpectResultChecker {
+        /**
+         * Checkes whether the result of the command matched the expectation.
+         */
         boolean isExpected(String result);
+        /**
+         * Gets the expected result so it's displayed on log and failure messages.
+         */
         String getExpected();
     }
 }
