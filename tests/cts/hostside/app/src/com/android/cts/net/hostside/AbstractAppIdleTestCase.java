@@ -16,69 +16,97 @@
 
 package com.android.cts.net.hostside;
 
-//TODO: move this and BatterySaverModeNonMeteredTest's logic into a common superclass
-public class BatterySaverModeTest extends AbstractRestrictBackgroundNetworkTestCase {
+/**
+ * Base class for metered and non-metered tests on idle apps.
+ */
+abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetworkTestCase {
 
     @Override
-    public void setUp() throws Exception {
+    protected final void setUp() throws Exception {
         super.setUp();
 
         // Set initial state.
-        setMeteredNetwork();
+        setUpMeteredNetwork();
         removePowerSaveModeWhitelist(TEST_APP2_PKG);
-        setPowerSaveMode(false);
+        setAppIdle(false);
+        turnBatteryOff();
 
         registerBroadcastReceiver();
     }
 
     @Override
-    protected void tearDown() throws Exception {
+    protected final void tearDown() throws Exception {
         super.tearDown();
 
         try {
-            resetMeteredNetwork();
+            tearDownMeteredNetwork();
         } finally {
-            setPowerSaveMode(false);
+            turnBatteryOn();
+            setAppIdle(false);
         }
     }
 
+    /**
+     * Sets the initial (non) metered network state.
+     *
+     * <p>By default is empty - it's up to subclasses to override.
+     */
+    protected void setUpMeteredNetwork() throws Exception {
+    }
+
+    /**
+     * Resets the (non) metered network state.
+     *
+     * <p>By default is empty - it's up to subclasses to override.
+     */
+    protected void tearDownMeteredNetwork() throws Exception {
+    }
+
     public void testBackgroundNetworkAccess_enabled() throws Exception {
-        setPowerSaveMode(true);
+        setAppIdle(true);
         assertBackgroundNetworkAccess(false);
 
         assertsForegroundAlwaysHasNetworkAccess();
+        setAppIdle(true);
         assertBackgroundNetworkAccess(false);
 
         // Make sure foreground app doesn't lose access upon enabling it.
-        setPowerSaveMode(false);
+        setAppIdle(true);
         launchActivity();
-        assertForegroundNetworkAccess();
-        setPowerSaveMode(true);
+        assertAppIdle(false); // Sanity check - not idle anymore, since activity was launched...
         assertForegroundNetworkAccess();
         finishActivity();
+        assertAppIdle(false); // Sanity check - not idle anymore, since activity was launched...
+        assertBackgroundNetworkAccess(true);
+        setAppIdle(true);
         assertBackgroundNetworkAccess(false);
 
         // Same for foreground service.
-        setPowerSaveMode(false);
+        setAppIdle(true);
         startForegroundService();
-        assertForegroundNetworkAccess();
-        setPowerSaveMode(true);
-        assertForegroundNetworkAccess();
+        assertAppIdle(true); // Sanity check - still idle
+        assertForegroundServiceNetworkAccess();
         stopForegroundService();
+        assertAppIdle(true);
         assertBackgroundNetworkAccess(false);
     }
 
     public void testBackgroundNetworkAccess_whitelisted() throws Exception {
-        setPowerSaveMode(true);
+        setAppIdle(true);
         assertBackgroundNetworkAccess(false);
 
         addPowerSaveModeWhitelist(TEST_APP2_PKG);
+        assertAppIdle(false); // Sanity check - not idle anymore, since whitelisted
         assertBackgroundNetworkAccess(true);
 
         removePowerSaveModeWhitelist(TEST_APP2_PKG);
+        assertAppIdle(true); // Sanity check - idle again, once whitelisted was removed
         assertBackgroundNetworkAccess(false);
 
         assertsForegroundAlwaysHasNetworkAccess();
+
+        // Sanity check - no whitelist, no access!
+        setAppIdle(true);
         assertBackgroundNetworkAccess(false);
     }
 
