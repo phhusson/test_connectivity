@@ -283,7 +283,8 @@ public class ConnectivityManagerTest extends AndroidTestCase {
             assertTrue("Couldn't start using the HIPRI feature.", result != -1);
 
             // Check that the ConnectivityManager reported that it connected using hipri...
-            assertTrue("Couldn't connect using hipri...", receiver.waitForConnection());
+            assertTrue("[RERUN] Couldn't connect using hipri. Check signal and SIM.",
+                    receiver.waitForConnection());
 
             assertTrue("Couldn't requestRouteToHost using HIPRI.",
                     mCm.requestRouteToHost(ConnectivityManager.TYPE_MOBILE_HIPRI, HOST_ADDRESS));
@@ -311,7 +312,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         mContext.registerReceiver(receiver, filter);
 
         assertTrue(mWifiManager.setWifiEnabled(true));
-        assertTrue("Wifi must be configured to connect to an access point for this test.",
+        assertTrue("[RERUN] Wifi must be configured to connect to an access point for this test.",
                 receiver.waitForConnection());
 
         mContext.unregisterReceiver(receiver);
