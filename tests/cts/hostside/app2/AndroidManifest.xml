@@ -45,7 +45,8 @@
                 <action android:name="com.android.cts.net.hostside.app2.action.GET_COUNTERS" />
                 <action android:name="com.android.cts.net.hostside.app2.action.GET_RESTRICT_BACKGROUND_STATUS" />
                 <action android:name="com.android.cts.net.hostside.app2.action.CHECK_NETWORK" />
-            </intent-filter>
+                <action android:name="com.android.cts.net.hostside.app2.action.SEND_NOTIFICATION" />
+                </intent-filter>
         </receiver>
     </application>
 

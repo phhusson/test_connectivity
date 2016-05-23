@@ -34,6 +34,8 @@ import android.net.NetworkInfo;
 import android.net.NetworkInfo.DetailedState;
 import android.net.NetworkInfo.State;
 import android.net.wifi.WifiManager;
+import android.os.SystemClock;
+import android.service.notification.NotificationListenerService;
 import android.test.InstrumentationTestCase;
 import android.util.Log;
 
@@ -60,12 +62,16 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             "com.android.cts.net.hostside.app2.action.CHECK_NETWORK";
     private static final String ACTION_RECEIVER_READY =
             "com.android.cts.net.hostside.app2.action.RECEIVER_READY";
+    static final String ACTION_SEND_NOTIFICATION =
+            "com.android.cts.net.hostside.app2.action.SEND_NOTIFICATION";
     private static final String EXTRA_ACTION = "com.android.cts.net.hostside.app2.extra.ACTION";
     private static final String EXTRA_RECEIVER_NAME =
             "com.android.cts.net.hostside.app2.extra.RECEIVER_NAME";
+    private static final String EXTRA_NOTIFICATION_ID =
+            "com.android.cts.net.hostside.app2.extra.NOTIFICATION_ID";
     private static final String NETWORK_STATUS_SEPARATOR = "\\|";
     private static final int SECOND_IN_MS = 1000;
-    private static final int NETWORK_TIMEOUT_MS = 15 * SECOND_IN_MS;
+    static final int NETWORK_TIMEOUT_MS = 15 * SECOND_IN_MS;
     private static final int PROCESS_STATE_FOREGROUND_SERVICE = 4;
 
 
@@ -118,7 +124,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             Log.d(TAG, "Expecting count " + expectedCount + " but actual is " + count + " after "
                     + attempts + " attempts; sleeping "
                     + SLEEP_TIME_SEC + " seconds before trying again");
-            Thread.sleep(SLEEP_TIME_SEC * SECOND_IN_MS);
+            SystemClock.sleep(SLEEP_TIME_SEC * SECOND_IN_MS);
         } while (attempts <= maxAttempts);
         assertEquals("Number of expected broadcasts for " + receiverName + " not reached after "
                 + maxAttempts * SLEEP_TIME_SEC + " seconds", expectedCount, count);
@@ -211,7 +217,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             }
             Log.d(TAG, "App not on background state on attempt #" + i
                     + "; sleeping 1s before trying again");
-            Thread.sleep(SECOND_IN_MS);
+            SystemClock.sleep(SECOND_IN_MS);
         }
         fail("App2 is not on background state after " + maxTries + " attempts: " + state );
     }
@@ -228,7 +234,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             }
             Log.d(TAG, "App not on foreground state on attempt #" + i
                     + "; sleeping 1s before trying again");
-            Thread.sleep(SECOND_IN_MS);
+            SystemClock.sleep(SECOND_IN_MS);
         }
         fail("App2 is not on foreground state after " + maxTries + " attempts: " + state );
     }
@@ -245,7 +251,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             }
             Log.d(TAG, "App not on foreground service state on attempt #" + i
                     + "; sleeping 1s before trying again");
-            Thread.sleep(SECOND_IN_MS);
+            SystemClock.sleep(SECOND_IN_MS);
         }
         fail("App2 is not on foreground service state after " + maxTries + " attempts: " + state );
     }
@@ -286,7 +292,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
                 if (state != State.CONNECTED) {
                     Log.d(TAG, "State (" + state + ") not set to CONNECTED on attempt #" + i
                             + "; sleeping 1s before trying again");
-                    Thread.sleep(SECOND_IN_MS);
+                    SystemClock.sleep(SECOND_IN_MS);
                 } else {
                     assertEquals("wrong detailed state for " + networkInfo,
                             DetailedState.CONNECTED, detailedState);
@@ -299,7 +305,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
                 if (state != State.DISCONNECTED) {
                     Log.d(TAG, "State (" + state + ") not set to DISCONNECTED on attempt #" + i
                             + "; sleeping 1s before trying again");
-                    Thread.sleep(SECOND_IN_MS);
+                    SystemClock.sleep(SECOND_IN_MS);
                 } else {
                     assertEquals("wrong detailed state for " + networkInfo,
                             DetailedState.BLOCKED, detailedState);
@@ -361,7 +367,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             Log.v(TAG, "Command '" + command + "' returned '" + result + " instead of '"
                     + checker.getExpected() + "' on attempt #" + i
                     + "; sleeping " + napTimeSeconds + "s before trying again");
-            Thread.sleep(napTimeSeconds * SECOND_IN_MS);
+            SystemClock.sleep(napTimeSeconds * SECOND_IN_MS);
         }
         fail("Command '" + command + "' did not return '" + checker.getExpected() + "' after "
                 + maxTries
@@ -526,7 +532,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             }
             Log.v(TAG, list + " check for uid " + uid + " doesn't match yet (expected "
                     + expected + ", got " + actual + "); sleeping 1s before polling again");
-            Thread.sleep(SECOND_IN_MS);
+            SystemClock.sleep(SECOND_IN_MS);
         }
         fail(list + " check for uid " + uid + " failed: expected " + expected + ", got " + actual
                 + ". Full list: " + uids);
@@ -632,9 +638,40 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
                 return;
             }
             Log.v(TAG, "app2 receiver is not ready yet; sleeping 1s before polling again");
-            Thread.sleep(SECOND_IN_MS);
+            SystemClock.sleep(SECOND_IN_MS);
         }
         fail("app2 receiver is not ready");
+    }
+
+    /**
+     * Registers a {@link NotificationListenerService} implementation that will execute the
+     * notification actions right after the notification is sent.
+     */
+    protected void registerNotificationListenerService() throws Exception {
+        final StringBuilder listeners = new StringBuilder(getNotificationListenerServices());
+        if (listeners.length() > 0) {
+            listeners.append(":");
+        }
+        listeners.append(MyNotificationListenerService.getId());
+        executeShellCommand("settings put secure enabled_notification_listeners " + listeners);
+        final String newListeners = getNotificationListenerServices();
+        assertEquals("Failed to set 'enabled_notification_listeners'",
+                listeners.toString(), newListeners);
+    }
+
+    private String getNotificationListenerServices() throws Exception {
+        return executeShellCommand("settings get secure enabled_notification_listeners");
+    }
+
+    protected void setPendingIntentWhitelistDuration(int durationMs) throws Exception {
+        final String command = String.format(
+                "settings put global device_idle_constants %s=%d",
+                "notification_whitelist_duration", durationMs);
+        executeSilentShellCommand(command);
+    }
+
+    protected void resetDeviceIdleSettings() throws Exception {
+        executeShellCommand("settings delete global device_idle_constants");
     }
 
     protected void startForegroundService() throws Exception {
@@ -665,6 +702,13 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         executeShellCommand("am broadcast -a "
                 + " com.android.cts.net.hostside.app2.action.FINISH_ACTIVITY "
                 + "--receiver-foreground --receiver-registered-only");
+    }
+
+    protected void sendNotification(int notificationId) {
+        final Intent intent = new Intent(ACTION_SEND_NOTIFICATION);
+        intent.putExtra(EXTRA_NOTIFICATION_ID, notificationId);
+        Log.d(TAG, "Sending broadcast: " + intent);
+        mContext.sendBroadcast(intent);
     }
 
     private String toString(int status) {

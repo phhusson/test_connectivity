@@ -184,6 +184,11 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
                 "testBackgroundNetworkAccess_enabled");
     }
 
+    public void testDozeModeMetered_enabledButWhitelistedOnNotificationAction() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".DozeModeMeteredTest",
+                "testBackgroundNetworkAccess_enabledButWhitelistedOnNotificationAction");
+    }
+
     // TODO: currently power-save mode and idle uses the same whitelist, so this test would be
     // redundant (as it would be testing the same as testBatterySaverMode_reinstall())
     //    public void testDozeMode_reinstall() throws Exception {
@@ -202,6 +207,12 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
     public void testDozeModeNonMetered_enabled() throws Exception {
         runDeviceTests(TEST_PKG, TEST_PKG + ".DozeModeNonMeteredTest",
                 "testBackgroundNetworkAccess_enabled");
+    }
+
+    public void testDozeModeNonMetered_enabledButWhitelistedOnNotificationAction()
+            throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".DozeModeNonMeteredTest",
+                "testBackgroundNetworkAccess_enabledButWhitelistedOnNotificationAction");
     }
 
     /**********************
