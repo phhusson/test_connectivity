@@ -18,7 +18,30 @@ package com.android.cts.net;
 
 public class HostsideVpnTests extends HostsideNetworkTestCase {
 
-    public void testVpn() throws Exception {
-        runDeviceTests(TEST_PKG, TEST_PKG + ".VpnTest");
+    @Override
+    protected void setUp() throws Exception {
+        super.setUp();
+
+        uninstallPackage(TEST_APP2_PKG, false);
+        installPackage(TEST_APP2_APK);
+    }
+
+    @Override
+    protected void tearDown() throws Exception {
+        super.tearDown();
+
+        uninstallPackage(TEST_APP2_PKG, true);
+    }
+
+    public void testDefault() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".VpnTest", "testDefault");
+    }
+
+    public void testAppAllowed() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".VpnTest", "testAppAllowed");
+    }
+
+    public void testAppDisallowed() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".VpnTest", "testAppDisallowed");
     }
 }
