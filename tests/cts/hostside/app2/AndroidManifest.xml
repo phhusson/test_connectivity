@@ -29,11 +29,15 @@
 
          The manifest-defined listener also handles ordered broadcasts used to share data with the
          test app.
+
+         This application also provides a service, RemoteSocketFactoryService, that the test app can
+         use to open sockets to remote hosts as a different user ID.
     -->
     <application>
         <activity android:name=".MyActivity" android:exported="true"/>
         <service android:name=".MyService" android:exported="true"/>
         <service android:name=".MyForegroundService" android:exported="true"/>
+        <service android:name=".RemoteSocketFactoryService" android:exported="true"/>
 
         <receiver android:name=".MyBroadcastReceiver" >
             <intent-filter>

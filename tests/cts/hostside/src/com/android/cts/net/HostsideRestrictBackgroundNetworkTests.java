@@ -21,9 +21,6 @@ import com.android.tradefed.device.DeviceNotAvailableException;
 
 public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestCase {
 
-    private static final String TEST_APP2_PKG = "com.android.cts.net.hostside.app2";
-    private static final String TEST_APP2_APK = "CtsHostsideNetworkTestsApp2.apk";
-
     @Override
     protected void setUp() throws Exception {
         super.setUp();
