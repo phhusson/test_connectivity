@@ -403,7 +403,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         } else {
             final NetworkInfo info = mCm.getActiveNetworkInfo();
             assertNotNull("Could not get active network", info);
-            if (!info.isMetered()) {
+            if (!mCm.isActiveNetworkMetered()) {
                 Log.d(TAG, "Active network is not metered: " + info);
             } else if (info.getType() == ConnectivityManager.TYPE_WIFI) {
                 Log.i(TAG, "Setting active WI-FI network as metered: " + info );
@@ -415,9 +415,21 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         assertActiveNetworkMetered(false); // Sanity check.
     }
 
-    private void assertActiveNetworkMetered(boolean expected) {
-        final NetworkInfo info = mCm.getActiveNetworkInfo();
-        assertEquals("Wrong metered status for active network " + info, expected, info.isMetered());
+    private void assertActiveNetworkMetered(boolean expected) throws Exception {
+        final int maxTries = 5;
+        NetworkInfo info = null;
+        for (int i = 1; i <= maxTries; i++) {
+            info = mCm.getActiveNetworkInfo();
+            if (info != null) {
+                break;
+            }
+            Log.v(TAG, "No active network info on attempt #" + i
+                    + "; sleeping 1s before polling again");
+            Thread.sleep(SECOND_IN_MS);
+        }
+        assertNotNull("No active network after " + maxTries + " attempts", info);
+        assertEquals("Wrong metered status for active network " + info, expected,
+                mCm.isActiveNetworkMetered());
     }
 
     private String setWifiMeteredStatus(boolean metered) throws Exception {
