@@ -21,6 +21,7 @@ import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
 
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -35,11 +36,11 @@ import android.net.NetworkInfo.DetailedState;
 import android.net.NetworkInfo.State;
 import android.net.NetworkRequest;
 import android.net.wifi.WifiManager;
-import android.test.AndroidTestCase;
-import android.util.Log;
 import android.os.SystemProperties;
 import android.system.Os;
 import android.system.OsConstants;
+import android.test.AndroidTestCase;
+import android.util.Log;
 
 import com.android.internal.telephony.PhoneConstants;
 
@@ -48,12 +49,9 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.net.InetSocketAddress;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 public class ConnectivityManagerTest extends AndroidTestCase {
@@ -68,6 +66,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
     private static final int HOST_ADDRESS = 0x7f000001;// represent ip 127.0.0.1
     private static final String TEST_HOST = "connectivitycheck.gstatic.com";
     private static final int SOCKET_TIMEOUT_MS = 2000;
+    private static final int SEND_BROADCAST_TIMEOUT = 30000;
     private static final int HTTP_PORT = 80;
     private static final String HTTP_REQUEST =
             "GET /generate_204 HTTP/1.0\r\n" +
@@ -78,9 +77,14 @@ public class ConnectivityManagerTest extends AndroidTestCase {
     private static final String NETWORK_CALLBACK_ACTION =
             "ConnectivityManagerTest.NetworkCallbackAction";
 
+    // Intent string to get the number of CONNECTIVITY_ACTION callbacks the test app has seen
+    public static final String GET_CONNECTIVITY_ACTION_COUNT =
+            "android.net.cts.appForApi23.getConnectivityActionCount";
+
     // device could have only one interface: data, wifi.
     private static final int MIN_NUM_NETWORK_TYPES = 1;
 
+    private Context mContext;
     private ConnectivityManager mCm;
     private WifiManager mWifiManager;
     private PackageManager mPackageManager;
@@ -90,13 +94,14 @@ public class ConnectivityManagerTest extends AndroidTestCase {
     @Override
     protected void setUp() throws Exception {
         super.setUp();
-        mCm = (ConnectivityManager) getContext().getSystemService(Context.CONNECTIVITY_SERVICE);
-        mWifiManager = (WifiManager) getContext().getSystemService(Context.WIFI_SERVICE);
-        mPackageManager = getContext().getPackageManager();
+        mContext = getContext();
+        mCm = (ConnectivityManager) mContext.getSystemService(Context.CONNECTIVITY_SERVICE);
+        mWifiManager = (WifiManager) mContext.getSystemService(Context.WIFI_SERVICE);
+        mPackageManager = mContext.getPackageManager();
 
         // Get com.android.internal.R.array.networkAttributes
-        int resId = getContext().getResources().getIdentifier("networkAttributes", "array", "android");
-        String[] naStrings = getContext().getResources().getStringArray(resId);
+        int resId = mContext.getResources().getIdentifier("networkAttributes", "array", "android");
+        String[] naStrings = mContext.getResources().getStringArray(resId);
         //TODO: What is the "correct" way to determine if this is a wifi only device?
         boolean wifiOnly = SystemProperties.getBoolean("ro.radio.noril", false);
         for (String naString : naStrings) {
@@ -381,19 +386,10 @@ public class ConnectivityManagerTest extends AndroidTestCase {
     /**
      * Tests reporting of connectivity changed.
      */
-    public void testConnectivityChanged() {
-        // We are going to ensure that we *don't* see the connectivity in the manifest.
+    public void testConnectivityChanged_manifestRequestOnly_shouldNotReceiveIntent() {
         ConnectivityReceiver.prepare();
 
-        // We will toggle the state of wifi to generate a connectivity change.
-        final boolean previousWifiEnabledState = mWifiManager.isWifiEnabled();
-
-        if (previousWifiEnabledState) {
-            Network wifiNetwork = getWifiNetwork();
-            disconnectFromWifi(wifiNetwork);
-        } else {
-            connectToWifi();
-        }
+        toggleWifi();
 
         // The connectivity broadcast has been sent; push through a terminal broadcast
         // to wait for in the receive to confirm it didn't see the connectivity change.
@@ -401,12 +397,63 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         finalIntent.setClass(mContext, ConnectivityReceiver.class);
         mContext.sendBroadcast(finalIntent);
         assertFalse(ConnectivityReceiver.waitForBroadcast());
+    }
 
-        // Now restore previous state.
-        if (previousWifiEnabledState) {
+    public void testConnectivityChanged_whenRegistered_shouldReceiveIntent() {
+        ConnectivityReceiver.prepare();
+        ConnectivityReceiver receiver = new ConnectivityReceiver();
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(ConnectivityManager.CONNECTIVITY_ACTION);
+        mContext.registerReceiver(receiver, filter);
+
+        toggleWifi();
+        Intent finalIntent = new Intent(ConnectivityReceiver.FINAL_ACTION);
+        finalIntent.setClass(mContext, ConnectivityReceiver.class);
+        mContext.sendBroadcast(finalIntent);
+
+        assertTrue(ConnectivityReceiver.waitForBroadcast());
+    }
+
+    public void testConnectivityChanged_manifestRequestOnlyPreN_shouldReceiveIntent()
+            throws InterruptedException {
+        Intent startIntent = new Intent();
+        startIntent.setComponent(new ComponentName("android.net.cts.appForApi23",
+                "android.net.cts.appForApi23.ConnectivityListeningActivity"));
+        mContext.startActivity(startIntent);
+
+        toggleWifi();
+
+        Intent getConnectivityCount = new Intent(GET_CONNECTIVITY_ACTION_COUNT);
+        assertEquals(2, sendOrderedBroadcastAndReturnResultCode(
+                getConnectivityCount, SEND_BROADCAST_TIMEOUT));
+    }
+
+    private int sendOrderedBroadcastAndReturnResultCode(
+            Intent intent, int timeoutMs) throws InterruptedException {
+        final LinkedBlockingQueue<Integer> result = new LinkedBlockingQueue<>(1);
+        mContext.sendOrderedBroadcast(intent, null, new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                result.offer(getResultCode());
+            }
+        }, null, 0, null, null);
+
+        Integer resultCode = result.poll(timeoutMs, TimeUnit.MILLISECONDS);
+        assertNotNull("Timed out (more than " + timeoutMs +
+                " milliseconds) waiting for result code for broadcast", resultCode);
+        return resultCode;
+    }
+
+    // Toggle WiFi twice, leaving it in the state it started in
+    private void toggleWifi() {
+        if (mWifiManager.isWifiEnabled()) {
+            Network wifiNetwork = getWifiNetwork();
+            disconnectFromWifi(wifiNetwork);
             connectToWifi();
         } else {
-            disconnectFromWifi(null);
+            connectToWifi();
+            Network wifiNetwork = getWifiNetwork();
+            disconnectFromWifi(wifiNetwork);
         }
     }
 
