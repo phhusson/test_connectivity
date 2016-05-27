@@ -22,17 +22,17 @@ import static com.android.cts.net.hostside.app2.Common.ACTION_CHECK_NETWORK;
 import static com.android.cts.net.hostside.app2.Common.ACTION_GET_COUNTERS;
 import static com.android.cts.net.hostside.app2.Common.ACTION_GET_RESTRICT_BACKGROUND_STATUS;
 import static com.android.cts.net.hostside.app2.Common.ACTION_RECEIVER_READY;
+import static com.android.cts.net.hostside.app2.Common.ACTION_SEND_NOTIFICATION;
 import static com.android.cts.net.hostside.app2.Common.EXTRA_ACTION;
+import static com.android.cts.net.hostside.app2.Common.EXTRA_NOTIFICATION_ID;
 import static com.android.cts.net.hostside.app2.Common.EXTRA_RECEIVER_NAME;
 import static com.android.cts.net.hostside.app2.Common.MANIFEST_RECEIVER;
 import static com.android.cts.net.hostside.app2.Common.TAG;
 import static com.android.cts.net.hostside.app2.Common.getUid;
 
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
-
+import android.app.Notification;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -40,6 +40,11 @@ import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.util.Log;
+
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Receiver used to:
@@ -84,6 +89,9 @@ public class MyBroadcastReceiver extends BroadcastReceiver {
                 final String message = mName + " is ready to rumble";
                 Log.d(TAG, message);
                 setResultData(message);
+                break;
+            case ACTION_SEND_NOTIFICATION:
+                sendNotification(context, intent);
                 break;
             default:
                 Log.e(TAG, "received unexpected action: " + action);
@@ -212,5 +220,24 @@ public class MyBroadcastReceiver extends BroadcastReceiver {
         }
         final int counter = getCounter(context, action, receiverName);
         setResultData(String.valueOf(counter));
+    }
+
+    /**
+     * Sends a system notification containing actions with pending intents to launch the app's
+     * main activitiy or service.
+     */
+    private void sendNotification(Context context, Intent intent) {
+        final int notificationId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, -1);
+        final Intent serviceIntent = new Intent(context, MyService.class);
+        final PendingIntent pendingIntent = PendingIntent.getService(context, 0, serviceIntent, 0);
+
+        final Notification notification = new Notification.Builder(context)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle("Light, Cameras...")
+                .setContentIntent(pendingIntent)
+                .addAction(R.drawable.ic_notification, "ACTION", pendingIntent)
+                .build();
+        ((NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE))
+            .notify(notificationId, notification);
     }
 }
