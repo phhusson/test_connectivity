@@ -16,6 +16,8 @@
 
 package com.android.cts.net.hostside;
 
+import android.os.SystemClock;
+
 /**
  * Base class for metered and non-metered Doze Mode tests.
  */
@@ -97,6 +99,24 @@ abstract class AbstractDozeModeTestCase extends AbstractRestrictBackgroundNetwor
 
         assertsForegroundAlwaysHasNetworkAccess();
         assertBackgroundNetworkAccess(true);
+    }
+
+    public void testBackgroundNetworkAccess_enabledButWhitelistedOnNotificationAction()
+            throws Exception {
+        setPendingIntentWhitelistDuration(NETWORK_TIMEOUT_MS);
+        try {
+            registerNotificationListenerService();
+            setDozeMode(true);
+            assertBackgroundNetworkAccess(false);
+
+            sendNotification(42);
+            assertBackgroundNetworkAccess(true);
+            // Make sure access is disabled after it expires
+            SystemClock.sleep(NETWORK_TIMEOUT_MS);
+            assertBackgroundNetworkAccess(false);
+        } finally {
+            resetDeviceIdleSettings();
+        }
     }
 
     // Must override so it only tests foreground service - once an app goes to foreground, device
