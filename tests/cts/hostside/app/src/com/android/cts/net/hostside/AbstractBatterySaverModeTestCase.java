@@ -16,6 +16,8 @@
 
 package com.android.cts.net.hostside;
 
+import android.util.Log;
+
 /**
  * Base class for metered and non-metered Battery Saver Mode tests.
  */
@@ -24,6 +26,8 @@ abstract class AbstractBatterySaverModeTestCase extends AbstractRestrictBackgrou
     @Override
     protected final void setUp() throws Exception {
         super.setUp();
+
+        if (!isSupported()) return;
 
         // Set initial state.
         setUpMeteredNetwork();
@@ -37,11 +41,23 @@ abstract class AbstractBatterySaverModeTestCase extends AbstractRestrictBackgrou
     protected final void tearDown() throws Exception {
         super.tearDown();
 
+        if (!isSupported()) return;
+
         try {
             tearDownMeteredNetwork();
         } finally {
             setBatterySaverMode(false);
         }
+    }
+
+    @Override
+    protected boolean isSupported() throws Exception {
+        boolean supported = isDozeModeEnabled();
+        if (!supported) {
+            Log.i(TAG, "Skipping " + getClass() + "." + getName()
+                    + "() because device does not support Doze Mode");
+        }
+        return supported;
     }
 
     /**
@@ -61,6 +77,8 @@ abstract class AbstractBatterySaverModeTestCase extends AbstractRestrictBackgrou
     }
 
     public void testBackgroundNetworkAccess_enabled() throws Exception {
+        if (!isSupported()) return;
+
         setBatterySaverMode(true);
         assertBackgroundNetworkAccess(false);
 
@@ -87,6 +105,8 @@ abstract class AbstractBatterySaverModeTestCase extends AbstractRestrictBackgrou
     }
 
     public void testBackgroundNetworkAccess_whitelisted() throws Exception {
+        if (!isSupported()) return;
+
         setBatterySaverMode(true);
         assertBackgroundNetworkAccess(false);
 
@@ -101,6 +121,8 @@ abstract class AbstractBatterySaverModeTestCase extends AbstractRestrictBackgrou
     }
 
     public void testBackgroundNetworkAccess_disabled() throws Exception {
+        if (!isSupported()) return;
+
         assertBackgroundNetworkAccess(true);
 
         assertsForegroundAlwaysHasNetworkAccess();

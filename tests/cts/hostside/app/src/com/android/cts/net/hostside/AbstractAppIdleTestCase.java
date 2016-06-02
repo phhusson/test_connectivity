@@ -16,6 +16,8 @@
 
 package com.android.cts.net.hostside;
 
+import android.util.Log;
+
 /**
  * Base class for metered and non-metered tests on idle apps.
  */
@@ -24,6 +26,8 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
     @Override
     protected final void setUp() throws Exception {
         super.setUp();
+
+        if (!isSupported()) return;
 
         // Set initial state.
         setUpMeteredNetwork();
@@ -38,12 +42,24 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
     protected final void tearDown() throws Exception {
         super.tearDown();
 
+        if (!isSupported()) return;
+
         try {
             tearDownMeteredNetwork();
         } finally {
             turnBatteryOn();
             setAppIdle(false);
         }
+    }
+
+    @Override
+    protected boolean isSupported() throws Exception {
+        boolean supported = isDozeModeEnabled();
+        if (!supported) {
+            Log.i(TAG, "Skipping " + getClass() + "." + getName()
+                    + "() because device does not support Doze Mode");
+        }
+        return supported;
     }
 
     /**
@@ -63,6 +79,8 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
     }
 
     public void testBackgroundNetworkAccess_enabled() throws Exception {
+        if (!isSupported()) return;
+
         setAppIdle(true);
         assertBackgroundNetworkAccess(false);
 
@@ -92,6 +110,8 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
     }
 
     public void testBackgroundNetworkAccess_whitelisted() throws Exception {
+        if (!isSupported()) return;
+
         setAppIdle(true);
         assertBackgroundNetworkAccess(false);
 
@@ -111,6 +131,8 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
     }
 
     public void testBackgroundNetworkAccess_disabled() throws Exception {
+        if (!isSupported()) return;
+
         assertBackgroundNetworkAccess(true);
 
         assertsForegroundAlwaysHasNetworkAccess();

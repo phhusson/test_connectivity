@@ -17,6 +17,7 @@
 package com.android.cts.net.hostside;
 
 import android.os.SystemClock;
+import android.util.Log;
 
 /**
  * Base class for metered and non-metered Doze Mode tests.
@@ -26,6 +27,8 @@ abstract class AbstractDozeModeTestCase extends AbstractRestrictBackgroundNetwor
     @Override
     protected final void setUp() throws Exception {
         super.setUp();
+
+        if (!isSupported()) return;
 
         // Set initial state.
         setUpMeteredNetwork();
@@ -39,11 +42,23 @@ abstract class AbstractDozeModeTestCase extends AbstractRestrictBackgroundNetwor
     protected final void tearDown() throws Exception {
         super.tearDown();
 
+        if (!isSupported()) return;
+
         try {
             tearDownMeteredNetwork();
         } finally {
             setDozeMode(false);
         }
+    }
+
+    @Override
+    protected boolean isSupported() throws Exception {
+        boolean supported = isDozeModeEnabled();
+        if (!supported) {
+            Log.i(TAG, "Skipping " + getClass() + "." + getName()
+                    + "() because device does not support Doze Mode");
+        }
+        return supported;
     }
 
     /**
@@ -63,6 +78,8 @@ abstract class AbstractDozeModeTestCase extends AbstractRestrictBackgroundNetwor
     }
 
     public void testBackgroundNetworkAccess_enabled() throws Exception {
+        if (!isSupported()) return;
+
         setDozeMode(true);
         assertBackgroundNetworkAccess(false);
 
@@ -81,6 +98,8 @@ abstract class AbstractDozeModeTestCase extends AbstractRestrictBackgroundNetwor
     }
 
     public void testBackgroundNetworkAccess_whitelisted() throws Exception {
+        if (!isSupported()) return;
+
         setDozeMode(true);
         assertBackgroundNetworkAccess(false);
 
@@ -95,6 +114,8 @@ abstract class AbstractDozeModeTestCase extends AbstractRestrictBackgroundNetwor
     }
 
     public void testBackgroundNetworkAccess_disabled() throws Exception {
+        if (!isSupported()) return;
+
         assertBackgroundNetworkAccess(true);
 
         assertsForegroundAlwaysHasNetworkAccess();
@@ -103,6 +124,8 @@ abstract class AbstractDozeModeTestCase extends AbstractRestrictBackgroundNetwor
 
     public void testBackgroundNetworkAccess_enabledButWhitelistedOnNotificationAction()
             throws Exception {
+        if (!isSupported()) return;
+
         setPendingIntentWhitelistDuration(NETWORK_TIMEOUT_MS);
         try {
             registerNotificationListenerService();
