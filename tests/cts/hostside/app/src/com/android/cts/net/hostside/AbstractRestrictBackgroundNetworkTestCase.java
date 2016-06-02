@@ -269,8 +269,6 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     private void assertNetworkAccess(boolean expectAvailable) throws Exception {
         final Intent intent = new Intent(ACTION_CHECK_NETWORK);
 
-        // When the network info state change, it's possible the app still get the previous value,
-        // so we need to retry a couple times.
         final int maxTries = 5;
         String resultData = null;
         for (int i = 1; i <= maxTries; i++) {
@@ -287,8 +285,14 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             final String networkInfo = parts[4];
 
             if (expectAvailable) {
-                assertTrue("should be connected: " + connectionCheckDetails
-                        + " (network info: " + networkInfo + ")", connected);
+                if (!connected) {
+                    // Since it's establishing a connection to an external site, it could be flaky.
+                    Log.w(TAG, "Failed to connect to an external site on attempt #" + i +
+                            " (error: " + connectionCheckDetails + ", NetworkInfo: " + networkInfo
+                            + "); sleeping " + NETWORK_TIMEOUT_MS + "ms before trying again");
+                    SystemClock.sleep(NETWORK_TIMEOUT_MS);
+                    continue;
+                }
                 if (state != State.CONNECTED) {
                     Log.d(TAG, "State (" + state + ") not set to CONNECTED on attempt #" + i
                             + "; sleeping 1s before trying again");
@@ -303,6 +307,8 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
                 assertFalse("should not be connected: " + connectionCheckDetails
                         + " (network info: " + networkInfo + ")", connected);
                 if (state != State.DISCONNECTED) {
+                    // When the network info state change, it's possible the app still get the
+                    // previous value, so we need to retry a couple times.
                     Log.d(TAG, "State (" + state + ") not set to DISCONNECTED on attempt #" + i
                             + "; sleeping 1s before trying again");
                     SystemClock.sleep(SECOND_IN_MS);
@@ -313,7 +319,8 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
                 }
             }
         }
-        fail("Invalid state after " + maxTries + " attempts. Last data: " + resultData);
+        fail("Invalid state for expectAvailable=" + expectAvailable + " after " + maxTries
+                + " attempts. Last data: " + resultData);
     }
 
     protected String executeShellCommand(String command) throws Exception {
