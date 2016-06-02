@@ -30,6 +30,8 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
     public void setUp() throws Exception {
         super.setUp();
 
+        if (!isSupported()) return;
+
         // Set initial state.
         setMeteredNetwork();
         setRestrictBackground(false);
@@ -44,6 +46,8 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
     protected void tearDown() throws Exception {
         super.tearDown();
 
+        if (!isSupported()) return;
+
         try {
             resetMeteredNetwork();
         } finally {
@@ -52,6 +56,8 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
     }
 
     public void testGetRestrictBackgroundStatus_disabled() throws Exception {
+        if (!isSupported()) return;
+
         assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_DISABLED);
 
         // Sanity check: make sure status is always disabled, never whitelisted
@@ -64,6 +70,8 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
     }
 
     public void testGetRestrictBackgroundStatus_whitelisted() throws Exception {
+        if (!isSupported()) return;
+
         setRestrictBackground(true);
         assertRestrictBackgroundChangedReceived(1);
         assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_ENABLED);
@@ -81,6 +89,8 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
     }
 
     public void testGetRestrictBackgroundStatus_enabled() throws Exception {
+        if (!isSupported()) return;
+
         setRestrictBackground(true);
         assertRestrictBackgroundChangedReceived(1);
         assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_ENABLED);
@@ -108,6 +118,8 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
     }
 
     public void testGetRestrictBackgroundStatus_blacklisted() throws Exception {
+        if (!isSupported()) return;
+
         addRestrictBackgroundBlacklist(mUid);
         assertRestrictBackgroundChangedReceived(1);
         assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_ENABLED);
@@ -136,6 +148,8 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
     }
 
     public void testGetRestrictBackgroundStatus_requiredWhitelistedPackages() throws Exception {
+        if (!isSupported()) return;
+
         final StringBuilder error = new StringBuilder();
         for (String packageName : REQUIRED_WHITELISTED_PACKAGES) {
             int uid = -1;
