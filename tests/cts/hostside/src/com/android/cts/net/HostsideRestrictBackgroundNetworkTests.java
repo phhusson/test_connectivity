@@ -101,6 +101,12 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
     }
 
     public void testBatterySaverMode_reinstall() throws Exception {
+        if (!isDozeModeEnabled()) {
+            Log.w(TAG, "testBatterySaverMode_reinstall() skipped because device does not support "
+                    + "Doze Mode");
+            return;
+        }
+
         addPowerSaveModeWhitelist(TEST_APP2_PKG);
 
         uninstallPackage(TEST_APP2_PKG, true);
@@ -286,5 +292,10 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
         // need to use netpolicy for whitelisting
         runCommand("dumpsys deviceidle whitelist +" + packageName);
         assertPowerSaveModeWhitelist(packageName, true); // Sanity check
+    }
+
+    protected boolean isDozeModeEnabled() throws Exception {
+        final String result = runCommand("cmd deviceidle enabled deep").trim();
+        return result.equals("1");
     }
 }
