@@ -188,6 +188,22 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     }
 
     /**
+     * Whether this device suport this type of test.
+     *
+     * <p>Should be overridden when necessary, and explicitly used before each test. Example:
+     *
+     * <pre><code>
+     * public void testSomething() {
+     *    if (!isSupported()) return;
+     * </code></pre>
+     *
+     * @return {@code true} by default.
+     */
+    protected boolean isSupported() throws Exception {
+        return true;
+    }
+
+    /**
      * Asserts that an app always have access while on foreground or running a foreground service.
      *
      * <p>This method will launch an activity and a foreground service to make the assertion, but
@@ -598,6 +614,9 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     }
 
     protected void setDozeMode(boolean enabled) throws Exception {
+        // Sanity check, since tests should check beforehand....
+        assertTrue("Device does not support Doze Mode", isDozeModeEnabled());
+
         Log.i(TAG, "Setting Doze Mode to " + enabled);
         if (enabled) {
             turnBatteryOff();
@@ -614,6 +633,11 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
 
     protected void assertDozeMode(boolean enabled) throws Exception {
         assertDelayedShellCommand("dumpsys deviceidle get deep", enabled ? "IDLE" : "ACTIVE");
+    }
+
+    protected boolean isDozeModeEnabled() throws Exception {
+        final String result = executeShellCommand("cmd deviceidle enabled deep").trim();
+        return result.equals("1");
     }
 
     protected void setAppIdle(boolean enabled) throws Exception {
