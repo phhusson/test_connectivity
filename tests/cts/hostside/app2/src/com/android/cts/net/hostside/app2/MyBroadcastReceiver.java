@@ -174,7 +174,7 @@ public class MyBroadcastReceiver extends BroadcastReceiver {
             @Override
             public void run() {
                 // TODO: connect to a hostside server instead
-                final String address = "http://example.com";
+                final String address = "http://google.com";
                 final NetworkInfo networkInfo = cm.getActiveNetworkInfo();
                 Log.d(TAG, "Running checkNetworkStatus() on thread "
                         + Thread.currentThread().getName() + " for UID " + getUid(context)
