@@ -30,7 +30,7 @@
 #include <sys/time.h>
 #include <android/multinetwork.h>
 
-#define UNUSED(X) ((void) X)
+#define UNUSED(X) ((void) (X))
 
 static const char kHostname[] = "connectivitycheck.android.com";
 
