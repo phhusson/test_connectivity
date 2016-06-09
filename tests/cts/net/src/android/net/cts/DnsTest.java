@@ -89,17 +89,15 @@ public class DnsTest extends AndroidTestCase {
             addrs = InetAddress.getAllByName("ipv6.google.com");
         } catch (UnknownHostException e) {}
         assertTrue(addrs.length != 0);
-        foundV4 = false;
         foundV6 = false;
         for (InetAddress addr : addrs) {
-            if (addr instanceof Inet4Address) foundV4 = true;
-            else if (addr instanceof Inet6Address) foundV6 = true;
+            assertFalse ("[RERUN] ipv6.google.com returned IPv4 address: " + addr.getHostAddress() +
+                    ", check your network's DNS connection", addr instanceof Inet4Address);
+            foundV6 |= (addr instanceof Inet6Address);
             if (DBG) Log.e(TAG, "ipv6.google.com gave " + addr.toString());
         }
 
-        assertTrue("[RERUN] ipv6.google.com returned an ipv4 address, check your network's DNS connection.",
-            foundV4 == false);
-        assertTrue(foundV6 == true);
+        assertTrue(foundV6);
 
         assertTrue(testNativeDns());
     }
