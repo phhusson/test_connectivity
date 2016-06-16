@@ -31,6 +31,7 @@ import static com.android.cts.net.hostside.app2.Common.TAG;
 import static com.android.cts.net.hostside.app2.Common.getUid;
 
 import android.app.Notification;
+import android.app.Notification.Action;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
@@ -39,6 +40,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
+import android.os.Bundle;
 import android.util.Log;
 
 import java.net.HttpURLConnection;
@@ -230,12 +232,18 @@ public class MyBroadcastReceiver extends BroadcastReceiver {
         final int notificationId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, -1);
         final Intent serviceIntent = new Intent(context, MyService.class);
         final PendingIntent pendingIntent = PendingIntent.getService(context, 0, serviceIntent, 0);
+        final Bundle badBundle = new Bundle();
+        badBundle.putCharSequence("parcelable", "I am not");
+        final Action action = new Action.Builder(
+                R.drawable.ic_notification, "ACTION", pendingIntent)
+                .addExtras(badBundle)
+                .build();
 
         final Notification notification = new Notification.Builder(context)
                 .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle("Light, Cameras...")
                 .setContentIntent(pendingIntent)
-                .addAction(R.drawable.ic_notification, "ACTION", pendingIntent)
+                .addAction(action)
                 .build();
         ((NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE))
             .notify(notificationId, notification);
