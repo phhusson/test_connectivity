@@ -28,7 +28,7 @@
                 <action android:name="android.net.conn.CONNECTIVITY_CHANGE" />
             </intent-filter>
             <intent-filter>
-                <action android:name="android.net.cts.appForApi23.getConnectivityActionCount" />
+                <action android:name="android.net.cts.appForApi23.getWifiConnectivityActionCount" />
             </intent-filter>
         </receiver>
 
