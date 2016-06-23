@@ -21,18 +21,21 @@ import android.content.Intent;
 import android.net.ConnectivityManager;
 
 public class ConnectivityReceiver extends BroadcastReceiver {
-    public static String GET_CONNECTIVITY_ACTION_COUNT =
-            "android.net.cts.appForApi23.getConnectivityActionCount";
+    public static String GET_WIFI_CONNECTIVITY_ACTION_COUNT =
+            "android.net.cts.appForApi23.getWifiConnectivityActionCount";
 
-    private static int sConnectivityActionCount = 0;
+    private static int sWifiConnectivityActionCount = 0;
 
     @Override
     public void onReceive(Context context, Intent intent) {
         if (ConnectivityManager.CONNECTIVITY_ACTION.equals(intent.getAction())) {
-            sConnectivityActionCount++;
+            int networkType = intent.getIntExtra(ConnectivityManager.EXTRA_NETWORK_TYPE, 0);
+            if (networkType == ConnectivityManager.TYPE_WIFI) {
+                sWifiConnectivityActionCount++;
+            }
         }
-        if (GET_CONNECTIVITY_ACTION_COUNT.equals(intent.getAction())) {
-            setResultCode(sConnectivityActionCount);
+        if (GET_WIFI_CONNECTIVITY_ACTION_COUNT.equals(intent.getAction())) {
+            setResultCode(sWifiConnectivityActionCount);
         }
     }
 }

@@ -77,9 +77,9 @@ public class ConnectivityManagerTest extends AndroidTestCase {
     private static final String NETWORK_CALLBACK_ACTION =
             "ConnectivityManagerTest.NetworkCallbackAction";
 
-    // Intent string to get the number of CONNECTIVITY_ACTION callbacks the test app has seen
-    public static final String GET_CONNECTIVITY_ACTION_COUNT =
-            "android.net.cts.appForApi23.getConnectivityActionCount";
+    // Intent string to get the number of wifi CONNECTIVITY_ACTION callbacks the test app has seen
+    public static final String GET_WIFI_CONNECTIVITY_ACTION_COUNT =
+            "android.net.cts.appForApi23.getWifiConnectivityActionCount";
 
     // device could have only one interface: data, wifi.
     private static final int MIN_NUM_NETWORK_TYPES = 1;
@@ -423,7 +423,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
 
         toggleWifi();
 
-        Intent getConnectivityCount = new Intent(GET_CONNECTIVITY_ACTION_COUNT);
+        Intent getConnectivityCount = new Intent(GET_WIFI_CONNECTIVITY_ACTION_COUNT);
         assertEquals(2, sendOrderedBroadcastAndReturnResultCode(
                 getConnectivityCount, SEND_BROADCAST_TIMEOUT));
     }
