@@ -69,6 +69,18 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             "com.android.cts.net.hostside.app2.extra.RECEIVER_NAME";
     private static final String EXTRA_NOTIFICATION_ID =
             "com.android.cts.net.hostside.app2.extra.NOTIFICATION_ID";
+    private static final String EXTRA_NOTIFICATION_TYPE =
+            "com.android.cts.net.hostside.app2.extra.NOTIFICATION_TYPE";
+
+    protected static final String NOTIFICATION_TYPE_CONTENT = "CONTENT";
+    protected static final String NOTIFICATION_TYPE_DELETE = "DELETE";
+    protected static final String NOTIFICATION_TYPE_FULL_SCREEN = "FULL_SCREEN";
+    protected static final String NOTIFICATION_TYPE_BUNDLE = "BUNDLE";
+    protected static final String NOTIFICATION_TYPE_ACTION = "ACTION";
+    protected static final String NOTIFICATION_TYPE_ACTION_BUNDLE = "ACTION_BUNDLE";
+    protected static final String NOTIFICATION_TYPE_ACTION_REMOTE_INPUT = "ACTION_REMOTE_INPUT";
+
+
     private static final String NETWORK_STATUS_SEPARATOR = "\\|";
     private static final int SECOND_IN_MS = 1000;
     static final int NETWORK_TIMEOUT_MS = 15 * SECOND_IN_MS;
@@ -735,10 +747,12 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
                 + "--receiver-foreground --receiver-registered-only");
     }
 
-    protected void sendNotification(int notificationId) {
+    protected void sendNotification(int notificationId, String notificationType) {
         final Intent intent = new Intent(ACTION_SEND_NOTIFICATION);
         intent.putExtra(EXTRA_NOTIFICATION_ID, notificationId);
-        Log.d(TAG, "Sending broadcast: " + intent);
+        intent.putExtra(EXTRA_NOTIFICATION_TYPE, notificationType);
+        Log.d(TAG, "Sending notification broadcast (id=" + notificationId + ", type="
+                + notificationType + ": " + intent);
         mContext.sendBroadcast(intent);
     }
 
