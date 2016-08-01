@@ -295,60 +295,75 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
      * Asserts whether the active network is available or not.
      */
     private void assertNetworkAccess(boolean expectAvailable) throws Exception {
-        final Intent intent = new Intent(ACTION_CHECK_NETWORK);
-
         final int maxTries = 5;
-        String resultData = null;
+        String error = null;
+        int timeoutMs = 500;
+
         for (int i = 1; i <= maxTries; i++) {
-            resultData = sendOrderedBroadcast(intent);
-            assertNotNull("timeout waiting for ordered broadcast", resultData);
+            error = checkNetworkAccess(expectAvailable);
 
-            // Network status format is described on MyBroadcastReceiver.checkNetworkStatus()
-            final String[] parts = resultData.split(NETWORK_STATUS_SEPARATOR);
-            assertEquals("Wrong network status: " + resultData, 5, parts.length); // Sanity check
-            final State state = State.valueOf(parts[0]);
-            final DetailedState detailedState = DetailedState.valueOf(parts[1]);
-            final boolean connected = Boolean.valueOf(parts[2]);
-            final String connectionCheckDetails = parts[3];
-            final String networkInfo = parts[4];
+            if (error.isEmpty()) return;
 
-            if (expectAvailable) {
-                if (!connected) {
-                    // Since it's establishing a connection to an external site, it could be flaky.
-                    Log.w(TAG, "Failed to connect to an external site on attempt #" + i +
-                            " (error: " + connectionCheckDetails + ", NetworkInfo: " + networkInfo
-                            + "); sleeping " + NETWORK_TIMEOUT_MS + "ms before trying again");
-                    SystemClock.sleep(NETWORK_TIMEOUT_MS);
-                    continue;
-                }
-                if (state != State.CONNECTED) {
-                    Log.d(TAG, "State (" + state + ") not set to CONNECTED on attempt #" + i
-                            + "; sleeping 1s before trying again");
-                    SystemClock.sleep(SECOND_IN_MS);
-                } else {
-                    assertEquals("wrong detailed state for " + networkInfo,
-                            DetailedState.CONNECTED, detailedState);
-                    return;
-                }
-                return;
-            } else {
-                assertFalse("should not be connected: " + connectionCheckDetails
-                        + " (network info: " + networkInfo + ")", connected);
-                if (state != State.DISCONNECTED) {
-                    // When the network info state change, it's possible the app still get the
-                    // previous value, so we need to retry a couple times.
-                    Log.d(TAG, "State (" + state + ") not set to DISCONNECTED on attempt #" + i
-                            + "; sleeping 1s before trying again");
-                    SystemClock.sleep(SECOND_IN_MS);
-                } else {
-                    assertEquals("wrong detailed state for " + networkInfo,
-                            DetailedState.BLOCKED, detailedState);
-                   return;
-                }
-            }
+            // TODO: ideally, it should retry only when it cannot connect to an external site,
+            // or no retry at all! But, currently, the initial change fails almost always on
+            // battery saver tests because the netd changes are made asynchronously.
+            // Once b/27803922 is fixed, this retry mechanism should be revisited.
+
+            Log.w(TAG, "Network status didn't match for expectAvailable=" + expectAvailable
+                    + " on attempt #" + i + ": " + error + "\n"
+                    + "Sleeping " + timeoutMs + "ms before trying again");
+            SystemClock.sleep(timeoutMs);
+            // Exponential back-off.
+            timeoutMs = Math.min(timeoutMs*2, NETWORK_TIMEOUT_MS);
         }
         fail("Invalid state for expectAvailable=" + expectAvailable + " after " + maxTries
-                + " attempts. Last data: " + resultData);
+                + " attempts.\nLast error: " + error);
+    }
+
+    /**
+     * Checks whether the network is available as expected.
+     *
+     * @return error message with the mismatch (or empty if assertion passed).
+     */
+    private String checkNetworkAccess(boolean expectAvailable) throws Exception {
+        String resultData = sendOrderedBroadcast(new Intent(ACTION_CHECK_NETWORK));
+        if (resultData == null) {
+            return "timeout waiting for ordered broadcast";
+        }
+        // Network status format is described on MyBroadcastReceiver.checkNetworkStatus()
+        final String[] parts = resultData.split(NETWORK_STATUS_SEPARATOR);
+        assertEquals("Wrong network status: " + resultData, 5, parts.length); // Sanity check
+        final State state = State.valueOf(parts[0]);
+        final DetailedState detailedState = DetailedState.valueOf(parts[1]);
+        final boolean connected = Boolean.valueOf(parts[2]);
+        final String connectionCheckDetails = parts[3];
+        final String networkInfo = parts[4];
+
+        final StringBuilder errors = new StringBuilder();
+        final State expectedState;
+        final DetailedState expectedDetailedState;
+        if (expectAvailable) {
+            expectedState = State.CONNECTED;
+            expectedDetailedState = DetailedState.CONNECTED;
+        } else {
+            expectedState = State.DISCONNECTED;
+            expectedDetailedState = DetailedState.BLOCKED;
+        }
+
+        if (expectAvailable != connected) {
+            errors.append(String.format("External site connection failed: expected %s, got %s\n",
+                    expectAvailable, connected));
+        }
+        if (expectedState != state || expectedDetailedState != detailedState) {
+            errors.append(String.format("Connection state mismatch: expected %s/%s, got %s/%s\n",
+                    expectedState, expectedDetailedState, state, detailedState));
+        }
+
+        if (errors.length() > 0) {
+            errors.append("\tnetworkInfo: " + networkInfo + "\n");
+            errors.append("\tconnectionCheckDetails: " + connectionCheckDetails + "\n");
+        }
+        return errors.toString();
     }
 
     protected String executeShellCommand(String command) throws Exception {
