@@ -66,7 +66,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class MyBroadcastReceiver extends BroadcastReceiver {
 
-    private static final int NETWORK_TIMEOUT_MS = 15 * 1000;
+    private static final int NETWORK_TIMEOUT_MS = 5 * 1000;
 
     private final String mName;
 
