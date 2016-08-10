@@ -243,7 +243,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             if (isBackground(state.state)) {
                 return;
             }
-            Log.d(TAG, "App not on background state on attempt #" + i
+            Log.d(TAG, "App not on background state (" + state + ") on attempt #" + i
                     + "; sleeping 1s before trying again");
             SystemClock.sleep(SECOND_IN_MS);
         }
