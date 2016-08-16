@@ -85,6 +85,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     private static final int SECOND_IN_MS = 1000;
     static final int NETWORK_TIMEOUT_MS = 15 * SECOND_IN_MS;
     private static final int PROCESS_STATE_FOREGROUND_SERVICE = 4;
+    private static final int PROCESS_STATE_TOP = 2;
 
 
     // Must be higher than NETWORK_TIMEOUT_MS
@@ -750,7 +751,17 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     protected void launchActivity() throws Exception {
         turnScreenOn();
         executeShellCommand("am start com.android.cts.net.hostside.app2/.MyActivity");
-        assertForegroundState();
+        final int maxTries = 30;
+        ProcessState state = null;
+        for (int i = 1; i <= maxTries; i++) {
+            state = getProcessStateByUid(mUid);
+            if (state.state == PROCESS_STATE_TOP) return;
+            Log.w(TAG, "launchActivity(): uid " + mUid + " not on TOP state on attempt #" + i
+                    + "; turning screen on and sleeping 1s before checking again");
+            turnScreenOn();
+            SystemClock.sleep(SECOND_IN_MS);
+        }
+        fail("App2 is not on foreground state after " + maxTries + " attempts: " + state);
     }
 
     /**
