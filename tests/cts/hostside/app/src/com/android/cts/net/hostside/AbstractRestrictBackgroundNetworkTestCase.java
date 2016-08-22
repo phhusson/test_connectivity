@@ -541,6 +541,9 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     protected void addRestrictBackgroundWhitelist(int uid) throws Exception {
         executeShellCommand("cmd netpolicy add restrict-background-whitelist " + uid);
         assertRestrictBackgroundWhitelist(uid, true);
+        // UID policies live by the Highlander rule: "There can be only one".
+        // Hence, if app is whitelisted, it should not be blacklisted.
+        assertRestrictBackgroundBlacklist(uid, false);
     }
 
     protected void removeRestrictBackgroundWhitelist(int uid) throws Exception {
@@ -555,6 +558,9 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     protected void addRestrictBackgroundBlacklist(int uid) throws Exception {
         executeShellCommand("cmd netpolicy add restrict-background-blacklist " + uid);
         assertRestrictBackgroundBlacklist(uid, true);
+        // UID policies live by the Highlander rule: "There can be only one".
+        // Hence, if app is blacklisted, it should not be whitelisted.
+        assertRestrictBackgroundWhitelist(uid, false);
     }
 
     protected void removeRestrictBackgroundBlacklist(int uid) throws Exception {

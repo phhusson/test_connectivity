@@ -135,24 +135,30 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
         assertsForegroundAlwaysHasNetworkAccess();
         assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_ENABLED);
 
-        // Make sure blacklist prevails over whitelist.
+        // UID policies live by the Highlander rule: "There can be only one".
+        // Hence, if app is whitelisted, it should not be blacklisted anymore.
         setRestrictBackground(true);
         assertRestrictBackgroundChangedReceived(2);
         assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_ENABLED);
         addRestrictBackgroundWhitelist(mUid);
         assertRestrictBackgroundChangedReceived(3);
-        assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_ENABLED);
+        assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_WHITELISTED);
 
         // Check status after removing blacklist.
+        // ...re-enables first
+        addRestrictBackgroundBlacklist(mUid);
+        assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_ENABLED);
+        assertsForegroundAlwaysHasNetworkAccess();
+        // ... remove blacklist - access's still rejected because Data Saver is on
         removeRestrictBackgroundBlacklist(mUid);
         assertRestrictBackgroundChangedReceived(4);
-        assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_WHITELISTED);
+        assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_ENABLED);
+        assertsForegroundAlwaysHasNetworkAccess();
+        // ... finally, disable Data Saver
         setRestrictBackground(false);
         assertRestrictBackgroundChangedReceived(5);
         assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_DISABLED);
-
         assertsForegroundAlwaysHasNetworkAccess();
-        assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_DISABLED);
     }
 
     public void testGetRestrictBackgroundStatus_requiredWhitelistedPackages() throws Exception {
