@@ -151,12 +151,12 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
         assertsForegroundAlwaysHasNetworkAccess();
         // ... remove blacklist - access's still rejected because Data Saver is on
         removeRestrictBackgroundBlacklist(mUid);
-        assertRestrictBackgroundChangedReceived(4);
+        assertRestrictBackgroundChangedReceived(3);
         assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_ENABLED);
         assertsForegroundAlwaysHasNetworkAccess();
         // ... finally, disable Data Saver
         setRestrictBackground(false);
-        assertRestrictBackgroundChangedReceived(5);
+        assertRestrictBackgroundChangedReceived(4);
         assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_DISABLED);
         assertsForegroundAlwaysHasNetworkAccess();
     }
