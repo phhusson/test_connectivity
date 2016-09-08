@@ -84,6 +84,11 @@ import java.util.Random;
  *   https://android-review.googlesource.com/#/c/99225/
  *   https://android-review.googlesource.com/#/c/100557/
  *
+ * To ensure that the kernel has the required commits, run the kernel unit
+ * tests described at:
+ *
+ *   https://source.android.com/devices/tech/config/kernel_network_tests.html
+ *
  */
 public class VpnTest extends InstrumentationTestCase {
 
