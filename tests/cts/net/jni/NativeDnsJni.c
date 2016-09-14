@@ -126,7 +126,7 @@ JNIEXPORT jboolean Java_android_net_cts_DnsTest_testNativeDns(JNIEnv* env, jclas
         return JNI_FALSE;
     }
 
-    memset(buf, 0, sizeof(buf));
+    memset(buf, sizeof(buf), 0);
     res = getnameinfo((const struct sockaddr*)&sa6, sizeof(sa6), buf, sizeof(buf), NULL, 0, flags);
     if (res != 0) {
         ALOGD("getnameinfo(%s (GoogleDNS) ) gave error %d (%s)", GoogleDNSIpV6Address2,
