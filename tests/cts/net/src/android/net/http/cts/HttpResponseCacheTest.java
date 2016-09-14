@@ -38,11 +38,10 @@ import java.util.UUID;
 public final class HttpResponseCacheTest extends TestCase {
 
     private File cacheDir;
-    private MockWebServer server;
+    private MockWebServer server = new MockWebServer();
 
     @Override public void setUp() throws Exception {
         super.setUp();
-        server = new MockWebServer();
         String tmp = System.getProperty("java.io.tmpdir");
         cacheDir = new File(tmp, "HttpCache-" + UUID.randomUUID());
         cacheDir.mkdirs();
