@@ -138,4 +138,28 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
         assertsForegroundAlwaysHasNetworkAccess();
         assertBackgroundNetworkAccess(true);
     }
+
+    public void testAppIdleNetworkAccess_whenCharging() throws Exception {
+        if (!isSupported()) return;
+
+        // Check that app is paroled when charging
+        setAppIdle(true);
+        assertBackgroundNetworkAccess(false);
+        turnBatteryOn();
+        assertBackgroundNetworkAccess(true);
+        turnBatteryOff();
+        assertBackgroundNetworkAccess(false);
+
+        // Check that app is restricted when not idle but power-save is on
+        setAppIdle(false);
+        assertBackgroundNetworkAccess(true);
+        setBatterySaverMode(true);
+        assertBackgroundNetworkAccess(false);
+        turnBatteryOn();
+        assertBackgroundNetworkAccess(true);
+
+        // And when no longer charging, it still has network access, since it's not idle
+        turnBatteryOff();
+        assertBackgroundNetworkAccess(true);
+    }
 }

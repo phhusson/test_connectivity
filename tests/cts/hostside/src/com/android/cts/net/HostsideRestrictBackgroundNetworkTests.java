@@ -171,6 +171,16 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
                 "testBackgroundNetworkAccess_enabled");
     }
 
+    public void testAppIdleNonMetered_whenCharging() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".AppIdleNonMeteredTest",
+                "testAppIdleNetworkAccess_whenCharging");
+    }
+
+    public void testAppIdleMetered_whenCharging() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".AppIdleMeteredTest",
+                "testAppIdleNetworkAccess_whenCharging");
+    }
+
     /********************
      * Doze Mode tests. *
      ********************/
