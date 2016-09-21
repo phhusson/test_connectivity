@@ -23,6 +23,7 @@ import static com.android.cts.net.hostside.app2.Common.ACTION_GET_COUNTERS;
 import static com.android.cts.net.hostside.app2.Common.ACTION_GET_RESTRICT_BACKGROUND_STATUS;
 import static com.android.cts.net.hostside.app2.Common.ACTION_RECEIVER_READY;
 import static com.android.cts.net.hostside.app2.Common.ACTION_SEND_NOTIFICATION;
+import static com.android.cts.net.hostside.app2.Common.ACTION_SHOW_TOAST;
 import static com.android.cts.net.hostside.app2.Common.EXTRA_ACTION;
 import static com.android.cts.net.hostside.app2.Common.EXTRA_NOTIFICATION_ID;
 import static com.android.cts.net.hostside.app2.Common.EXTRA_NOTIFICATION_TYPE;
@@ -51,6 +52,7 @@ import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.Bundle;
 import android.util.Log;
+import android.widget.Toast;
 
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -103,6 +105,9 @@ public class MyBroadcastReceiver extends BroadcastReceiver {
                 break;
             case ACTION_SEND_NOTIFICATION:
                 sendNotification(context, intent);
+                break;
+            case ACTION_SHOW_TOAST:
+                showToast(context);
                 break;
             default:
                 Log.e(TAG, "received unexpected action: " + action);
@@ -301,5 +306,10 @@ public class MyBroadcastReceiver extends BroadcastReceiver {
         final Notification notification = builder.build();
         ((NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE))
             .notify(notificationId, notification);
+    }
+
+    private void showToast(Context context) {
+        Toast.makeText(context, "Toast from CTS test", Toast.LENGTH_SHORT).show();
+        setResultData("Shown");
     }
 }

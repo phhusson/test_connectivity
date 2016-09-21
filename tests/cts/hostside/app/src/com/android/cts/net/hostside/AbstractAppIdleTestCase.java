@@ -16,6 +16,7 @@
 
 package com.android.cts.net.hostside;
 
+import android.os.SystemClock;
 import android.util.Log;
 
 /**
@@ -161,5 +162,17 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
         // And when no longer charging, it still has network access, since it's not idle
         turnBatteryOff();
         assertBackgroundNetworkAccess(true);
+    }
+
+    public void testAppIdle_toast() throws Exception {
+        if (!isSupported()) return;
+
+        setAppIdle(true);
+        assertAppIdle(true);
+        assertEquals("Shown", showToast());
+        assertAppIdle(true);
+        // Wait for a couple of seconds for the toast to actually be shown
+        SystemClock.sleep(2000);
+        assertAppIdle(true);
     }
 }
