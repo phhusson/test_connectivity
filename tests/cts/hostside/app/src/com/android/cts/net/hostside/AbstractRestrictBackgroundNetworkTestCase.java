@@ -64,6 +64,8 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             "com.android.cts.net.hostside.app2.action.RECEIVER_READY";
     static final String ACTION_SEND_NOTIFICATION =
             "com.android.cts.net.hostside.app2.action.SEND_NOTIFICATION";
+    static final String ACTION_SHOW_TOAST =
+            "com.android.cts.net.hostside.app2.action.SHOW_TOAST";
     private static final String EXTRA_ACTION = "com.android.cts.net.hostside.app2.extra.ACTION";
     private static final String EXTRA_RECEIVER_NAME =
             "com.android.cts.net.hostside.app2.extra.RECEIVER_NAME";
@@ -780,6 +782,17 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         Log.d(TAG, "Sending notification broadcast (id=" + notificationId + ", type="
                 + notificationType + ": " + intent);
         mContext.sendBroadcast(intent);
+    }
+
+    protected String showToast() {
+        final Intent intent = new Intent(ACTION_SHOW_TOAST);
+        intent.setPackage(TEST_APP2_PKG);
+        Log.d(TAG, "Sending request to show toast");
+        try {
+            return sendOrderedBroadcast(intent, 3 * SECOND_IN_MS);
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     private String toString(int status) {
