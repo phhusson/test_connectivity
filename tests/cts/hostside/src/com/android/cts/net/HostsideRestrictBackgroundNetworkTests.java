@@ -181,6 +181,12 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
                 "testAppIdleNetworkAccess_whenCharging");
     }
 
+    public void testAppIdle_toast() throws Exception {
+        // Check that showing a toast doesn't bring an app out of standby
+        runDeviceTests(TEST_PKG, TEST_PKG + ".AppIdleNonMeteredTest",
+                "testAppIdle_toast");
+    }
+
     /********************
      * Doze Mode tests. *
      ********************/

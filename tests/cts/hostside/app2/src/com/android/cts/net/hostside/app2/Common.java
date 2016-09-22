@@ -38,6 +38,8 @@ public final class Common {
             "com.android.cts.net.hostside.app2.action.FINISH_ACTIVITY";
     static final String ACTION_SEND_NOTIFICATION =
             "com.android.cts.net.hostside.app2.action.SEND_NOTIFICATION";
+    static final String ACTION_SHOW_TOAST =
+            "com.android.cts.net.hostside.app2.action.SHOW_TOAST";
     static final String EXTRA_ACTION = "com.android.cts.net.hostside.app2.extra.ACTION";
     static final String EXTRA_RECEIVER_NAME =
             "com.android.cts.net.hostside.app2.extra.RECEIVER_NAME";
