@@ -54,25 +54,11 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     // Constants below must match values defined on app2's Common.java
     private static final String MANIFEST_RECEIVER = "ManifestReceiver";
     private static final String DYNAMIC_RECEIVER = "DynamicReceiver";
-    private static final String ACTION_GET_COUNTERS =
-            "com.android.cts.net.hostside.app2.action.GET_COUNTERS";
-    private static final String ACTION_GET_RESTRICT_BACKGROUND_STATUS =
-            "com.android.cts.net.hostside.app2.action.GET_RESTRICT_BACKGROUND_STATUS";
-    private static final String ACTION_CHECK_NETWORK =
-            "com.android.cts.net.hostside.app2.action.CHECK_NETWORK";
+
     private static final String ACTION_RECEIVER_READY =
             "com.android.cts.net.hostside.app2.action.RECEIVER_READY";
-    static final String ACTION_SEND_NOTIFICATION =
-            "com.android.cts.net.hostside.app2.action.SEND_NOTIFICATION";
     static final String ACTION_SHOW_TOAST =
             "com.android.cts.net.hostside.app2.action.SHOW_TOAST";
-    private static final String EXTRA_ACTION = "com.android.cts.net.hostside.app2.extra.ACTION";
-    private static final String EXTRA_RECEIVER_NAME =
-            "com.android.cts.net.hostside.app2.extra.RECEIVER_NAME";
-    private static final String EXTRA_NOTIFICATION_ID =
-            "com.android.cts.net.hostside.app2.extra.NOTIFICATION_ID";
-    private static final String EXTRA_NOTIFICATION_TYPE =
-            "com.android.cts.net.hostside.app2.extra.NOTIFICATION_TYPE";
 
     protected static final String NOTIFICATION_TYPE_CONTENT = "CONTENT";
     protected static final String NOTIFICATION_TYPE_DELETE = "DELETE";
@@ -99,6 +85,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     protected WifiManager mWfm;
     protected int mUid;
     private String mMeteredWifi;
+    private MyServiceClient mServiceClient;
 
     @Override
     protected void setUp() throws Exception {
@@ -110,11 +97,20 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         mWfm = (WifiManager) mContext.getSystemService(Context.WIFI_SERVICE);
         mUid = getUid(TEST_APP2_PKG);
         final int myUid = getUid(mContext.getPackageName());
+        mServiceClient = new MyServiceClient(mContext);
+        mServiceClient.bind();
 
         Log.i(TAG, "Apps status on " + getName() + ":\n"
                 + "\ttest app: uid=" + myUid + ", state=" + getProcessStateByUid(myUid) + "\n"
                 + "\tapp2: uid=" + mUid + ", state=" + getProcessStateByUid(mUid));
    }
+
+    @Override
+    protected void tearDown() throws Exception {
+        mServiceClient.unbind();
+
+        super.tearDown();
+    }
 
     protected int getUid(String packageName) throws Exception {
         return mContext.getPackageManager().getPackageUid(packageName, 0);
@@ -171,19 +167,13 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     }
 
     protected int getNumberBroadcastsReceived(String receiverName, String action) throws Exception {
-        final Intent intent = new Intent(ACTION_GET_COUNTERS);
-        intent.putExtra(EXTRA_ACTION, ACTION_RESTRICT_BACKGROUND_CHANGED);
-        intent.putExtra(EXTRA_RECEIVER_NAME, receiverName);
-        final String resultData = sendOrderedBroadcast(intent);
-        assertNotNull("timeout waiting for ordered broadcast result", resultData);
-        return Integer.valueOf(resultData);
+        return mServiceClient.getCounters(receiverName, action);
     }
 
     protected void assertRestrictBackgroundStatus(int expectedStatus) throws Exception {
-        final Intent intent = new Intent(ACTION_GET_RESTRICT_BACKGROUND_STATUS);
-        final String resultData = sendOrderedBroadcast(intent);
-        assertNotNull("timeout waiting for ordered broadcast result", resultData);
-        final String actualStatus = toString(Integer.parseInt(resultData));
+        final String status = mServiceClient.getRestrictBackgroundStatus();
+        assertNotNull("didn't get API status from app2", status);
+        final String actualStatus = toString(Integer.parseInt(status));
         assertEquals("wrong status", toString(expectedStatus), actualStatus);
     }
 
@@ -329,15 +319,15 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
      * @return error message with the mismatch (or empty if assertion passed).
      */
     private String checkNetworkAccess(boolean expectAvailable) throws Exception {
-        String resultData = sendOrderedBroadcast(new Intent(ACTION_CHECK_NETWORK));
+        final String resultData = mServiceClient.checkNetworkStatus();
         if (resultData == null) {
-            return "timeout waiting for ordered broadcast";
+            return "did not get network status from app2";
         }
         // Network status format is described on MyBroadcastReceiver.checkNetworkStatus()
         final String[] parts = resultData.split(NETWORK_STATUS_SEPARATOR);
         assertEquals("Wrong network status: " + resultData, 5, parts.length); // Sanity check
-        final State state = State.valueOf(parts[0]);
-        final DetailedState detailedState = DetailedState.valueOf(parts[1]);
+        final State state = parts[0].equals("null") ? null : State.valueOf(parts[0]);
+        final DetailedState detailedState = parts[1].equals("null") ? null : DetailedState.valueOf(parts[1]);
         final boolean connected = Boolean.valueOf(parts[2]);
         final String connectionCheckDetails = parts[3];
         final String networkInfo = parts[4];
@@ -694,9 +684,10 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
      * {@link #runDeviceTests(String, String)} is executed.
      */
     protected void registerBroadcastReceiver() throws Exception {
-        executeShellCommand("am startservice com.android.cts.net.hostside.app2/.MyService");
+        mServiceClient.registerBroadcastReceiver();
+
         // Wait until receiver is ready.
-        final int maxTries = 5;
+        final int maxTries = 10;
         for (int i = 1; i <= maxTries; i++) {
             final String message =
                     sendOrderedBroadcast(new Intent(ACTION_RECEIVER_READY), SECOND_IN_MS);
@@ -781,13 +772,10 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
                 + "--receiver-foreground --receiver-registered-only");
     }
 
-    protected void sendNotification(int notificationId, String notificationType) {
-        final Intent intent = new Intent(ACTION_SEND_NOTIFICATION);
-        intent.putExtra(EXTRA_NOTIFICATION_ID, notificationId);
-        intent.putExtra(EXTRA_NOTIFICATION_TYPE, notificationType);
-        Log.d(TAG, "Sending notification broadcast (id=" + notificationId + ", type="
-                + notificationType + ": " + intent);
-        mContext.sendBroadcast(intent);
+    protected void sendNotification(int notificationId, String notificationType) throws Exception {
+        Log.d(TAG, "Sending notification broadcast (id=" + notificationId
+                + ", type=" + notificationType);
+        mServiceClient.sendNotification(notificationId, notificationType);
     }
 
     protected String showToast() {
