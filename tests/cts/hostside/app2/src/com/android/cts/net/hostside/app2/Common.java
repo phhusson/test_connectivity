@@ -26,27 +26,13 @@ public final class Common {
     // AbstractRestrictBackgroundNetworkTestCase.java
     static final String MANIFEST_RECEIVER = "ManifestReceiver";
     static final String DYNAMIC_RECEIVER = "DynamicReceiver";
-    static final String ACTION_GET_COUNTERS =
-            "com.android.cts.net.hostside.app2.action.GET_COUNTERS";
-    static final String ACTION_GET_RESTRICT_BACKGROUND_STATUS =
-            "com.android.cts.net.hostside.app2.action.GET_RESTRICT_BACKGROUND_STATUS";
-    static final String ACTION_CHECK_NETWORK =
-            "com.android.cts.net.hostside.app2.action.CHECK_NETWORK";
+
     static final String ACTION_RECEIVER_READY =
             "com.android.cts.net.hostside.app2.action.RECEIVER_READY";
     static final String ACTION_FINISH_ACTIVITY =
             "com.android.cts.net.hostside.app2.action.FINISH_ACTIVITY";
-    static final String ACTION_SEND_NOTIFICATION =
-            "com.android.cts.net.hostside.app2.action.SEND_NOTIFICATION";
     static final String ACTION_SHOW_TOAST =
             "com.android.cts.net.hostside.app2.action.SHOW_TOAST";
-    static final String EXTRA_ACTION = "com.android.cts.net.hostside.app2.extra.ACTION";
-    static final String EXTRA_RECEIVER_NAME =
-            "com.android.cts.net.hostside.app2.extra.RECEIVER_NAME";
-    static final String EXTRA_NOTIFICATION_ID =
-            "com.android.cts.net.hostside.app2.extra.NOTIFICATION_ID";
-    static final String EXTRA_NOTIFICATION_TYPE =
-            "com.android.cts.net.hostside.app2.extra.NOTIFICATION_TYPE";
 
     static final String NOTIFICATION_TYPE_CONTENT = "CONTENT";
     static final String NOTIFICATION_TYPE_DELETE = "DELETE";
