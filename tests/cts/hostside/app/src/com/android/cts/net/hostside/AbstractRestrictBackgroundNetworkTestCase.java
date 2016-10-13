@@ -639,6 +639,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             executeSilentShellCommand("cmd battery unplug");
             executeSilentShellCommand("settings put global low_power 1");
         } else {
+            executeSilentShellCommand("settings put global low_power 0");
             turnBatteryOn();
         }
     }
