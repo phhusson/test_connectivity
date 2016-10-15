@@ -29,6 +29,7 @@ import android.app.Instrumentation;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.NetworkInfo.DetailedState;
@@ -99,6 +100,8 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     protected WifiManager mWfm;
     protected int mUid;
     private String mMeteredWifi;
+    private boolean mHasWatch;
+    private String mDeviceIdleConstantsSetting;
 
     @Override
     protected void setUp() throws Exception {
@@ -110,7 +113,13 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         mWfm = (WifiManager) mContext.getSystemService(Context.WIFI_SERVICE);
         mUid = getUid(TEST_APP2_PKG);
         final int myUid = getUid(mContext.getPackageName());
-
+        mHasWatch = mContext.getPackageManager().hasSystemFeature(
+                PackageManager.FEATURE_WATCH);
+        if (mHasWatch) {
+            mDeviceIdleConstantsSetting = "device_idle_constants_watch";
+        } else {
+            mDeviceIdleConstantsSetting = "device_idle_constants";
+        }
         Log.i(TAG, "Apps status on " + getName() + ":\n"
                 + "\ttest app: uid=" + myUid + ", state=" + getProcessStateByUid(myUid) + "\n"
                 + "\tapp2: uid=" + mUid + ", state=" + getProcessStateByUid(mUid));
@@ -726,14 +735,14 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     }
 
     protected void setPendingIntentWhitelistDuration(int durationMs) throws Exception {
-        final String command = String.format(
-                "settings put global device_idle_constants %s=%d",
-                "notification_whitelist_duration", durationMs);
-        executeSilentShellCommand(command);
+        executeSilentShellCommand(String.format(
+                "settings put global %s %s=%d", mDeviceIdleConstantsSetting,
+                "notification_whitelist_duration", durationMs));
     }
 
     protected void resetDeviceIdleSettings() throws Exception {
-        executeShellCommand("settings delete global device_idle_constants");
+        executeShellCommand(String.format("settings delete global %s",
+                mDeviceIdleConstantsSetting));
     }
 
     protected void startForegroundService() throws Exception {
