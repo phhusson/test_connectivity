@@ -532,4 +532,15 @@ public class WifiEnterpriseConfigTest extends AndroidTestCase {
         }
         return false;
     }
+
+    public void testEnterpriseConfigDoesNotPrintPassword() {
+        WifiEnterpriseConfig enterpriseConfig = new WifiEnterpriseConfig();
+        final String identity = "IdentityIsOkayToBeDisplayedHere";
+        final String password = "PasswordIsNotOkayToBeDisplayedHere";
+        enterpriseConfig.setIdentity(identity);
+        enterpriseConfig.setPassword(password);
+        final String stringRepresentation = enterpriseConfig.toString();
+        assertTrue(stringRepresentation.contains(identity));
+        assertFalse(stringRepresentation.contains(password));
+    }
 }
