@@ -21,7 +21,7 @@ LOCAL_SRC_FILES := $(call all-java-files-under, src)
 
 LOCAL_MODULE := CtsHostsideNetworkTests
 
-LOCAL_JAVA_LIBRARIES := cts-tradefed tradefed-prebuilt
+LOCAL_JAVA_LIBRARIES := cts-tradefed tradefed
 
 LOCAL_STATIC_JAVA_LIBRARIES := cts-migration-lib
 
