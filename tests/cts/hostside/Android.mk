@@ -23,8 +23,6 @@ LOCAL_MODULE := CtsHostsideNetworkTests
 
 LOCAL_JAVA_LIBRARIES := cts-tradefed tradefed
 
-LOCAL_STATIC_JAVA_LIBRARIES := cts-migration-lib
-
 LOCAL_CTS_TEST_PACKAGE := android.net.hostsidenetwork
 
 # Tag this module as a cts test artifact
