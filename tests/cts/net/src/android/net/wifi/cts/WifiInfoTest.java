@@ -21,13 +21,14 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.cts.util.PollingCheck;
 import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.WifiLock;
 import android.net.wifi.WifiSsid;
 import android.test.AndroidTestCase;
+
+import com.android.compatibility.common.util.PollingCheck;
 
 import java.util.concurrent.Callable;
 

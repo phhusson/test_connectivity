@@ -21,8 +21,9 @@ import com.google.mockwebserver.MockWebServer;
 
 import junit.framework.TestCase;
 
-import android.cts.util.FileUtils;
 import android.net.http.HttpResponseCache;
+
+import com.android.compatibility.common.util.FileUtils;
 
 import java.io.File;
 import java.io.InputStream;
