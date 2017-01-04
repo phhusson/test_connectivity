@@ -50,7 +50,20 @@ public class LocalSocketTest extends TestCase {
         assertFalse(clientSocket.isConnected());
         clientSocket.connect(locSockAddr);
         assertTrue(clientSocket.isConnected());
+
         LocalSocket serverSocket = localServerSocket.accept();
+        assertTrue(serverSocket.isConnected());
+        assertTrue(serverSocket.isBound());
+        try {
+            serverSocket.bind(localServerSocket.getLocalSocketAddress());
+            fail("Cannot bind a LocalSocket from accept()");
+        } catch (IOException expected) {
+        }
+        try {
+            serverSocket.connect(locSockAddr);
+            fail("Cannot connect a LocalSocket from accept()");
+        } catch (IOException expected) {
+        }
 
         Credentials credent = clientSocket.getPeerCredentials();
         assertTrue(0 != credent.getPid());
