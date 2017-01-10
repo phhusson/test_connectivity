@@ -91,9 +91,7 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
 
         // Make sure foreground app doesn't lose access upon enabling it.
         setAppIdle(true);
-        launchActivity();
-        assertAppIdle(false); // Sanity check - not idle anymore, since activity was launched...
-        assertForegroundNetworkAccess();
+        launchComponentAndAssertNetworkAccess(TYPE_COMPONENT_ACTIVTIY);
         finishActivity();
         assertAppIdle(false); // Sanity check - not idle anymore, since activity was launched...
         assertBackgroundNetworkAccess(true);
@@ -102,9 +100,7 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
 
         // Same for foreground service.
         setAppIdle(true);
-        startForegroundService();
-        assertAppIdle(true); // Sanity check - still idle
-        assertForegroundServiceNetworkAccess();
+        launchComponentAndAssertNetworkAccess(TYPE_COMPONENT_FOREGROUND_SERVICE);
         stopForegroundService();
         assertAppIdle(true);
         assertBackgroundNetworkAccess(false);

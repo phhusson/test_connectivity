@@ -16,7 +16,14 @@
 package com.android.cts.net.hostside.app2;
 
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager.NameNotFoundException;
+import android.os.AsyncTask;
+import android.os.Bundle;
+import android.os.RemoteException;
+import android.util.Log;
+
+import com.android.cts.net.hostside.INetworkStateObserver;
 
 public final class Common {
 
@@ -42,12 +49,37 @@ public final class Common {
     static final String NOTIFICATION_TYPE_ACTION_BUNDLE = "ACTION_BUNDLE";
     static final String NOTIFICATION_TYPE_ACTION_REMOTE_INPUT = "ACTION_REMOTE_INPUT";
 
+    static final String TEST_PKG = "com.android.cts.net.hostside";
+    static final String KEY_NETWORK_STATE_OBSERVER = TEST_PKG + ".observer";
+
     static int getUid(Context context) {
         final String packageName = context.getPackageName();
         try {
             return context.getPackageManager().getPackageUid(packageName, 0);
         } catch (NameNotFoundException e) {
             throw new IllegalStateException("Could not get UID for " + packageName, e);
+        }
+    }
+
+    static void notifyNetworkStateObserver(Context context, Intent intent) {
+        if (intent == null) {
+            return;
+        }
+        final Bundle extras = intent.getExtras();
+        if (extras == null) {
+            return;
+        }
+        final INetworkStateObserver observer = INetworkStateObserver.Stub.asInterface(
+                extras.getBinder(KEY_NETWORK_STATE_OBSERVER));
+        if (observer != null) {
+            AsyncTask.execute(() -> {
+                try {
+                    observer.onNetworkStateChecked(
+                            MyBroadcastReceiver.checkNetworkStatus(context));
+                } catch (RemoteException e) {
+                    Log.e(TAG, "Error occured while notifying the observer: " + e);
+                }
+            });
         }
     }
 }

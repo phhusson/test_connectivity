@@ -22,11 +22,13 @@ import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_WHITELISTED;
 import static com.android.compatibility.common.util.SystemUtil.runShellCommand;
 
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import android.app.Instrumentation;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -35,10 +37,14 @@ import android.net.NetworkInfo;
 import android.net.NetworkInfo.DetailedState;
 import android.net.NetworkInfo.State;
 import android.net.wifi.WifiManager;
+import android.os.Binder;
+import android.os.Bundle;
 import android.os.SystemClock;
 import android.service.notification.NotificationListenerService;
 import android.test.InstrumentationTestCase;
 import android.util.Log;
+
+import com.android.cts.net.hostside.INetworkStateObserver;
 
 /**
  * Superclass for tests related to background network restrictions.
@@ -48,6 +54,9 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
 
     protected static final String TEST_PKG = "com.android.cts.net.hostside";
     protected static final String TEST_APP2_PKG = "com.android.cts.net.hostside.app2";
+
+    private static final String TEST_APP2_ACTIVITY_CLASS = TEST_APP2_PKG + ".MyActivity";
+    private static final String TEST_APP2_SERVICE_CLASS = TEST_APP2_PKG + ".MyForegroundService";
 
     private static final int SLEEP_TIME_SEC = 1;
     private static final boolean DEBUG = true;
@@ -76,6 +85,12 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     private static final int PROCESS_STATE_FOREGROUND_SERVICE = 4;
     private static final int PROCESS_STATE_TOP = 2;
 
+    private static final String KEY_NETWORK_STATE_OBSERVER = TEST_PKG + ".observer";
+
+    protected static final int TYPE_COMPONENT_ACTIVTIY = 0;
+    protected static final int TYPE_COMPONENT_FOREGROUND_SERVICE = 1;
+
+    private static final int FOREGROUND_PROC_NETWORK_TIMEOUT_MS = 6000;
 
     // Must be higher than NETWORK_TIMEOUT_MS
     private static final int ORDERED_BROADCAST_TIMEOUT_MS = NETWORK_TIMEOUT_MS * 4;
@@ -225,13 +240,11 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
      */
     protected void assertsForegroundAlwaysHasNetworkAccess() throws Exception{
         // Checks foreground first.
-        launchActivity();
-        assertForegroundNetworkAccess();
+        launchComponentAndAssertNetworkAccess(TYPE_COMPONENT_ACTIVTIY);
         finishActivity();
 
         // Then foreground service
-        startForegroundService();
-        assertForegroundServiceNetworkAccess();
+        launchComponentAndAssertNetworkAccess(TYPE_COMPONENT_FOREGROUND_SERVICE);
         stopForegroundService();
     }
 
@@ -329,14 +342,19 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
      */
     private String checkNetworkAccess(boolean expectAvailable) throws Exception {
         final String resultData = mServiceClient.checkNetworkStatus();
+        return checkForAvailabilityInResultData(resultData, expectAvailable);
+    }
+
+    private String checkForAvailabilityInResultData(String resultData, boolean expectAvailable) {
         if (resultData == null) {
-            return "did not get network status from app2";
+            assertNotNull("Network status from app2 is null", resultData);
         }
         // Network status format is described on MyBroadcastReceiver.checkNetworkStatus()
         final String[] parts = resultData.split(NETWORK_STATUS_SEPARATOR);
         assertEquals("Wrong network status: " + resultData, 5, parts.length); // Sanity check
         final State state = parts[0].equals("null") ? null : State.valueOf(parts[0]);
-        final DetailedState detailedState = parts[1].equals("null") ? null : DetailedState.valueOf(parts[1]);
+        final DetailedState detailedState = parts[1].equals("null")
+                ? null : DetailedState.valueOf(parts[1]);
         final boolean connected = Boolean.valueOf(parts[2]);
         final String connectionCheckDetails = parts[3];
         final String networkInfo = parts[4];
@@ -641,7 +659,6 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         Log.i(TAG, "Setting Battery Saver Mode to " + enabled);
         if (enabled) {
             turnBatteryOff();
-            executeSilentShellCommand("cmd battery unplug");
             executeSilentShellCommand("settings put global low_power 1");
         } else {
             executeSilentShellCommand("settings put global low_power 0");
@@ -742,35 +759,58 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
                 mDeviceIdleConstantsSetting));
     }
 
-    protected void startForegroundService() throws Exception {
-        executeShellCommand(
-                "am startservice -f 1 com.android.cts.net.hostside.app2/.MyForegroundService");
-        assertForegroundServiceState();
+    protected void launchComponentAndAssertNetworkAccess(int type) throws Exception {
+        if (type == TYPE_COMPONENT_ACTIVTIY) {
+            turnScreenOn();
+        }
+        final CountDownLatch latch = new CountDownLatch(1);
+        final Intent launchIntent = getIntentForComponent(type);
+        final Bundle extras = new Bundle();
+        final String[] errors = new String[] {null};
+        extras.putBinder(KEY_NETWORK_STATE_OBSERVER, getNewNetworkStateObserver(latch, errors));
+        launchIntent.putExtras(extras);
+        if (type == TYPE_COMPONENT_ACTIVTIY) {
+            mContext.startActivity(launchIntent);
+        } else if (type == TYPE_COMPONENT_FOREGROUND_SERVICE) {
+            mContext.startService(launchIntent);
+        }
+        if (latch.await(FOREGROUND_PROC_NETWORK_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+            if (!errors[0].isEmpty()) {
+                fail("Network is not available for app2 (" + mUid + "): " + errors[0]);
+            }
+        } else {
+            fail("Timed out waiting for network availability status from app2 (" + mUid + ")");
+        }
+    }
+
+    private Intent getIntentForComponent(int type) {
+        final Intent intent = new Intent();
+        if (type == TYPE_COMPONENT_ACTIVTIY) {
+            intent.setComponent(new ComponentName(TEST_APP2_PKG, TEST_APP2_ACTIVITY_CLASS));
+        } else if (type == TYPE_COMPONENT_FOREGROUND_SERVICE) {
+            intent.setComponent(new ComponentName(TEST_APP2_PKG, TEST_APP2_SERVICE_CLASS))
+                    .setFlags(1);
+        } else {
+            fail("Unknown type: " + type);
+        }
+        return intent;
     }
 
     protected void stopForegroundService() throws Exception {
-        executeShellCommand(
-                "am startservice -f 2 com.android.cts.net.hostside.app2/.MyForegroundService");
+        executeShellCommand(String.format("am startservice -f 2 %s/%s",
+                TEST_APP2_PKG, TEST_APP2_SERVICE_CLASS));
         // NOTE: cannot assert state because it depends on whether activity was on top before.
     }
 
-    /**
-     * Launches an activity on app2 so its process is elevated to foreground status.
-     */
-    protected void launchActivity() throws Exception {
-        turnScreenOn();
-        executeShellCommand("am start com.android.cts.net.hostside.app2/.MyActivity");
-        final int maxTries = 30;
-        ProcessState state = null;
-        for (int i = 1; i <= maxTries; i++) {
-            state = getProcessStateByUid(mUid);
-            if (state.state == PROCESS_STATE_TOP) return;
-            Log.w(TAG, "launchActivity(): uid " + mUid + " not on TOP state on attempt #" + i
-                    + "; turning screen on and sleeping 1s before checking again");
-            turnScreenOn();
-            SystemClock.sleep(SECOND_IN_MS);
-        }
-        fail("App2 is not on foreground state after " + maxTries + " attempts: " + state);
+    private Binder getNewNetworkStateObserver(final CountDownLatch latch,
+            final String[] errors) {
+        return new INetworkStateObserver.Stub() {
+            @Override
+            public void onNetworkStateChecked(String resultData) {
+                errors[0] = checkForAvailabilityInResultData(resultData, true);
+                latch.countDown();
+            }
+        };
     }
 
     /**

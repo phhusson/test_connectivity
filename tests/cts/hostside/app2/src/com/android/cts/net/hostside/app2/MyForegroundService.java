@@ -16,14 +16,21 @@
 package com.android.cts.net.hostside.app2;
 
 import static com.android.cts.net.hostside.app2.Common.TAG;
+import static com.android.cts.net.hostside.app2.Common.TEST_PKG;
+
 import android.R;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
+import android.os.AsyncTask;
+import android.os.Bundle;
 import android.os.IBinder;
+import android.os.RemoteException;
 import android.util.Log;
+
+import com.android.cts.net.hostside.INetworkStateObserver;
 
 /**
  * Service used to change app state to FOREGROUND_SERVICE.
@@ -51,6 +58,7 @@ public class MyForegroundService extends Service {
                 startForeground(42, new Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
                         .setSmallIcon(R.drawable.ic_dialog_alert) // any icon is fine
                         .build());
+                Common.notifyNetworkStateObserver(this, intent);
                 break;
             case FLAG_STOP_FOREGROUND:
                 Log.d(TAG, "Stopping foreground");
