@@ -287,6 +287,42 @@ public class LocalSocketTest extends TestCase {
         }
     }
 
+    // http://b/34095140
+    public void testLocalSocketCreatedFromFileDescriptor() throws Exception {
+        String address = ADDRESS_PREFIX + "_testLocalSocketCreatedFromFileDescriptor";
+
+        // Establish connection between a local client and server to get a valid client socket file
+        // descriptor.
+        try (LocalSocketPair socketPair = LocalSocketPair.createConnectedSocketPair(address)) {
+            // Extract the client FileDescriptor we can use.
+            FileDescriptor fileDescriptor = socketPair.clientSocket.getFileDescriptor();
+            assertTrue(fileDescriptor.valid());
+
+            // Create the LocalSocket we want to test.
+            LocalSocket clientSocketCreatedFromFileDescriptor =
+                    LocalSocket.createConnectedLocalSocket(fileDescriptor);
+            assertTrue(clientSocketCreatedFromFileDescriptor.isConnected());
+            assertTrue(clientSocketCreatedFromFileDescriptor.isBound());
+
+            // Test the LocalSocket can be used for communication.
+            LocalSocket serverSocket = socketPair.serverSocket.accept();
+            OutputStream clientOutputStream =
+                    clientSocketCreatedFromFileDescriptor.getOutputStream();
+            InputStream serverInputStream = serverSocket.getInputStream();
+
+            clientOutputStream.write(12);
+            assertEquals(12, serverInputStream.read());
+
+            // Closing clientSocketCreatedFromFileDescriptor does not close the file descriptor.
+            clientSocketCreatedFromFileDescriptor.close();
+            assertTrue(fileDescriptor.valid());
+
+            // .. while closing the LocalSocket that owned the file descriptor does.
+            socketPair.clientSocket.close();
+            assertFalse(fileDescriptor.valid());
+        }
+    }
+
     public void testFlush() throws Exception {
         String address = ADDRESS_PREFIX + "_testFlush";
 
