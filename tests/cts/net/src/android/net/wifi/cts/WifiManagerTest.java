@@ -22,7 +22,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
-import android.location.LocationManager;
 import android.net.NetworkInfo;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
@@ -34,6 +33,8 @@ import android.os.SystemClock;
 import android.provider.Settings;
 import android.test.AndroidTestCase;
 import android.util.Log;
+
+import com.android.compatibility.common.util.WifiConfigCreator;
 
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -68,12 +69,16 @@ public class WifiManagerTest extends AndroidTestCase {
     private static final String TAG = "WifiManagerTest";
     private static final String SSID1 = "\"WifiManagerTest\"";
     private static final String SSID2 = "\"WifiManagerTestModified\"";
+    private static final String PROXY_TEST_SSID = "SomeProxyAp";
+    private static final String ADD_NETWORK_EXCEPTION_SUBSTR = "addNetwork";
     private static final int TIMEOUT_MSEC = 6000;
     private static final int WAIT_MSEC = 60;
     private static final int DURATION = 10000;
     private static final int WIFI_SCAN_TEST_INTERVAL_MILLIS = 60 * 1000;
     private static final int WIFI_SCAN_TEST_CACHE_DELAY_MILLIS = 3 * 60 * 1000;
     private static final int WIFI_SCAN_TEST_ITERATIONS = 5;
+
+    private static final String TEST_PAC_URL = "http://www.example.com/proxy.pac";
 
     private IntentFilter mIntentFilter;
     private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
@@ -403,6 +408,31 @@ public class WifiManagerTest extends AndroidTestCase {
             reEnableNetworks(enabledSsids, mWifiManager.getConfiguredNetworks());
             mWifiManager.saveConfiguration();
         }
+    }
+
+    /**
+     * Verifies that addNetwork() fails for WifiConfigurations containing a non-null http proxy when
+     * the caller doesn't have OVERRIDE_WIFI_CONFIG permission, DeviceOwner or ProfileOwner device
+     * management policies
+     */
+    public void testSetHttpProxy_PermissionFail() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        WifiConfigCreator configCreator = new WifiConfigCreator(getContext());
+        boolean exceptionThrown = false;
+        try {
+            configCreator.addHttpProxyNetworkVerifyAndRemove(
+                    PROXY_TEST_SSID, TEST_PAC_URL);
+        } catch (IllegalStateException e) {
+            // addHttpProxyNetworkVerifyAndRemove throws three IllegalStateException,
+            // expect it to throw for the addNetwork operation
+            if (e.getMessage().contains(ADD_NETWORK_EXCEPTION_SUBSTR)) {
+                exceptionThrown = true;
+            }
+        }
+        assertTrue(exceptionThrown);
     }
 
     private Set<String> getEnabledNetworks(List<WifiConfiguration> configuredNetworks) {
