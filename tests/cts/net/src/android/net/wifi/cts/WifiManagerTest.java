@@ -218,16 +218,6 @@ public class WifiManagerTest extends AndroidTestCase {
         return -1;
     }
 
-    private void assertDisableOthers(WifiConfiguration wifiConfiguration, boolean disableOthers) {
-        for (WifiConfiguration w : mWifiManager.getConfiguredNetworks()) {
-            if ((!w.SSID.equals(wifiConfiguration.SSID)) && w.status != Status.CURRENT) {
-                if (disableOthers) {
-                    assertEquals(Status.DISABLED, w.status);
-                }
-            }
-        }
-    }
-
     /**
      * test point of wifiManager actions:
      * 1.reconnect
@@ -383,7 +373,6 @@ public class WifiManagerTest extends AndroidTestCase {
             boolean disableOthers = true;
             assertTrue(mWifiManager.enableNetwork(netId, disableOthers));
             wifiConfiguration = mWifiManager.getConfiguredNetworks().get(pos);
-            assertDisableOthers(wifiConfiguration, disableOthers);
             assertEquals(Status.ENABLED, wifiConfiguration.status);
 
             assertTrue(mWifiManager.disableNetwork(netId));
