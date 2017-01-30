@@ -20,6 +20,8 @@ import static com.android.cts.net.hostside.app2.Common.ACTION_RECEIVER_READY;
 import static com.android.cts.net.hostside.app2.Common.DYNAMIC_RECEIVER;
 import static com.android.cts.net.hostside.app2.Common.TAG;
 
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
@@ -36,6 +38,7 @@ import com.android.cts.net.hostside.IMyService;
  * Service used to dynamically register a broadcast receiver.
  */
 public class MyService extends Service {
+    private static final String NOTIFICATION_CHANNEL_ID = "MyService";
 
     private MyBroadcastReceiver mReceiver;
 
@@ -75,8 +78,8 @@ public class MyService extends Service {
 
         @Override
         public void sendNotification(int notificationId, String notificationType) {
-            MyBroadcastReceiver
-                .sendNotification(getApplicationContext(), notificationId, notificationType);
+            MyBroadcastReceiver .sendNotification(getApplicationContext(), NOTIFICATION_CHANNEL_ID,
+                    notificationId, notificationType);
         }
       };
 
@@ -86,7 +89,18 @@ public class MyService extends Service {
     }
 
     @Override
+    public void onCreate() {
+        final Context context = getApplicationContext();
+        ((NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE))
+                .createNotificationChannel(new NotificationChannel(NOTIFICATION_CHANNEL_ID,
+                        NOTIFICATION_CHANNEL_ID, NotificationManager.IMPORTANCE_DEFAULT));
+    }
+
+    @Override
     public void onDestroy() {
+        final Context context = getApplicationContext();
+        ((NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE))
+                .deleteNotificationChannel(NOTIFICATION_CHANNEL_ID);
         if (mReceiver != null) {
             Log.d(TAG, "onDestroy(): unregistering " + mReceiver);
             getApplicationContext().unregisterReceiver(mReceiver);

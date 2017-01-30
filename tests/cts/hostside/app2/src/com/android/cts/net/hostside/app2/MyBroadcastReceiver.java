@@ -196,7 +196,8 @@ public class MyBroadcastReceiver extends BroadcastReceiver {
      * Sends a system notification containing actions with pending intents to launch the app's
      * main activitiy or service.
      */
-    static void sendNotification(Context context, int notificationId, String notificationType ) {
+    static void sendNotification(Context context, String channelId, int notificationId,
+            String notificationType ) {
         Log.d(TAG, "sendNotification: id=" + notificationId + ", type=" + notificationType);
         final Intent serviceIntent = new Intent(context, MyService.class);
         final PendingIntent pendingIntent = PendingIntent.getService(context, 0, serviceIntent,
@@ -204,7 +205,7 @@ public class MyBroadcastReceiver extends BroadcastReceiver {
         final Bundle bundle = new Bundle();
         bundle.putCharSequence("parcelable", "I am not");
 
-        final Notification.Builder builder = new Notification.Builder(context)
+        final Notification.Builder builder = new Notification.Builder(context, channelId)
                 .setSmallIcon(R.drawable.ic_notification);
 
         Action action = null;
