@@ -387,6 +387,10 @@ public class ConnectivityManagerTest extends AndroidTestCase {
      * Tests reporting of connectivity changed.
      */
     public void testConnectivityChanged_manifestRequestOnly_shouldNotReceiveIntent() {
+        if (!mPackageManager.hasSystemFeature(PackageManager.FEATURE_WIFI)) {
+            Log.i(TAG, "testConnectivityChanged_manifestRequestOnly_shouldNotReceiveIntent cannot execute unless device supports WiFi");
+            return;
+        }
         ConnectivityReceiver.prepare();
 
         toggleWifi();
@@ -400,6 +404,10 @@ public class ConnectivityManagerTest extends AndroidTestCase {
     }
 
     public void testConnectivityChanged_whenRegistered_shouldReceiveIntent() {
+        if (!mPackageManager.hasSystemFeature(PackageManager.FEATURE_WIFI)) {
+            Log.i(TAG, "testConnectivityChanged_whenRegistered_shouldReceiveIntent cannot execute unless device supports WiFi");
+            return;
+        }
         ConnectivityReceiver.prepare();
         ConnectivityReceiver receiver = new ConnectivityReceiver();
         IntentFilter filter = new IntentFilter();
@@ -416,6 +424,10 @@ public class ConnectivityManagerTest extends AndroidTestCase {
 
     public void testConnectivityChanged_manifestRequestOnlyPreN_shouldReceiveIntent()
             throws InterruptedException {
+        if (!mPackageManager.hasSystemFeature(PackageManager.FEATURE_WIFI)) {
+            Log.i(TAG, "testConnectivityChanged_manifestRequestOnlyPreN_shouldReceiveIntent cannot execute unless device supports WiFi");
+            return;
+        }
         Intent startIntent = new Intent();
         startIntent.setComponent(new ComponentName("android.net.cts.appForApi23",
                 "android.net.cts.appForApi23.ConnectivityListeningActivity"));
