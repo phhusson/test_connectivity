@@ -30,7 +30,6 @@ abstract class AbstractBatterySaverModeTestCase extends AbstractRestrictBackgrou
         if (!isSupported()) return;
 
         // Set initial state.
-        setUpMeteredNetwork();
         removePowerSaveModeWhitelist(TEST_APP2_PKG);
         setBatterySaverMode(false);
 
