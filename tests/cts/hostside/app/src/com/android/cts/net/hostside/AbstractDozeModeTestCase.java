@@ -31,7 +31,6 @@ abstract class AbstractDozeModeTestCase extends AbstractRestrictBackgroundNetwor
         if (!isSupported()) return;
 
         // Set initial state.
-        setUpMeteredNetwork();
         removePowerSaveModeWhitelist(TEST_APP2_PKG);
         setDozeMode(false);
 
