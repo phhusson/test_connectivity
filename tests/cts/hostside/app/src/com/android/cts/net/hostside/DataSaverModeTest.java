@@ -33,7 +33,6 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
         if (!isSupported()) return;
 
         // Set initial state.
-        setMeteredNetwork();
         setRestrictBackground(false);
         removeRestrictBackgroundWhitelist(mUid);
         removeRestrictBackgroundBlacklist(mUid);
@@ -53,6 +52,11 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
         } finally {
             setRestrictBackground(false);
         }
+    }
+
+    @Override
+    protected boolean setUpActiveNetworkMeteringState() throws Exception {
+        return setMeteredNetwork();
     }
 
     public void testGetRestrictBackgroundStatus_disabled() throws Exception {

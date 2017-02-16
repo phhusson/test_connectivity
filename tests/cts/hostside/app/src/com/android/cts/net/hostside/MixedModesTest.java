@@ -68,7 +68,11 @@ public class MixedModesTest extends AbstractRestrictBackgroundNetworkTestCase {
         }
 
         Log.i(TAG, "testDataAndBatterySaverModes_meteredNetwork() tests");
-        setMeteredNetwork();
+        if (!setMeteredNetwork()) {
+            Log.w(TAG, "testDataAndBatterySaverModes_meteredNetwork() skipped because "
+                    + "device cannot use a metered network");
+            return;
+        }
 
         try {
             setRestrictBackground(true);
@@ -139,7 +143,7 @@ public class MixedModesTest extends AbstractRestrictBackgroundNetworkTestCase {
             return;
         }
 
-        if (mCm.isActiveNetworkMetered()) {
+        if (!setUnmeteredNetwork()) {
             Log.w(TAG, "testDataAndBatterySaverModes_nonMeteredNetwork() skipped because network"
                     + " is metered");
             return;
