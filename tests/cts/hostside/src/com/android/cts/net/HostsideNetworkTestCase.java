@@ -65,8 +65,6 @@ abstract class HostsideNetworkTestCase extends DeviceTestCase implements IAbiRec
         assertNotNull(mAbi);
         assertNotNull(mCtsBuild);
 
-        assertTrue("wi-fi not enabled", getDevice().isWifiEnabled());
-
         uninstallPackage(TEST_PKG, false);
         installPackage(TEST_APK);
     }
