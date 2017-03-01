@@ -19,18 +19,51 @@ package android.net.wifi.aware.cts;
 import android.content.Context;
 import android.content.pm.PackageManager;
 
+import java.util.Arrays;
+
 /**
  * Test utilities for Wi-Fi Aware CTS test suite.
  */
-public class TestUtils {
+class TestUtils {
     static final String TAG = "WifiAwareCtsTests";
 
     /**
      * Returns a flag indicating whether or not Wi-Fi Aware should be tested. Wi-Fi Aware
      * should be tested if the feature is supported on the current device.
      */
-    public static boolean shouldTestWifiAware(Context context) {
+    static boolean shouldTestWifiAware(Context context) {
         final PackageManager pm = context.getPackageManager();
         return pm.hasSystemFeature(PackageManager.FEATURE_WIFI_AWARE);
+    }
+
+    /**
+     * Wraps a byte[] (MAC address representation). Intended to provide hash and equality operators
+     * so that the MAC address can be used in containers.
+     */
+    static class MacWrapper {
+        private byte[] mMac;
+
+        MacWrapper(byte[] mac) {
+            mMac = mac;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+
+            if (!(o instanceof MacWrapper)) {
+                return false;
+            }
+
+            MacWrapper lhs = (MacWrapper) o;
+            return Arrays.equals(mMac, lhs.mMac);
+        }
+
+        @Override
+        public int hashCode() {
+            return Arrays.hashCode(mMac);
+        }
     }
 }
