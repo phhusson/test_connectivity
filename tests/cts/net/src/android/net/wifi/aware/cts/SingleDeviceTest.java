@@ -23,13 +23,21 @@ import android.content.IntentFilter;
 import android.net.wifi.WifiManager;
 import android.net.wifi.aware.AttachCallback;
 import android.net.wifi.aware.Characteristics;
+import android.net.wifi.aware.DiscoverySessionCallback;
 import android.net.wifi.aware.IdentityChangedListener;
+import android.net.wifi.aware.PeerHandle;
+import android.net.wifi.aware.PublishConfig;
+import android.net.wifi.aware.PublishDiscoverySession;
+import android.net.wifi.aware.SubscribeConfig;
+import android.net.wifi.aware.SubscribeDiscoverySession;
 import android.net.wifi.aware.WifiAwareManager;
 import android.net.wifi.aware.WifiAwareSession;
 import android.test.AndroidTestCase;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -150,6 +158,140 @@ public class SingleDeviceTest extends AndroidTestCase {
         }
     }
 
+    private class DiscoverySessionCallbackTest extends DiscoverySessionCallback {
+        static final int ON_PUBLISH_STARTED = 0;
+        static final int ON_SUBSCRIBE_STARTED = 1;
+        static final int ON_SESSION_CONFIG_UPDATED = 2;
+        static final int ON_SESSION_CONFIG_FAILED = 3;
+        static final int ON_SESSION_TERMINATED = 4;
+        static final int ON_SERVICE_DISCOVERED = 5;
+        static final int ON_MESSAGE_SEND_SUCCEEDED = 6;
+        static final int ON_MESSAGE_SEND_FAILED = 7;
+        static final int ON_MESSAGE_RECEIVED = 8;
+
+        private final Object mLocalLock = new Object();
+
+        private CountDownLatch mBlocker;
+        private int mCurrentWaitForCallback;
+        private ArrayDeque<Integer> mCallbackQueue = new ArrayDeque<>();
+
+        private PublishDiscoverySession mPublishDiscoverySession;
+        private SubscribeDiscoverySession mSubscribeDiscoverySession;
+
+        private void processCallback(int callback) {
+            synchronized (mLocalLock) {
+                if (mBlocker != null && mCurrentWaitForCallback == callback) {
+                    mBlocker.countDown();
+                } else {
+                    mCallbackQueue.addLast(callback);
+                }
+            }
+        }
+
+        @Override
+        public void onPublishStarted(PublishDiscoverySession session) {
+            mPublishDiscoverySession = session;
+            processCallback(ON_PUBLISH_STARTED);
+        }
+
+        @Override
+        public void onSubscribeStarted(SubscribeDiscoverySession session) {
+            mSubscribeDiscoverySession = session;
+            processCallback(ON_SUBSCRIBE_STARTED);
+        }
+
+        @Override
+        public void onSessionConfigUpdated() {
+            processCallback(ON_SESSION_CONFIG_UPDATED);
+        }
+
+        @Override
+        public void onSessionConfigFailed() {
+            processCallback(ON_SESSION_CONFIG_FAILED);
+        }
+
+        @Override
+        public void onSessionTerminated() {
+            processCallback(ON_SESSION_TERMINATED);
+        }
+
+        @Override
+        public void onServiceDiscovered(PeerHandle peerHandle, byte[] serviceSpecificInfo,
+                List<byte[]> matchFilter) {
+            processCallback(ON_SERVICE_DISCOVERED);
+        }
+
+        @Override
+        public void onMessageSendSucceeded(int messageId) {
+            processCallback(ON_MESSAGE_SEND_SUCCEEDED);
+        }
+
+        @Override
+        public void onMessageSendFailed(int messageId) {
+            processCallback(ON_MESSAGE_SEND_FAILED);
+        }
+
+        @Override
+        public void onMessageReceived(PeerHandle peerHandle, byte[] message) {
+            processCallback(ON_MESSAGE_RECEIVED);
+        }
+
+        /**
+         * Wait for the specified callback - any of the ON_* constants. Returns a true
+         * on success (specified callback triggered) or false on failure (timed-out or
+         * interrupted while waiting for the requested callback).
+         *
+         * Note: other callbacks happening while while waiting for the specified callback will
+         * be queued.
+         */
+        boolean waitForCallback(int callback) {
+            synchronized (mLocalLock) {
+                boolean found = mCallbackQueue.remove(callback);
+                if (found) {
+                    return true;
+                }
+
+                mCurrentWaitForCallback = callback;
+                mBlocker = new CountDownLatch(1);
+            }
+
+            try {
+                return mBlocker.await(WAIT_FOR_AWARE_CHANGE_SECS, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                return false;
+            }
+        }
+
+        /**
+         * Indicates whether the specified callback (any of the ON_* constants) has already
+         * happened and in the queue. Useful when the order of events is important.
+         */
+        boolean hasCallbackAlreadyHappened(int callback) {
+            synchronized (mLocalLock) {
+                return mCallbackQueue.contains(callback);
+            }
+        }
+
+        /**
+         * Returns the last created publish discovery session.
+         */
+        PublishDiscoverySession getPublishDiscoverySession() {
+            PublishDiscoverySession session = mPublishDiscoverySession;
+            mPublishDiscoverySession = null;
+            return session;
+        }
+
+        /**
+         * Returns the last created subscribe discovery session.
+         */
+        SubscribeDiscoverySession getSubscribeDiscoverySession() {
+            SubscribeDiscoverySession session = mSubscribeDiscoverySession;
+            mSubscribeDiscoverySession = null;
+            return session;
+        }
+
+    }
+
     @Override
     protected void setUp() throws Exception {
         super.setUp();
@@ -257,14 +399,7 @@ public class SingleDeviceTest extends AndroidTestCase {
             return;
         }
 
-        AttachCallbackTest attachCb = new AttachCallbackTest();
-        mWifiAwareManager.attach(attachCb, null);
-        int cbCalled = attachCb.waitForAnyCallback();
-        assertEquals("Wi-Fi Aware attach", AttachCallbackTest.ATTACHED, cbCalled);
-
-        WifiAwareSession session = attachCb.getSession();
-        assertNotNull("Wi-Fi Aware session", session);
-
+        WifiAwareSession session = attachAndGetSession();
         session.destroy();
     }
 
@@ -304,5 +439,106 @@ public class SingleDeviceTest extends AndroidTestCase {
         }
 
         assertEquals("", numIterations, macs.size());
+    }
+
+    /**
+     * Validate a successful publish discovery session lifetime: publish, update publish, destroy.
+     */
+    public void testPublishDiscoverySuccess() {
+        if (!TestUtils.shouldTestWifiAware(getContext())) {
+            return;
+        }
+
+        final String serviceName = "ValidName";
+
+        WifiAwareSession session = attachAndGetSession();
+
+        PublishConfig publishConfig = new PublishConfig.Builder().setServiceName(
+                serviceName).build();
+        DiscoverySessionCallbackTest discoveryCb = new DiscoverySessionCallbackTest();
+
+        // 1. publish
+        session.publish(publishConfig, discoveryCb, null);
+        assertTrue("Publish started",
+                discoveryCb.waitForCallback(DiscoverySessionCallbackTest.ON_PUBLISH_STARTED));
+        PublishDiscoverySession discoverySession = discoveryCb.getPublishDiscoverySession();
+        assertNotNull("Publish session", discoverySession);
+
+        // 2. update-publish
+        publishConfig = new PublishConfig.Builder().setServiceName(
+                serviceName).setServiceSpecificInfo("extras".getBytes()).build();
+        discoverySession.updatePublish(publishConfig);
+        assertTrue("Publish update", discoveryCb.waitForCallback(
+                DiscoverySessionCallbackTest.ON_SESSION_CONFIG_UPDATED));
+
+        // 3. destroy
+        assertFalse("Publish not terminated", discoveryCb.hasCallbackAlreadyHappened(
+                DiscoverySessionCallbackTest.ON_SESSION_TERMINATED));
+        discoverySession.destroy();
+
+        // 4. try update post-destroy: should time-out waiting for cb
+        discoverySession.updatePublish(publishConfig);
+        assertFalse("Publish update post destroy", discoveryCb.waitForCallback(
+                DiscoverySessionCallbackTest.ON_SESSION_CONFIG_UPDATED));
+
+        session.destroy();
+    }
+
+    /**
+     * Validate a successful subscribe discovery session lifetime: subscribe, update subscribe,
+     * destroy.
+     */
+    public void testSubscribeDiscoverySuccess() {
+        if (!TestUtils.shouldTestWifiAware(getContext())) {
+            return;
+        }
+
+        final String serviceName = "ValidName";
+
+        WifiAwareSession session = attachAndGetSession();
+
+        SubscribeConfig subscribeConfig = new SubscribeConfig.Builder().setServiceName(
+                serviceName).build();
+        DiscoverySessionCallbackTest discoveryCb = new DiscoverySessionCallbackTest();
+
+        // 1. subscribe
+        session.subscribe(subscribeConfig, discoveryCb, null);
+        assertTrue("Subscribe started",
+                discoveryCb.waitForCallback(DiscoverySessionCallbackTest.ON_SUBSCRIBE_STARTED));
+        SubscribeDiscoverySession discoverySession = discoveryCb.getSubscribeDiscoverySession();
+        assertNotNull("Subscribe session", discoverySession);
+
+        // 2. update-subscribe
+        subscribeConfig = new SubscribeConfig.Builder().setServiceName(
+                serviceName).setServiceSpecificInfo("extras".getBytes()).build();
+        discoverySession.updateSubscribe(subscribeConfig);
+        assertTrue("Subscribe update", discoveryCb.waitForCallback(
+                DiscoverySessionCallbackTest.ON_SESSION_CONFIG_UPDATED));
+
+        // 3. destroy
+        assertFalse("Subscribe not terminated", discoveryCb.hasCallbackAlreadyHappened(
+                DiscoverySessionCallbackTest.ON_SESSION_TERMINATED));
+        discoverySession.destroy();
+
+        // 4. try update post-destroy: should time-out waiting for cb
+        discoverySession.updateSubscribe(subscribeConfig);
+        assertFalse("Subscribe update post destroy", discoveryCb.waitForCallback(
+                DiscoverySessionCallbackTest.ON_SESSION_CONFIG_UPDATED));
+
+        session.destroy();
+    }
+
+    // local utilities
+
+    WifiAwareSession attachAndGetSession() {
+        AttachCallbackTest attachCb = new AttachCallbackTest();
+        mWifiAwareManager.attach(attachCb, null);
+        int cbCalled = attachCb.waitForAnyCallback();
+        assertEquals("Wi-Fi Aware attach", AttachCallbackTest.ATTACHED, cbCalled);
+
+        WifiAwareSession session = attachCb.getSession();
+        assertNotNull("Wi-Fi Aware session", session);
+
+        return session;
     }
 }
