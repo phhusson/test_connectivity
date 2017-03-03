@@ -29,6 +29,9 @@ import android.net.wifi.WifiConfiguration.Status;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.TxPacketCountListener;
 import android.net.wifi.WifiManager.WifiLock;
+import android.net.wifi.hotspot2.PasspointConfiguration;
+import android.net.wifi.hotspot2.pps.Credential;
+import android.net.wifi.hotspot2.pps.HomeSp;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.test.AndroidTestCase;
@@ -38,6 +41,8 @@ import com.android.compatibility.common.util.WifiConfigCreator;
 
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.security.MessageDigest;
+import java.security.cert.X509Certificate;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -542,5 +547,131 @@ public class WifiManagerTest extends AndroidTestCase {
             }
         }
         assertTrue(i < 15);
+    }
+
+    /**
+     * Verify Passpoint configuration management APIs (add, remove, get) for a Passpoint
+     * configuration with an user credential.
+     *
+     * @throws Exception
+     */
+    public void testAddPasspointConfigWithUserCredential() throws Exception {
+        testAddPasspointConfig(generatePasspointConfig(generateUserCredential()));
+    }
+
+    /**
+     * Verify Passpoint configuration management APIs (add, remove, get) for a Passpoint
+     * configuration with a certificate credential.
+     *
+     * @throws Exception
+     */
+    public void testAddPasspointConfigWithCertCredential() throws Exception {
+        testAddPasspointConfig(generatePasspointConfig(generateCertCredential()));
+    }
+
+    /**
+     * Verify Passpoint configuration management APIs (add, remove, get) for a Passpoint
+     * configuration with a SIm credential.
+     *
+     * @throws Exception
+     */
+    public void testAddPasspointConfigWithSimCredential() throws Exception {
+        testAddPasspointConfig(generatePasspointConfig(generateSimCredential()));
+    }
+
+    /**
+     * Helper function for generating a {@link PasspointConfiguration} for testing.
+     *
+     * @return {@link PasspointConfiguration}
+     */
+    private PasspointConfiguration generatePasspointConfig(Credential credential) {
+        PasspointConfiguration config = new PasspointConfiguration();
+        config.setCredential(credential);
+
+        // Setup HomeSp.
+        HomeSp homeSp = new HomeSp();
+        homeSp.setFqdn("Test.com");
+        homeSp.setFriendlyName("Test Provider");
+        config.setHomeSp(homeSp);
+
+        return config;
+    }
+
+    /**
+     * Helper function for generating an user credential for testing.
+     *
+     * @return {@link Credential}
+     */
+    private Credential generateUserCredential() {
+        Credential credential = new Credential();
+        credential.setRealm("test.net");
+        Credential.UserCredential userCred = new Credential.UserCredential();
+        userCred.setEapType(21 /* EAP_TTLS */);
+        userCred.setUsername("username");
+        userCred.setPassword("password");
+        userCred.setNonEapInnerMethod("PAP");
+        credential.setUserCredential(userCred);
+        credential.setCaCertificate(FakeKeys.CA_CERT0);
+        return credential;
+    }
+
+    /**
+     * Helper function for generating a certificate credential for testing.
+     *
+     * @return {@link Credential}
+     */
+    private Credential generateCertCredential() throws Exception {
+        Credential credential = new Credential();
+        credential.setRealm("test.net");
+        Credential.CertificateCredential certCredential = new Credential.CertificateCredential();
+        certCredential.setCertType("x509v3");
+        certCredential.setCertSha256Fingerprint(
+                MessageDigest.getInstance("SHA-256").digest(FakeKeys.CLIENT_CERT.getEncoded()));
+        credential.setCertCredential(certCredential);
+        credential.setCaCertificate(FakeKeys.CA_CERT0);
+        credential.setClientCertificateChain(new X509Certificate[] {FakeKeys.CLIENT_CERT});
+        credential.setClientPrivateKey(FakeKeys.RSA_KEY1);
+        return credential;
+    }
+
+    /**
+     * Helper function for generating a SIM credential for testing.
+     *
+     * @return {@link Credential}
+     */
+    private Credential generateSimCredential() throws Exception {
+        Credential credential = new Credential();
+        credential.setRealm("test.net");
+        Credential.SimCredential simCredential = new Credential.SimCredential();
+        simCredential.setImsi("1234*");
+        simCredential.setEapType(18 /* EAP_SIM */);
+        credential.setSimCredential(simCredential);
+        return credential;
+    }
+
+    /**
+     * Helper function verifying Passpoint configuration management APIs (add, remove, get) for
+     * a given configuration.
+     *
+     * @param config The configuration to test with
+     */
+    private void testAddPasspointConfig(PasspointConfiguration config) throws Exception {
+        assertTrue(mWifiManager.addOrUpdatePasspointConfiguration(config));
+
+        // Certificates and keys will be set to null after it is installed to the KeyStore by
+        // WifiManager.  Reset them in the expected config so that it can be used to compare
+        // against the retrieved config.
+        config.getCredential().setCaCertificate(null);
+        config.getCredential().setClientCertificateChain(null);
+        config.getCredential().setClientPrivateKey(null);
+
+        // Retrieve the configuration and verify it.
+        List<PasspointConfiguration> configList = mWifiManager.getPasspointConfigurations();
+        assertEquals(1, configList.size());
+        assertEquals(config, configList.get(0));
+
+        // Remove the configuration and verify no installed configuration.
+        assertTrue(mWifiManager.removePasspointConfiguration(config.getHomeSp().getFqdn()));
+        assertTrue(mWifiManager.getPasspointConfigurations().isEmpty());
     }
 }
