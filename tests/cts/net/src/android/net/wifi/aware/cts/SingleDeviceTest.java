@@ -20,6 +20,9 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.net.ConnectivityManager;
+import android.net.NetworkCapabilities;
+import android.net.NetworkRequest;
 import android.net.wifi.WifiManager;
 import android.net.wifi.aware.AttachCallback;
 import android.net.wifi.aware.Characteristics;
@@ -32,6 +35,8 @@ import android.net.wifi.aware.SubscribeConfig;
 import android.net.wifi.aware.SubscribeDiscoverySession;
 import android.net.wifi.aware.WifiAwareManager;
 import android.net.wifi.aware.WifiAwareSession;
+import android.os.Handler;
+import android.os.HandlerThread;
 import android.test.AndroidTestCase;
 
 import java.util.ArrayDeque;
@@ -54,10 +59,17 @@ public class SingleDeviceTest extends AndroidTestCase {
     static private final int WAIT_FOR_AWARE_CHANGE_SECS = 10;
 
     private final Object mLock = new Object();
+    private final HandlerThread mHandlerThread = new HandlerThread("SingleDeviceTest");
+    private final Handler mHandler;
+    {
+        mHandlerThread.start();
+        mHandler = new Handler(mHandlerThread.getLooper());
+    }
 
     private WifiAwareManager mWifiAwareManager;
     private WifiManager mWifiManager;
     private WifiManager.WifiLock mWifiLock;
+    private ConnectivityManager mConnectivityManager;
 
     // used to store any WifiAwareSession allocated during tests - will clean-up after tests
     private List<WifiAwareSession> mSessions = new ArrayList<>();
@@ -291,6 +303,27 @@ public class SingleDeviceTest extends AndroidTestCase {
         }
     }
 
+    private class NetworkCallbackTest extends ConnectivityManager.NetworkCallback {
+        private CountDownLatch mBlocker = new CountDownLatch(1);
+
+        @Override
+        public void onUnavailable() {
+            mBlocker.countDown();
+        }
+
+        /**
+         * Wait for the onUnavailable() callback to be triggered. Returns true if triggered,
+         * otherwise (timed-out, interrupted) returns false.
+         */
+        boolean waitForOnUnavailable() {
+            try {
+                return mBlocker.await(WAIT_FOR_AWARE_CHANGE_SECS, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                return false;
+            }
+        }
+    }
+
     @Override
     protected void setUp() throws Exception {
         super.setUp();
@@ -310,6 +343,10 @@ public class SingleDeviceTest extends AndroidTestCase {
         if (!mWifiManager.isWifiEnabled()) {
             mWifiManager.setWifiEnabled(true);
         }
+
+        mConnectivityManager = (ConnectivityManager) getContext().getSystemService(
+                Context.CONNECTIVITY_SERVICE);
+        assertNotNull("Connectivity Manager", mConnectivityManager);
 
         IntentFilter intentFilter = new IntentFilter();
         intentFilter.addAction(WifiAwareManager.ACTION_WIFI_AWARE_STATE_CHANGED);
@@ -421,7 +458,7 @@ public class SingleDeviceTest extends AndroidTestCase {
         for (int i = 0; i < numIterations; ++i) {
             AttachCallbackTest attachCb = new AttachCallbackTest();
             IdentityChangedListenerTest identityL = new IdentityChangedListenerTest();
-            mWifiAwareManager.attach(attachCb, identityL, null);
+            mWifiAwareManager.attach(attachCb, identityL, mHandler);
             assertEquals("Wi-Fi Aware attach: iteration " + i, AttachCallbackTest.ATTACHED,
                     attachCb.waitForAnyCallback());
             assertTrue("Wi-Fi Aware attach: iteration " + i, identityL.waitForListener());
@@ -457,7 +494,7 @@ public class SingleDeviceTest extends AndroidTestCase {
         DiscoverySessionCallbackTest discoveryCb = new DiscoverySessionCallbackTest();
 
         // 1. publish
-        session.publish(publishConfig, discoveryCb, null);
+        session.publish(publishConfig, discoveryCb, mHandler);
         assertTrue("Publish started",
                 discoveryCb.waitForCallback(DiscoverySessionCallbackTest.ON_PUBLISH_STARTED));
         PublishDiscoverySession discoverySession = discoveryCb.getPublishDiscoverySession();
@@ -501,7 +538,7 @@ public class SingleDeviceTest extends AndroidTestCase {
         DiscoverySessionCallbackTest discoveryCb = new DiscoverySessionCallbackTest();
 
         // 1. subscribe
-        session.subscribe(subscribeConfig, discoveryCb, null);
+        session.subscribe(subscribeConfig, discoveryCb, mHandler);
         assertTrue("Subscribe started",
                 discoveryCb.waitForCallback(DiscoverySessionCallbackTest.ON_SUBSCRIBE_STARTED));
         SubscribeDiscoverySession discoverySession = discoveryCb.getSubscribeDiscoverySession();
@@ -543,7 +580,7 @@ public class SingleDeviceTest extends AndroidTestCase {
         DiscoverySessionCallbackTest discoveryCb = new DiscoverySessionCallbackTest();
 
         // 1. publish
-        session.publish(publishConfig, discoveryCb, null);
+        session.publish(publishConfig, discoveryCb, mHandler);
         assertTrue("Publish started",
                 discoveryCb.waitForCallback(DiscoverySessionCallbackTest.ON_PUBLISH_STARTED));
         PublishDiscoverySession discoverySession = discoveryCb.getPublishDiscoverySession();
@@ -561,11 +598,72 @@ public class SingleDeviceTest extends AndroidTestCase {
         session.destroy();
     }
 
+    /**
+     * Request an Aware data-path on a Publish discovery session (which can be done with a null
+     * peer - to accept all requests). Validate that times-out.
+     */
+    public void testDataPathInContextOfDiscoveryFail() {
+        if (!TestUtils.shouldTestWifiAware(getContext())) {
+            return;
+        }
+
+        WifiAwareSession session = attachAndGetSession();
+
+        PublishConfig publishConfig = new PublishConfig.Builder().setServiceName(
+                "ValidName").build();
+        DiscoverySessionCallbackTest discoveryCb = new DiscoverySessionCallbackTest();
+        NetworkCallbackTest networkCb = new NetworkCallbackTest();
+
+        // 1. publish
+        session.publish(publishConfig, discoveryCb, mHandler);
+        assertTrue("Publish started",
+                discoveryCb.waitForCallback(DiscoverySessionCallbackTest.ON_PUBLISH_STARTED));
+        PublishDiscoverySession discoverySession = discoveryCb.getPublishDiscoverySession();
+        assertNotNull("Publish session", discoverySession);
+
+        // 2. request an AWARE network
+        NetworkRequest nr = new NetworkRequest.Builder().addTransportType(
+                NetworkCapabilities.TRANSPORT_WIFI_AWARE).setNetworkSpecifier(
+                discoverySession.createNetworkSpecifier(null, null)).build();
+        mConnectivityManager.requestNetwork(nr, networkCb, 2000);
+        assertTrue("OnUnavailable received", networkCb.waitForOnUnavailable());
+
+        discoverySession.destroy();
+        session.destroy();
+    }
+
+    /**
+     * Request an Aware data-path as a Responder with no peer MAC address (i.e. accept any peer
+     * request). Validate that times-out.
+     */
+    public void testDataPathOutOfBandFail() {
+        if (!TestUtils.shouldTestWifiAware(getContext())) {
+            return;
+        }
+
+        WifiAwareSession session = attachAndGetSession();
+
+        PublishConfig publishConfig = new PublishConfig.Builder().setServiceName(
+                "ValidName").build();
+        DiscoverySessionCallbackTest discoveryCb = new DiscoverySessionCallbackTest();
+        NetworkCallbackTest networkCb = new NetworkCallbackTest();
+
+        // 1. request an AWARE network
+        NetworkRequest nr = new NetworkRequest.Builder().addTransportType(
+                NetworkCapabilities.TRANSPORT_WIFI_AWARE).setNetworkSpecifier(
+                session.createNetworkSpecifier(
+                        WifiAwareManager.WIFI_AWARE_DATA_PATH_ROLE_RESPONDER, null, null)).build();
+        mConnectivityManager.requestNetwork(nr, networkCb, 2000);
+        assertTrue("OnUnavailable received", networkCb.waitForOnUnavailable());
+
+        session.destroy();
+    }
+
     // local utilities
 
     private WifiAwareSession attachAndGetSession() {
         AttachCallbackTest attachCb = new AttachCallbackTest();
-        mWifiAwareManager.attach(attachCb, null);
+        mWifiAwareManager.attach(attachCb, mHandler);
         int cbCalled = attachCb.waitForAnyCallback();
         assertEquals("Wi-Fi Aware attach", AttachCallbackTest.ATTACHED, cbCalled);
 
