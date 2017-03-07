@@ -75,7 +75,7 @@ public class SingleDeviceTest extends AndroidTestCase {
         boolean waitForStateChange() throws InterruptedException {
             return mBlocker.await(WAIT_FOR_AWARE_CHANGE_SECS, TimeUnit.SECONDS);
         }
-    };
+    }
 
     private class AttachCallbackTest extends AttachCallback {
         static final int ATTACHED = 0;
@@ -289,7 +289,6 @@ public class SingleDeviceTest extends AndroidTestCase {
             mSubscribeDiscoverySession = null;
             return session;
         }
-
     }
 
     @Override
@@ -528,9 +527,43 @@ public class SingleDeviceTest extends AndroidTestCase {
         session.destroy();
     }
 
+    /**
+     * Test the send message flow. Since testing single device cannot send to a real peer -
+     * validate that sending to a bogus peer fails.
+     */
+    public void testSendMessageFail() {
+        if (!TestUtils.shouldTestWifiAware(getContext())) {
+            return;
+        }
+
+        WifiAwareSession session = attachAndGetSession();
+
+        PublishConfig publishConfig = new PublishConfig.Builder().setServiceName(
+                "ValidName").build();
+        DiscoverySessionCallbackTest discoveryCb = new DiscoverySessionCallbackTest();
+
+        // 1. publish
+        session.publish(publishConfig, discoveryCb, null);
+        assertTrue("Publish started",
+                discoveryCb.waitForCallback(DiscoverySessionCallbackTest.ON_PUBLISH_STARTED));
+        PublishDiscoverySession discoverySession = discoveryCb.getPublishDiscoverySession();
+        assertNotNull("Publish session", discoverySession);
+
+        // 2. send a message with a null peer-handle - expect exception
+        try {
+            discoverySession.sendMessage(null, -1290, "some message".getBytes());
+            fail("Expected IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            // empty
+        }
+
+        discoverySession.destroy();
+        session.destroy();
+    }
+
     // local utilities
 
-    WifiAwareSession attachAndGetSession() {
+    private WifiAwareSession attachAndGetSession() {
         AttachCallbackTest attachCb = new AttachCallbackTest();
         mWifiAwareManager.attach(attachCb, null);
         int cbCalled = attachCb.waitForAnyCallback();
