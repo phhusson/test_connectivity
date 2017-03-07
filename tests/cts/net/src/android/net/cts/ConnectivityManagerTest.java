@@ -18,6 +18,7 @@ package android.net.cts;
 
 import static android.net.NetworkCapabilities.NET_CAPABILITY_IMS;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
+import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
 
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
@@ -384,6 +385,57 @@ public class ConnectivityManagerTest extends AndroidTestCase {
     }
 
     /**
+     * Exercises the requestNetwork with NetworkCallback API. This checks to
+     * see if we get a callback for an INTERNET request.
+     */
+    public void testRequestNetworkCallback() {
+        final TestNetworkCallback callback = new TestNetworkCallback();
+        mCm.requestNetwork(new NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build(), callback);
+
+        try {
+            // Wait to get callback for availability of internet
+            Network internetNetwork = callback.waitForAvailable();
+            assertNotNull("Did not receive NetworkCallback#onAvailable for INTERNET",
+                    internetNetwork);
+        } catch (InterruptedException e) {
+            fail("NetworkCallback wait was interrupted.");
+        } finally {
+            mCm.unregisterNetworkCallback(callback);
+        }
+    }
+
+    /**
+     * Exercises the requestNetwork with NetworkCallback API with timeout - expected to
+     * fail. Use WIFI and switch Wi-Fi off.
+     */
+    public void testRequestNetworkCallback_onUnavailable() {
+        final boolean previousWifiEnabledState = mWifiManager.isWifiEnabled();
+        if (previousWifiEnabledState) {
+            disconnectFromWifi(null);
+        }
+
+        final TestNetworkCallback callback = new TestNetworkCallback();
+        mCm.requestNetwork(new NetworkRequest.Builder()
+                .addTransportType(TRANSPORT_WIFI)
+                .build(), 100, callback);
+
+        try {
+            // Wait to get callback for unavailability of requested network
+            assertTrue("Did not receive NetworkCallback#onUnavailable",
+                    callback.waitForUnavailable());
+        } catch (InterruptedException e) {
+            fail("NetworkCallback wait was interrupted.");
+        } finally {
+            mCm.unregisterNetworkCallback(callback);
+            if (previousWifiEnabledState) {
+                connectToWifi();
+            }
+        }
+    }
+
+    /**
      * Tests reporting of connectivity changed.
      */
     public void testConnectivityChanged_manifestRequestOnly_shouldNotReceiveIntent() {
@@ -639,6 +691,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
     private static class TestNetworkCallback extends ConnectivityManager.NetworkCallback {
         private final CountDownLatch mAvailableLatch = new CountDownLatch(1);
         private final CountDownLatch mLostLatch = new CountDownLatch(1);
+        private final CountDownLatch mUnavailableLatch = new CountDownLatch(1);
 
         public Network currentNetwork;
         public Network lastLostNetwork;
@@ -650,6 +703,11 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         public Network waitForLost() throws InterruptedException {
             return mLostLatch.await(30, TimeUnit.SECONDS) ? lastLostNetwork : null;
         }
+
+        public boolean waitForUnavailable() throws InterruptedException {
+            return mUnavailableLatch.await(2, TimeUnit.SECONDS);
+        }
+
 
         @Override
         public void onAvailable(Network network) {
@@ -664,6 +722,11 @@ public class ConnectivityManagerTest extends AndroidTestCase {
                 currentNetwork = null;
             }
             mLostLatch.countDown();
+        }
+
+        @Override
+        public void onUnavailable() {
+            mUnavailableLatch.countDown();
         }
     }
 
