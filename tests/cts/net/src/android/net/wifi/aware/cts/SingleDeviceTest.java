@@ -599,10 +599,10 @@ public class SingleDeviceTest extends AndroidTestCase {
     }
 
     /**
-     * Request an Aware data-path on a Publish discovery session (which can be done with a null
-     * peer - to accept all requests). Validate that times-out.
+     * Request an Aware data-path (open) on a Publish discovery session (which can be done with a
+     * null peer - to accept all requests). Validate that times-out.
      */
-    public void testDataPathInContextOfDiscoveryFail() {
+    public void testDataPathOpenInContextOfDiscoveryFail() {
         if (!TestUtils.shouldTestWifiAware(getContext())) {
             return;
         }
@@ -624,7 +624,7 @@ public class SingleDeviceTest extends AndroidTestCase {
         // 2. request an AWARE network
         NetworkRequest nr = new NetworkRequest.Builder().addTransportType(
                 NetworkCapabilities.TRANSPORT_WIFI_AWARE).setNetworkSpecifier(
-                discoverySession.createNetworkSpecifier(null, null)).build();
+                discoverySession.createNetworkSpecifierOpen(null)).build();
         mConnectivityManager.requestNetwork(nr, networkCb, 2000);
         assertTrue("OnUnavailable received", networkCb.waitForOnUnavailable());
 
@@ -633,10 +633,45 @@ public class SingleDeviceTest extends AndroidTestCase {
     }
 
     /**
-     * Request an Aware data-path as a Responder with no peer MAC address (i.e. accept any peer
-     * request). Validate that times-out.
+     * Request an Aware data-path (encrypted) on a Publish discovery session (which can be done
+     * with a null peer - to accept all requests). Validate that times-out.
      */
-    public void testDataPathOutOfBandFail() {
+    public void testDataPathPassphraseInContextOfDiscoveryFail() {
+        if (!TestUtils.shouldTestWifiAware(getContext())) {
+            return;
+        }
+
+        WifiAwareSession session = attachAndGetSession();
+
+        PublishConfig publishConfig = new PublishConfig.Builder().setServiceName(
+                "ValidName").build();
+        DiscoverySessionCallbackTest discoveryCb = new DiscoverySessionCallbackTest();
+        NetworkCallbackTest networkCb = new NetworkCallbackTest();
+
+        // 1. publish
+        session.publish(publishConfig, discoveryCb, mHandler);
+        assertTrue("Publish started",
+                discoveryCb.waitForCallback(DiscoverySessionCallbackTest.ON_PUBLISH_STARTED));
+        PublishDiscoverySession discoverySession = discoveryCb.getPublishDiscoverySession();
+        assertNotNull("Publish session", discoverySession);
+
+        // 2. request an AWARE network
+        NetworkRequest nr = new NetworkRequest.Builder().addTransportType(
+                NetworkCapabilities.TRANSPORT_WIFI_AWARE).setNetworkSpecifier(
+                discoverySession.createNetworkSpecifierPassphrase(null,
+                        "Some very long but not very good passphrase")).build();
+        mConnectivityManager.requestNetwork(nr, networkCb, 2000);
+        assertTrue("OnUnavailable received", networkCb.waitForOnUnavailable());
+
+        discoverySession.destroy();
+        session.destroy();
+    }
+
+    /**
+     * Request an Aware data-path (open) as a Responder with no peer MAC address (i.e. accept any
+     * peer request). Validate that times-out.
+     */
+    public void testDataPathOpenOutOfBandFail() {
         if (!TestUtils.shouldTestWifiAware(getContext())) {
             return;
         }
@@ -651,8 +686,36 @@ public class SingleDeviceTest extends AndroidTestCase {
         // 1. request an AWARE network
         NetworkRequest nr = new NetworkRequest.Builder().addTransportType(
                 NetworkCapabilities.TRANSPORT_WIFI_AWARE).setNetworkSpecifier(
-                session.createNetworkSpecifier(
-                        WifiAwareManager.WIFI_AWARE_DATA_PATH_ROLE_RESPONDER, null, null)).build();
+                session.createNetworkSpecifierOpen(
+                        WifiAwareManager.WIFI_AWARE_DATA_PATH_ROLE_RESPONDER, null)).build();
+        mConnectivityManager.requestNetwork(nr, networkCb, 2000);
+        assertTrue("OnUnavailable received", networkCb.waitForOnUnavailable());
+
+        session.destroy();
+    }
+
+    /**
+     * Request an Aware data-path (encrypted) as a Responder with no peer MAC address (i.e.
+     * accept any peer request). Validate that times-out.
+     */
+    public void testDataPathPassphraseOutOfBandFail() {
+        if (!TestUtils.shouldTestWifiAware(getContext())) {
+            return;
+        }
+
+        WifiAwareSession session = attachAndGetSession();
+
+        PublishConfig publishConfig = new PublishConfig.Builder().setServiceName(
+                "ValidName").build();
+        DiscoverySessionCallbackTest discoveryCb = new DiscoverySessionCallbackTest();
+        NetworkCallbackTest networkCb = new NetworkCallbackTest();
+
+        // 1. request an AWARE network
+        NetworkRequest nr = new NetworkRequest.Builder().addTransportType(
+                NetworkCapabilities.TRANSPORT_WIFI_AWARE).setNetworkSpecifier(
+                session.createNetworkSpecifierPassphrase(
+                        WifiAwareManager.WIFI_AWARE_DATA_PATH_ROLE_RESPONDER, null,
+                        "abcdefghihk")).build();
         mConnectivityManager.requestNetwork(nr, networkCb, 2000);
         assertTrue("OnUnavailable received", networkCb.waitForOnUnavailable());
 
