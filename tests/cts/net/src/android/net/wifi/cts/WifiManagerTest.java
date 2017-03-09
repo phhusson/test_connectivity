@@ -656,7 +656,7 @@ public class WifiManagerTest extends AndroidTestCase {
      * @param config The configuration to test with
      */
     private void testAddPasspointConfig(PasspointConfiguration config) throws Exception {
-        assertTrue(mWifiManager.addOrUpdatePasspointConfiguration(config));
+        mWifiManager.addOrUpdatePasspointConfiguration(config);
 
         // Certificates and keys will be set to null after it is installed to the KeyStore by
         // WifiManager.  Reset them in the expected config so that it can be used to compare
@@ -671,7 +671,7 @@ public class WifiManagerTest extends AndroidTestCase {
         assertEquals(config, configList.get(0));
 
         // Remove the configuration and verify no installed configuration.
-        assertTrue(mWifiManager.removePasspointConfiguration(config.getHomeSp().getFqdn()));
+        mWifiManager.removePasspointConfiguration(config.getHomeSp().getFqdn());
         assertTrue(mWifiManager.getPasspointConfigurations().isEmpty());
     }
 }
