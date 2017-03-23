@@ -110,8 +110,7 @@ public class VpnTest extends InstrumentationTestCase {
 
     private boolean supportedHardware() {
         final PackageManager pm = getInstrumentation().getContext().getPackageManager();
-        return !pm.hasSystemFeature("android.hardware.type.television") &&
-               !pm.hasSystemFeature("android.hardware.type.watch");
+        return !pm.hasSystemFeature("android.hardware.type.watch");
     }
 
     @Override
