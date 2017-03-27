@@ -100,6 +100,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     protected ConnectivityManager mCm;
     protected WifiManager mWfm;
     protected int mUid;
+    private int mMyUid;
     private String mMeteredWifi;
     private MyServiceClient mServiceClient;
     private boolean mHasWatch;
@@ -115,7 +116,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         mCm = (ConnectivityManager) mContext.getSystemService(Context.CONNECTIVITY_SERVICE);
         mWfm = (WifiManager) mContext.getSystemService(Context.WIFI_SERVICE);
         mUid = getUid(TEST_APP2_PKG);
-        final int myUid = getUid(mContext.getPackageName());
+        mMyUid = getUid(mContext.getPackageName());
         mServiceClient = new MyServiceClient(mContext);
         mServiceClient.bind();
         mHasWatch = mContext.getPackageManager().hasSystemFeature(
@@ -128,7 +129,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         mSupported = setUpActiveNetworkMeteringState();
 
         Log.i(TAG, "Apps status on " + getName() + ":\n"
-                + "\ttest app: uid=" + myUid + ", state=" + getProcessStateByUid(myUid) + "\n"
+                + "\ttest app: uid=" + mMyUid + ", state=" + getProcessStateByUid(mMyUid) + "\n"
                 + "\tapp2: uid=" + mUid + ", state=" + getProcessStateByUid(mUid));
    }
 
@@ -202,6 +203,21 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         assertNotNull("didn't get API status from app2", status);
         final String actualStatus = toString(Integer.parseInt(status));
         assertEquals("wrong status", toString(expectedStatus), actualStatus);
+    }
+
+    protected void assertMyRestrictBackgroundStatus(int expectedStatus) throws Exception {
+        final int actualStatus = mCm.getRestrictBackgroundStatus();
+        assertEquals("Wrong status", toString(expectedStatus), toString(actualStatus));
+    }
+
+    protected boolean isMyRestrictBackgroundStatus(int expectedStatus) throws Exception {
+        final int actualStatus = mCm.getRestrictBackgroundStatus();
+        if (expectedStatus != actualStatus) {
+            Log.d(TAG, "Expected: " + toString(expectedStatus)
+                    + " but actual: " + toString(actualStatus));
+            return false;
+        }
+        return true;
     }
 
     protected void assertBackgroundNetworkAccess(boolean expectAllowed) throws Exception {
