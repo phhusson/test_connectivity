@@ -587,6 +587,10 @@ public class WifiManagerTest extends AndroidTestCase {
     private PasspointConfiguration generatePasspointConfig(Credential credential) {
         PasspointConfiguration config = new PasspointConfiguration();
         config.setCredential(credential);
+        // Setting update identifier to indicate R2 configuration, to avoid CA
+        // certificate being verified, since we're using a fake CA certificate
+        // for testing.
+        config.setUpdateIdentifier(1);
 
         // Setup HomeSp.
         HomeSp homeSp = new HomeSp();
@@ -656,22 +660,26 @@ public class WifiManagerTest extends AndroidTestCase {
      * @param config The configuration to test with
      */
     private void testAddPasspointConfig(PasspointConfiguration config) throws Exception {
-        mWifiManager.addOrUpdatePasspointConfiguration(config);
+        try {
+            mWifiManager.addOrUpdatePasspointConfiguration(config);
 
-        // Certificates and keys will be set to null after it is installed to the KeyStore by
-        // WifiManager.  Reset them in the expected config so that it can be used to compare
-        // against the retrieved config.
-        config.getCredential().setCaCertificate(null);
-        config.getCredential().setClientCertificateChain(null);
-        config.getCredential().setClientPrivateKey(null);
+            // Certificates and keys will be set to null after it is installed to the KeyStore by
+            // WifiManager.  Reset them in the expected config so that it can be used to compare
+            // against the retrieved config.
+            config.getCredential().setCaCertificate(null);
+            config.getCredential().setClientCertificateChain(null);
+            config.getCredential().setClientPrivateKey(null);
 
-        // Retrieve the configuration and verify it.
-        List<PasspointConfiguration> configList = mWifiManager.getPasspointConfigurations();
-        assertEquals(1, configList.size());
-        assertEquals(config, configList.get(0));
+            // Retrieve the configuration and verify it.
+            List<PasspointConfiguration> configList = mWifiManager.getPasspointConfigurations();
+            assertEquals(1, configList.size());
+            assertEquals(config, configList.get(0));
 
-        // Remove the configuration and verify no installed configuration.
-        mWifiManager.removePasspointConfiguration(config.getHomeSp().getFqdn());
-        assertTrue(mWifiManager.getPasspointConfigurations().isEmpty());
+            // Remove the configuration and verify no installed configuration.
+            mWifiManager.removePasspointConfiguration(config.getHomeSp().getFqdn());
+            assertTrue(mWifiManager.getPasspointConfigurations().isEmpty());
+        } catch (UnsupportedOperationException e) {
+            // Passpoint build config |config_wifi_hotspot2_enabled| is disabled, so noop.
+        }
     }
 }
