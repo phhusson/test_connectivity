@@ -257,6 +257,23 @@ public class SingleDeviceTest extends AndroidTestCase {
          * be queued.
          */
         boolean waitForCallback(int callback) {
+            return waitForCallback(callback, WAIT_FOR_AWARE_CHANGE_SECS);
+        }
+
+        /**
+         * Wait for the specified callback - any of the ON_* constants. Returns a true
+         * on success (specified callback triggered) or false on failure (timed-out or
+         * interrupted while waiting for the requested callback).
+         *
+         * Same as waitForCallback(int callback) execpt that allows specifying a custom timeout.
+         * The default timeout is a short value expected to be sufficient for all behaviors which
+         * should happen relatively quickly. Specifying a custom timeout should only be done for
+         * those cases which are known to take a specific longer period of time.
+         *
+         * Note: other callbacks happening while while waiting for the specified callback will
+         * be queued.
+         */
+        boolean waitForCallback(int callback, int timeoutSec) {
             synchronized (mLocalLock) {
                 boolean found = mCallbackQueue.remove(callback);
                 if (found) {
@@ -268,7 +285,7 @@ public class SingleDeviceTest extends AndroidTestCase {
             }
 
             try {
-                return mBlocker.await(WAIT_FOR_AWARE_CHANGE_SECS, TimeUnit.SECONDS);
+                return mBlocker.await(timeoutSec, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 return false;
             }
@@ -521,6 +538,46 @@ public class SingleDeviceTest extends AndroidTestCase {
     }
 
     /**
+     * Validate that publish with a Time To Live (TTL) setting expires within the specified
+     * time (and validates that the terminate callback is triggered).
+     */
+    public void testPublishLimitedTtlSuccess() {
+        if (!TestUtils.shouldTestWifiAware(getContext())) {
+            return;
+        }
+
+        final String serviceName = "ValidName";
+        final int ttlSec = 5;
+
+        WifiAwareSession session = attachAndGetSession();
+
+        PublishConfig publishConfig = new PublishConfig.Builder().setServiceName(
+                serviceName).setTtlSec(ttlSec).setTerminateNotificationEnabled(true).build();
+        DiscoverySessionCallbackTest discoveryCb = new DiscoverySessionCallbackTest();
+
+        // 1. publish
+        session.publish(publishConfig, discoveryCb, mHandler);
+        assertTrue("Publish started",
+                discoveryCb.waitForCallback(DiscoverySessionCallbackTest.ON_PUBLISH_STARTED));
+        PublishDiscoverySession discoverySession = discoveryCb.getPublishDiscoverySession();
+        assertNotNull("Publish session", discoverySession);
+
+        // 2. wait for terminate within 'ttlSec'.
+        assertTrue("Publish terminated",
+                discoveryCb.waitForCallback(DiscoverySessionCallbackTest.ON_SESSION_TERMINATED,
+                        ttlSec + 5));
+
+        // 3. try update post-termination: should time-out waiting for cb
+        publishConfig = new PublishConfig.Builder().setServiceName(
+                serviceName).setServiceSpecificInfo("extras".getBytes()).build();
+        discoverySession.updatePublish(publishConfig);
+        assertFalse("Publish update post terminate", discoveryCb.waitForCallback(
+                DiscoverySessionCallbackTest.ON_SESSION_CONFIG_UPDATED));
+
+        session.destroy();
+    }
+
+    /**
      * Validate a successful subscribe discovery session lifetime: subscribe, update subscribe,
      * destroy.
      */
@@ -559,6 +616,46 @@ public class SingleDeviceTest extends AndroidTestCase {
         // 4. try update post-destroy: should time-out waiting for cb
         discoverySession.updateSubscribe(subscribeConfig);
         assertFalse("Subscribe update post destroy", discoveryCb.waitForCallback(
+                DiscoverySessionCallbackTest.ON_SESSION_CONFIG_UPDATED));
+
+        session.destroy();
+    }
+
+    /**
+     * Validate that subscribe with a Time To Live (TTL) setting expires within the specified
+     * time (and validates that the terminate callback is triggered).
+     */
+    public void testSubscribeLimitedTtlSuccess() {
+        if (!TestUtils.shouldTestWifiAware(getContext())) {
+            return;
+        }
+
+        final String serviceName = "ValidName";
+        final int ttlSec = 5;
+
+        WifiAwareSession session = attachAndGetSession();
+
+        SubscribeConfig subscribeConfig = new SubscribeConfig.Builder().setServiceName(
+                serviceName).setTtlSec(ttlSec).setTerminateNotificationEnabled(true).build();
+        DiscoverySessionCallbackTest discoveryCb = new DiscoverySessionCallbackTest();
+
+        // 1. subscribe
+        session.subscribe(subscribeConfig, discoveryCb, mHandler);
+        assertTrue("Subscribe started",
+                discoveryCb.waitForCallback(DiscoverySessionCallbackTest.ON_SUBSCRIBE_STARTED));
+        SubscribeDiscoverySession discoverySession = discoveryCb.getSubscribeDiscoverySession();
+        assertNotNull("Subscribe session", discoverySession);
+
+        // 2. wait for terminate within 'ttlSec'.
+        assertTrue("Subscribe terminated",
+                discoveryCb.waitForCallback(DiscoverySessionCallbackTest.ON_SESSION_TERMINATED,
+                        ttlSec + 5));
+
+        // 3. try update post-termination: should time-out waiting for cb
+        subscribeConfig = new SubscribeConfig.Builder().setServiceName(
+                serviceName).setServiceSpecificInfo("extras".getBytes()).build();
+        discoverySession.updateSubscribe(subscribeConfig);
+        assertFalse("Subscribe update post terminate", discoveryCb.waitForCallback(
                 DiscoverySessionCallbackTest.ON_SESSION_CONFIG_UPDATED));
 
         session.destroy();
