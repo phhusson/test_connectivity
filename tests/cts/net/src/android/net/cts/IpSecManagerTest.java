@@ -85,8 +85,7 @@ public class IpSecManagerTest extends AndroidTestCase {
             randomSpi =
                     mISM.reserveSecurityParameterIndex(
                             IpSecTransform.DIRECTION_OUT,
-                            addr,
-                            IpSecManager.INVALID_SECURITY_PARAMETER_INDEX);
+                            addr);
             assertTrue(randomSpi.getSpi() != IpSecManager.INVALID_SECURITY_PARAMETER_INDEX);
 
             droidSpi =
@@ -121,8 +120,7 @@ public class IpSecManagerTest extends AndroidTestCase {
         IpSecManager.SecurityParameterIndex outSpi =
                 mISM.reserveSecurityParameterIndex(
                         IpSecTransform.DIRECTION_OUT,
-                        local,
-                        IpSecManager.INVALID_SECURITY_PARAMETER_INDEX);
+                        local);
 
         IpSecManager.SecurityParameterIndex inSpi =
                 mISM.reserveSecurityParameterIndex(
@@ -133,21 +131,21 @@ public class IpSecManagerTest extends AndroidTestCase {
                         .setSpi(IpSecTransform.DIRECTION_OUT, outSpi)
                         .setEncryption(
                                 IpSecTransform.DIRECTION_OUT,
-                                new IpSecAlgorithm(IpSecAlgorithm.ALGO_CRYPT_AES_CBC, CRYPT_KEY))
+                                new IpSecAlgorithm(IpSecAlgorithm.CRYPT_AES_CBC, CRYPT_KEY))
                         .setAuthentication(
                                 IpSecTransform.DIRECTION_OUT,
                                 new IpSecAlgorithm(
-                                        IpSecAlgorithm.ALGO_AUTH_HMAC_SHA256,
+                                        IpSecAlgorithm.AUTH_HMAC_SHA256,
                                         AUTH_KEY,
                                         AUTH_KEY.length * 8))
                         .setSpi(IpSecTransform.DIRECTION_IN, inSpi)
                         .setEncryption(
                                 IpSecTransform.DIRECTION_IN,
-                                new IpSecAlgorithm(IpSecAlgorithm.ALGO_CRYPT_AES_CBC, CRYPT_KEY))
+                                new IpSecAlgorithm(IpSecAlgorithm.CRYPT_AES_CBC, CRYPT_KEY))
                         .setAuthentication(
                                 IpSecTransform.DIRECTION_IN,
                                 new IpSecAlgorithm(
-                                        IpSecAlgorithm.ALGO_AUTH_HMAC_SHA256,
+                                        IpSecAlgorithm.AUTH_HMAC_SHA256,
                                         AUTH_KEY,
                                         CRYPT_KEY.length * 8))
                         .buildTransportModeTransform(local);
