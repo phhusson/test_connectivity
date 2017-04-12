@@ -700,9 +700,9 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         Log.i(TAG, "Setting Battery Saver Mode to " + enabled);
         if (enabled) {
             turnBatteryOff();
-            executeSilentShellCommand("settings put global low_power 1");
+            executeSilentShellCommand("cmd power set-mode 1");
         } else {
-            executeSilentShellCommand("settings put global low_power 0");
+            executeSilentShellCommand("cmd power set-mode 0");
             turnBatteryOn();
         }
     }
