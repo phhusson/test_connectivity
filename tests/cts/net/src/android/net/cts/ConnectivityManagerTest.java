@@ -91,6 +91,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
     private PackageManager mPackageManager;
     private final HashMap<Integer, NetworkConfig> mNetworks =
             new HashMap<Integer, NetworkConfig>();
+    boolean mWifiConnectAttempted;
 
     @Override
     protected void setUp() throws Exception {
@@ -99,6 +100,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         mCm = (ConnectivityManager) mContext.getSystemService(Context.CONNECTIVITY_SERVICE);
         mWifiManager = (WifiManager) mContext.getSystemService(Context.WIFI_SERVICE);
         mPackageManager = mContext.getPackageManager();
+        mWifiConnectAttempted = false;
 
         // Get com.android.internal.R.array.networkAttributes
         int resId = mContext.getResources().getIdentifier("networkAttributes", "array", "android");
@@ -114,6 +116,27 @@ public class ConnectivityManagerTest extends AndroidTestCase {
                 mNetworks.put(n.type, n);
             } catch (Exception e) {}
         }
+    }
+
+    @Override
+    protected void tearDown() throws Exception {
+        // Return WiFi to its original disabled state after tests that explicitly connect.
+        if (mWifiConnectAttempted) {
+            disconnectFromWifi(null);
+        }
+    }
+
+    /**
+     * Make sure WiFi is connected to an access point if it is not already. If
+     * WiFi is enabled as a result of this function, it will be disabled
+     * automatically in tearDown().
+     */
+    private Network ensureWifiConnected() {
+        if (mWifiManager.isWifiEnabled()) {
+            return getWifiNetwork();
+        }
+        mWifiConnectAttempted = true;
+        return connectToWifi();
     }
 
     public void testIsNetworkTypeValid() {
@@ -298,14 +321,10 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         final TestNetworkCallback defaultTrackingCallback = new TestNetworkCallback();
         mCm.registerDefaultNetworkCallback(defaultTrackingCallback);
 
-        final boolean previousWifiEnabledState = mWifiManager.isWifiEnabled();
         Network wifiNetwork = null;
 
         try {
-            // Make sure WiFi is connected to an access point to start with.
-            if (!previousWifiEnabledState) {
-                connectToWifi();
-            }
+            ensureWifiConnected();
 
             // Now we should expect to get a network callback about availability of the wifi
             // network even if it was already connected as a state-based action when the callback
@@ -321,11 +340,6 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         } finally {
             mCm.unregisterNetworkCallback(callback);
             mCm.unregisterNetworkCallback(defaultTrackingCallback);
-
-            // Return WiFi to its original enabled/disabled state.
-            if (!previousWifiEnabledState) {
-                disconnectFromWifi(wifiNetwork);
-            }
         }
     }
 
@@ -357,13 +371,8 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         // We will register for a WIFI network being available or lost.
         mCm.registerNetworkCallback(makeWifiNetworkRequest(), pendingIntent);
 
-        final boolean previousWifiEnabledState = mWifiManager.isWifiEnabled();
-
         try {
-            // Make sure WiFi is connected to an access point to start with.
-            if (!previousWifiEnabledState) {
-                connectToWifi();
-            }
+            ensureWifiConnected();
 
             // Now we expect to get the Intent delivered notifying of the availability of the wifi
             // network even if it was already connected as a state-based action when the callback
@@ -376,11 +385,6 @@ public class ConnectivityManagerTest extends AndroidTestCase {
             mCm.unregisterNetworkCallback(pendingIntent);
             pendingIntent.cancel();
             mContext.unregisterReceiver(receiver);
-
-            // Return WiFi to its original enabled/disabled state.
-            if (!previousWifiEnabledState) {
-                disconnectFromWifi(null);
-            }
         }
     }
 
