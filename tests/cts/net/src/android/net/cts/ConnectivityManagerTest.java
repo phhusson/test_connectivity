@@ -45,12 +45,15 @@ import android.util.Log;
 
 import com.android.internal.telephony.PhoneConstants;
 
+import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.net.InetSocketAddress;
 import java.util.HashMap;
+import java.util.Scanner;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -73,6 +76,13 @@ public class ConnectivityManagerTest extends AndroidTestCase {
             "GET /generate_204 HTTP/1.0\r\n" +
             "Host: " + TEST_HOST + "\r\n" +
             "Connection: keep-alive\r\n\r\n";
+
+    // Base path for IPv6 sysctls
+    private static final String IPV6_SYSCTL_DIR = "/proc/sys/net/ipv6/conf";
+
+    // Expected values for MIN|MAX_PLEN.
+    private static final int IPV6_WIFI_ACCEPT_RA_RT_INFO_MIN_PLEN = 48;
+    private static final int IPV6_WIFI_ACCEPT_RA_RT_INFO_MAX_PLEN = 64;
 
     // Action sent to ConnectivityActionReceiver when a network callback is sent via PendingIntent.
     private static final String NETWORK_CALLBACK_ACTION =
@@ -764,5 +774,24 @@ public class ConnectivityManagerTest extends AndroidTestCase {
             mCm.requestNetwork(request, callback);
             fail("No exception thrown when restricted network requested.");
         } catch (SecurityException expected) {}
+    }
+
+    private Scanner makeWifiSysctlScanner(String key) throws FileNotFoundException {
+        Network network = ensureWifiConnected();
+        String iface = mCm.getLinkProperties(network).getInterfaceName();
+        String path = IPV6_SYSCTL_DIR + "/" + iface + "/" + key;
+        return new Scanner(new File(path));
+    }
+
+    /** Verify that accept_ra_rt_info_min_plen exists and is set to the expected value */
+    public void testAcceptRaRtInfoMinPlen() throws Exception {
+        Scanner s = makeWifiSysctlScanner("accept_ra_rt_info_min_plen");
+        assertEquals(IPV6_WIFI_ACCEPT_RA_RT_INFO_MIN_PLEN, s.nextInt());
+    }
+
+    /** Verify that accept_ra_rt_info_max_plen exists and is set to the expected value */
+    public void testAcceptRaRtInfoMaxPlen() throws Exception {
+        Scanner s = makeWifiSysctlScanner("accept_ra_rt_info_max_plen");
+        assertEquals(IPV6_WIFI_ACCEPT_RA_RT_INFO_MAX_PLEN, s.nextInt());
     }
 }
