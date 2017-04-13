@@ -45,12 +45,15 @@ import android.util.Log;
 
 import com.android.internal.telephony.PhoneConstants;
 
+import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.net.InetSocketAddress;
 import java.util.HashMap;
+import java.util.Scanner;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -73,6 +76,17 @@ public class ConnectivityManagerTest extends AndroidTestCase {
             "GET /generate_204 HTTP/1.0\r\n" +
             "Host: " + TEST_HOST + "\r\n" +
             "Connection: keep-alive\r\n\r\n";
+
+    // Base path for IPv6 sysctls
+    private static final String IPV6_SYSCTL_DIR = "/proc/sys/net/ipv6/conf";
+
+    // Expected values for MIN|MAX_PLEN.
+    private static final int IPV6_WIFI_ACCEPT_RA_RT_INFO_MIN_PLEN = 48;
+    private static final int IPV6_WIFI_ACCEPT_RA_RT_INFO_MAX_PLEN = 64;
+
+    // Expected values for RFC 7559 router soliciations.
+    // Maximum number of router solicitations to send. -1 means no limit.
+    private static final int IPV6_WIFI_ROUTER_SOLICITATIONS = -1;
 
     // Action sent to ConnectivityActionReceiver when a network callback is sent via PendingIntent.
     private static final String NETWORK_CALLBACK_ACTION =
@@ -764,5 +778,43 @@ public class ConnectivityManagerTest extends AndroidTestCase {
             mCm.requestNetwork(request, callback);
             fail("No exception thrown when restricted network requested.");
         } catch (SecurityException expected) {}
+    }
+
+    private Scanner makeWifiSysctlScanner(String key) throws FileNotFoundException {
+        Network network = ensureWifiConnected();
+        String iface = mCm.getLinkProperties(network).getInterfaceName();
+        String path = IPV6_SYSCTL_DIR + "/" + iface + "/" + key;
+        return new Scanner(new File(path));
+    }
+
+    /** Verify that accept_ra_rt_info_min_plen exists and is set to the expected value */
+    public void testAcceptRaRtInfoMinPlen() throws Exception {
+        Scanner s = makeWifiSysctlScanner("accept_ra_rt_info_min_plen");
+        assertEquals(IPV6_WIFI_ACCEPT_RA_RT_INFO_MIN_PLEN, s.nextInt());
+    }
+
+    /** Verify that accept_ra_rt_info_max_plen exists and is set to the expected value */
+    public void testAcceptRaRtInfoMaxPlen() throws Exception {
+        Scanner s = makeWifiSysctlScanner("accept_ra_rt_info_max_plen");
+        assertEquals(IPV6_WIFI_ACCEPT_RA_RT_INFO_MAX_PLEN, s.nextInt());
+    }
+
+    /** Verify that router_solicitations exists and is set to the expected value */
+    public void testRouterSolicitations() throws Exception {
+        Scanner s = makeWifiSysctlScanner("router_solicitations");
+        assertEquals(IPV6_WIFI_ROUTER_SOLICITATIONS, s.nextInt());
+    }
+
+    /** Verify that router_solicitation_max_interval exists and is in an acceptable interval */
+    public void testRouterSolicitationMaxInterval() throws Exception {
+        Scanner s = makeWifiSysctlScanner("router_solicitation_max_interval");
+        int interval = s.nextInt();
+        // Verify we're in the interval [15 minutes, 60 minutes]. Lower values may adversely
+        // impact battery life and higher values can decrease the probability of detecting
+        // network changes.
+        final int lowerBoundSec = 15 * 60;
+        final int upperBoundSec = 60 * 60;
+        assertTrue(lowerBoundSec <= interval);
+        assertTrue(interval <= upperBoundSec);
     }
 }
