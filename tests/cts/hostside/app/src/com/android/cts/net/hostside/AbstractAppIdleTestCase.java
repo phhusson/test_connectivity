@@ -147,6 +147,8 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
         assertBackgroundNetworkAccess(true);
         setBatterySaverMode(true);
         assertBackgroundNetworkAccess(false);
+        // Use setBatterySaverMode API to leave power-save mode instead of plugging in charger
+        setBatterySaverMode(false);
         turnBatteryOn();
         assertBackgroundNetworkAccess(true);
 
