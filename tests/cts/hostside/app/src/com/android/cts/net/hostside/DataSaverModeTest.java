@@ -20,16 +20,21 @@ import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_DISABLE
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED;
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_WHITELISTED;
 
+import android.util.Log;
+
 public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase {
 
     private static final String[] REQUIRED_WHITELISTED_PACKAGES = {
         "com.android.providers.downloads"
     };
 
+    private boolean mIsDataSaverSupported;
+
     @Override
     public void setUp() throws Exception {
         super.setUp();
 
+        mIsDataSaverSupported = isDataSaverSupported();
         if (!isSupported()) return;
 
         // Set initial state.
@@ -57,6 +62,32 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
     @Override
     protected boolean setUpActiveNetworkMeteringState() throws Exception {
         return setMeteredNetwork();
+    }
+
+    @Override
+    protected boolean isSupported() throws Exception {
+        if (!mIsDataSaverSupported) {
+            Log.i(TAG, "Skipping " + getClass() + "." + getName()
+                    + "() because device does not support Data Saver Mode");
+        }
+        return mIsDataSaverSupported && super.isSupported();
+    }
+
+    /**
+     * As per CDD requirements, if the device doesn't support data saver mode then
+     * ConnectivityManager.getRestrictBackgroundStatus() will always return
+     * RESTRICT_BACKGROUND_STATUS_DISABLED. So, enable the data saver mode and check if
+     * ConnectivityManager.getRestrictBackgroundStatus() for an app in background returns
+     * RESTRICT_BACKGROUND_STATUS_DISABLED or not.
+     */
+    private boolean isDataSaverSupported() throws Exception {
+        assertMyRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
+        try {
+            setRestrictBackground(true);
+            return !isMyRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
+        } finally {
+            setRestrictBackground(false);
+        }
     }
 
     public void testGetRestrictBackgroundStatus_disabled() throws Exception {
