@@ -21,11 +21,13 @@ import android.net.ConnectivityManager;
 import android.net.IpSecAlgorithm;
 import android.net.IpSecManager;
 import android.net.IpSecTransform;
+import android.os.ParcelFileDescriptor;
+import android.system.Os;
+import android.system.OsConstants;
 import android.test.AndroidTestCase;
-import android.util.Log;
-import java.io.IOException;
-import java.net.DatagramPacket;
+import java.io.ByteArrayOutputStream;
 import java.net.DatagramSocket;
+import java.io.FileDescriptor;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Arrays;
@@ -82,16 +84,17 @@ public class IpSecManagerTest extends AndroidTestCase {
     public void testAllocSpi() throws Exception {
         for (InetAddress addr : GOOGLE_DNS_LIST) {
             IpSecManager.SecurityParameterIndex randomSpi = null, droidSpi = null;
-            randomSpi =
-                    mISM.reserveSecurityParameterIndex(
-                            IpSecTransform.DIRECTION_OUT,
-                            addr);
-            assertTrue(randomSpi.getSpi() != IpSecManager.INVALID_SECURITY_PARAMETER_INDEX);
+            randomSpi = mISM.reserveSecurityParameterIndex(IpSecTransform.DIRECTION_OUT, addr);
+            assertTrue(
+                    "Failed to receive a valid SPI",
+                    randomSpi.getSpi() != IpSecManager.INVALID_SECURITY_PARAMETER_INDEX);
 
             droidSpi =
                     mISM.reserveSecurityParameterIndex(
                             IpSecTransform.DIRECTION_IN, addr, DROID_SPI);
-            assertTrue(droidSpi.getSpi() == DROID_SPI);
+            assertTrue(
+                    "Failed to allocate specified SPI, " + DROID_SPI,
+                    droidSpi.getSpi() == DROID_SPI);
 
             try {
                 mISM.reserveSecurityParameterIndex(IpSecTransform.DIRECTION_IN, addr, DROID_SPI);
@@ -118,9 +121,7 @@ public class IpSecManagerTest extends AndroidTestCase {
     public void testCreateTransform() throws Exception {
         InetAddress local = InetAddress.getLoopbackAddress();
         IpSecManager.SecurityParameterIndex outSpi =
-                mISM.reserveSecurityParameterIndex(
-                        IpSecTransform.DIRECTION_OUT,
-                        local);
+                mISM.reserveSecurityParameterIndex(IpSecTransform.DIRECTION_OUT, local);
 
         IpSecManager.SecurityParameterIndex inSpi =
                 mISM.reserveSecurityParameterIndex(
@@ -150,27 +151,21 @@ public class IpSecManagerTest extends AndroidTestCase {
                                         CRYPT_KEY.length * 8))
                         .buildTransportModeTransform(local);
 
-        DatagramSocket localSocket;
-        localSocket = new DatagramSocket(8888);
-
+        // Hack to ensure the socket doesn't block indefinitely on failure
+        DatagramSocket localSocket = new DatagramSocket(8888);
         localSocket.setSoTimeout(500);
-        mISM.applyTransportModeTransform(localSocket, transform);
+        ParcelFileDescriptor pin = ParcelFileDescriptor.fromDatagramSocket(localSocket);
+        FileDescriptor udpSocket = pin.getFileDescriptor();
+
+        mISM.applyTransportModeTransform(udpSocket, transform);
         byte[] data = new String("Best test data ever!").getBytes("UTF-8");
 
-        DatagramPacket out = new DatagramPacket(data, data.length, local, 8888);
-        localSocket.send(out);
-        DatagramPacket in = new DatagramPacket(new byte[data.length], data.length);
-
-        localSocket.receive(in);
-        Log.d(TAG, Arrays.toString(data));
-        Log.d(TAG, Arrays.toString(in.getData()));
-        assertTrue(Arrays.equals(data, in.getData()));
+        byte[] in = new byte[data.length];
+        Os.sendto(udpSocket, data, 0, data.length, 0, local, 8888);
+        Os.read(udpSocket, in, 0, in.length);
+        assertTrue("Encapsulated data did not match.", Arrays.equals(data, in));
+        mISM.removeTransportModeTransform(udpSocket, transform);
+        Os.close(udpSocket);
         transform.close();
-        try {
-            localSocket.send(out);
-        } catch (IOException e) {
-        }
-
-        mISM.removeTransportModeTransform(localSocket, transform);
     }
 }
