@@ -386,7 +386,7 @@ public class SingleDeviceTest extends AndroidTestCase {
         synchronized (mLock) {
             for (WifiAwareSession session : mSessions) {
                 // no damage from destroying twice (i.e. ok if test cleaned up after itself already)
-                session.destroy();
+                session.close();
             }
             mSessions.clear();
         }
@@ -453,7 +453,7 @@ public class SingleDeviceTest extends AndroidTestCase {
         }
 
         WifiAwareSession session = attachAndGetSession();
-        session.destroy();
+        session.close();
     }
 
     /**
@@ -486,7 +486,7 @@ public class SingleDeviceTest extends AndroidTestCase {
             byte[] mac = identityL.getMac();
             assertNotNull("Wi-Fi Aware discovery MAC: iteration " + i, mac);
 
-            session.destroy();
+            session.close();
 
             macs.add(new TestUtils.MacWrapper(mac));
         }
@@ -527,14 +527,14 @@ public class SingleDeviceTest extends AndroidTestCase {
         // 3. destroy
         assertFalse("Publish not terminated", discoveryCb.hasCallbackAlreadyHappened(
                 DiscoverySessionCallbackTest.ON_SESSION_TERMINATED));
-        discoverySession.destroy();
+        discoverySession.close();
 
         // 4. try update post-destroy: should time-out waiting for cb
         discoverySession.updatePublish(publishConfig);
         assertFalse("Publish update post destroy", discoveryCb.waitForCallback(
                 DiscoverySessionCallbackTest.ON_SESSION_CONFIG_UPDATED));
 
-        session.destroy();
+        session.close();
     }
 
     /**
@@ -574,7 +574,7 @@ public class SingleDeviceTest extends AndroidTestCase {
         assertFalse("Publish update post terminate", discoveryCb.waitForCallback(
                 DiscoverySessionCallbackTest.ON_SESSION_CONFIG_UPDATED));
 
-        session.destroy();
+        session.close();
     }
 
     /**
@@ -611,14 +611,14 @@ public class SingleDeviceTest extends AndroidTestCase {
         // 3. destroy
         assertFalse("Subscribe not terminated", discoveryCb.hasCallbackAlreadyHappened(
                 DiscoverySessionCallbackTest.ON_SESSION_TERMINATED));
-        discoverySession.destroy();
+        discoverySession.close();
 
         // 4. try update post-destroy: should time-out waiting for cb
         discoverySession.updateSubscribe(subscribeConfig);
         assertFalse("Subscribe update post destroy", discoveryCb.waitForCallback(
                 DiscoverySessionCallbackTest.ON_SESSION_CONFIG_UPDATED));
 
-        session.destroy();
+        session.close();
     }
 
     /**
@@ -658,7 +658,7 @@ public class SingleDeviceTest extends AndroidTestCase {
         assertFalse("Subscribe update post terminate", discoveryCb.waitForCallback(
                 DiscoverySessionCallbackTest.ON_SESSION_CONFIG_UPDATED));
 
-        session.destroy();
+        session.close();
     }
 
     /**
@@ -691,8 +691,8 @@ public class SingleDeviceTest extends AndroidTestCase {
             // empty
         }
 
-        discoverySession.destroy();
-        session.destroy();
+        discoverySession.close();
+        session.close();
     }
 
     /**
@@ -725,8 +725,8 @@ public class SingleDeviceTest extends AndroidTestCase {
         mConnectivityManager.requestNetwork(nr, networkCb, 2000);
         assertTrue("OnUnavailable received", networkCb.waitForOnUnavailable());
 
-        discoverySession.destroy();
-        session.destroy();
+        discoverySession.close();
+        session.close();
     }
 
     /**
@@ -760,8 +760,8 @@ public class SingleDeviceTest extends AndroidTestCase {
         mConnectivityManager.requestNetwork(nr, networkCb, 2000);
         assertTrue("OnUnavailable received", networkCb.waitForOnUnavailable());
 
-        discoverySession.destroy();
-        session.destroy();
+        discoverySession.close();
+        session.close();
     }
 
     /**
@@ -788,7 +788,7 @@ public class SingleDeviceTest extends AndroidTestCase {
         mConnectivityManager.requestNetwork(nr, networkCb, 2000);
         assertTrue("OnUnavailable received", networkCb.waitForOnUnavailable());
 
-        session.destroy();
+        session.close();
     }
 
     /**
@@ -816,7 +816,7 @@ public class SingleDeviceTest extends AndroidTestCase {
         mConnectivityManager.requestNetwork(nr, networkCb, 2000);
         assertTrue("OnUnavailable received", networkCb.waitForOnUnavailable());
 
-        session.destroy();
+        session.close();
     }
 
     // local utilities
