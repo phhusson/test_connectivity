@@ -32,6 +32,7 @@ abstract class AbstractDozeModeTestCase extends AbstractRestrictBackgroundNetwor
 
         // Set initial state.
         removePowerSaveModeWhitelist(TEST_APP2_PKG);
+        removePowerSaveModeExceptIdleWhitelist(TEST_APP2_PKG);
         setDozeMode(false);
 
         registerBroadcastReceiver();
@@ -105,6 +106,12 @@ abstract class AbstractDozeModeTestCase extends AbstractRestrictBackgroundNetwor
         assertBackgroundNetworkAccess(true);
 
         removePowerSaveModeWhitelist(TEST_APP2_PKG);
+        assertBackgroundNetworkAccess(false);
+
+        addPowerSaveModeExceptIdleWhitelist(TEST_APP2_PKG);
+        assertBackgroundNetworkAccess(false);
+
+        removePowerSaveModeExceptIdleWhitelist(TEST_APP2_PKG);
         assertBackgroundNetworkAccess(false);
 
         assertsForegroundAlwaysHasNetworkAccess();

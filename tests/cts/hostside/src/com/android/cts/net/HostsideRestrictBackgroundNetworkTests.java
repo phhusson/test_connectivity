@@ -251,6 +251,16 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
                 "testDataAndBatterySaverModes_nonMeteredNetwork");
     }
 
+    public void testDozeAndBatterySaverMode_powerSaveWhitelists() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".MixedModesTest",
+                "testDozeAndBatterySaverMode_powerSaveWhitelists");
+    }
+
+    public void testDozeAndAppIdle_powerSaveWhitelists() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".MixedModesTest",
+                "testDozeAndAppIdle_powerSaveWhitelists");
+    }
+
     /*******************
      * Helper methods. *
      *******************/
