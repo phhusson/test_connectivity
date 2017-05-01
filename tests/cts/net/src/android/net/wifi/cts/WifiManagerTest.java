@@ -563,6 +563,10 @@ public class WifiManagerTest extends AndroidTestCase {
      * @throws Exception
      */
     public void testAddPasspointConfigWithUserCredential() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         testAddPasspointConfig(generatePasspointConfig(generateUserCredential()));
     }
 
@@ -573,6 +577,10 @@ public class WifiManagerTest extends AndroidTestCase {
      * @throws Exception
      */
     public void testAddPasspointConfigWithCertCredential() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         testAddPasspointConfig(generatePasspointConfig(generateCertCredential()));
     }
 
@@ -583,6 +591,10 @@ public class WifiManagerTest extends AndroidTestCase {
      * @throws Exception
      */
     public void testAddPasspointConfigWithSimCredential() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         testAddPasspointConfig(generatePasspointConfig(generateSimCredential()));
     }
 
