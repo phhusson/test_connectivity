@@ -107,19 +107,19 @@ public class PpsMoParserTest extends AndroidTestCase {
         assertEquals(subscriptionUpdate, config.getSubscriptionUpdate());
 
         // Subscription parameters.
-        config.setSubscriptionCreationTimeInMs(format.parse("2016-02-01T10:00:00Z").getTime());
+        config.setSubscriptionCreationTimeInMillis(format.parse("2016-02-01T10:00:00Z").getTime());
         assertEquals(format.parse("2016-02-01T10:00:00Z").getTime(),
-                config.getSubscriptionCreationTimeInMs());
-        config.setSubscriptionExpirationTimeInMs(format.parse("2016-03-01T10:00:00Z").getTime());
+                config.getSubscriptionCreationTimeInMillis());
+        config.setSubscriptionExpirationTimeInMillis(format.parse("2016-03-01T10:00:00Z").getTime());
         assertEquals(format.parse("2016-03-01T10:00:00Z").getTime(),
-                config.getSubscriptionExpirationTimeInMs());
+                config.getSubscriptionExpirationTimeInMillis());
         config.setSubscriptionType("Gold");
         assertEquals("Gold", config.getSubscriptionType());
         config.setUsageLimitDataLimit(921890);
         assertEquals(921890, config.getUsageLimitDataLimit());
-        config.setUsageLimitStartTimeInMs(format.parse("2016-12-01T10:00:00Z").getTime());
+        config.setUsageLimitStartTimeInMillis(format.parse("2016-12-01T10:00:00Z").getTime());
         assertEquals(format.parse("2016-12-01T10:00:00Z").getTime(),
-                config.getUsageLimitStartTimeInMs());
+                config.getUsageLimitStartTimeInMillis());
         config.setUsageLimitTimeLimitInMinutes(120);
         assertEquals(120, config.getUsageLimitTimeLimitInMinutes());
         config.setUsageLimitUsageTimePeriodInMinutes(99910);
@@ -153,12 +153,12 @@ public class PpsMoParserTest extends AndroidTestCase {
 
         // Credential configuration.
         Credential credential = new Credential();
-        credential.setCreationTimeInMs(format.parse("2016-01-01T10:00:00Z").getTime());
+        credential.setCreationTimeInMillis(format.parse("2016-01-01T10:00:00Z").getTime());
         assertEquals(format.parse("2016-01-01T10:00:00Z").getTime(),
-                credential.getCreationTimeInMs());
-        credential.setExpirationTimeInMs(format.parse("2016-02-01T10:00:00Z").getTime());
+                credential.getCreationTimeInMillis());
+        credential.setExpirationTimeInMillis(format.parse("2016-02-01T10:00:00Z").getTime());
         assertEquals(format.parse("2016-02-01T10:00:00Z").getTime(),
-                credential.getExpirationTimeInMs());
+                credential.getExpirationTimeInMillis());
         credential.setRealm("shaken.stirred.com");
         assertEquals("shaken.stirred.com", credential.getRealm());
         credential.setCheckAaaServerCertStatus(true);
