@@ -31,6 +31,7 @@ abstract class AbstractBatterySaverModeTestCase extends AbstractRestrictBackgrou
 
         // Set initial state.
         removePowerSaveModeWhitelist(TEST_APP2_PKG);
+        removePowerSaveModeExceptIdleWhitelist(TEST_APP2_PKG);
         setBatterySaverMode(false);
 
         registerBroadcastReceiver();
@@ -119,6 +120,12 @@ abstract class AbstractBatterySaverModeTestCase extends AbstractRestrictBackgrou
         assertBackgroundNetworkAccess(true);
 
         removePowerSaveModeWhitelist(TEST_APP2_PKG);
+        assertBackgroundNetworkAccess(false);
+
+        addPowerSaveModeExceptIdleWhitelist(TEST_APP2_PKG);
+        assertBackgroundNetworkAccess(true);
+
+        removePowerSaveModeExceptIdleWhitelist(TEST_APP2_PKG);
         assertBackgroundNetworkAccess(false);
 
         assertsForegroundAlwaysHasNetworkAccess();
