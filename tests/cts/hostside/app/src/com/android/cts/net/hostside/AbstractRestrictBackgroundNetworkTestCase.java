@@ -695,6 +695,31 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         assertPowerSaveModeWhitelist(packageName, false); // Sanity check
     }
 
+    protected void assertPowerSaveModeExceptIdleWhitelist(String packageName, boolean expected)
+            throws Exception {
+        // TODO: currently the power-save mode is behaving like idle, but once it changes, we'll
+        // need to use netpolicy for whitelisting
+        assertDelayedShellCommand("dumpsys deviceidle except-idle-whitelist =" + packageName,
+                Boolean.toString(expected));
+    }
+
+    protected void addPowerSaveModeExceptIdleWhitelist(String packageName) throws Exception {
+        Log.i(TAG, "Adding package " + packageName + " to power-save-mode-except-idle whitelist");
+        // TODO: currently the power-save mode is behaving like idle, but once it changes, we'll
+        // need to use netpolicy for whitelisting
+        executeShellCommand("dumpsys deviceidle except-idle-whitelist +" + packageName);
+        assertPowerSaveModeExceptIdleWhitelist(packageName, true); // Sanity check
+    }
+
+    protected void removePowerSaveModeExceptIdleWhitelist(String packageName) throws Exception {
+        Log.i(TAG, "Removing package " + packageName
+                + " from power-save-mode-except-idle whitelist");
+        // TODO: currently the power-save mode is behaving like idle, but once it changes, we'll
+        // need to use netpolicy for whitelisting
+        executeShellCommand("dumpsys deviceidle except-idle-whitelist reset");
+        assertPowerSaveModeExceptIdleWhitelist(packageName, false); // Sanity check
+    }
+
     protected void turnBatteryOff() throws Exception {
         executeSilentShellCommand("cmd battery unplug");
     }
