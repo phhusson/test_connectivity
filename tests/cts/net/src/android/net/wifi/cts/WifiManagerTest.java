@@ -188,6 +188,7 @@ public class WifiManagerTest extends AndroidTestCase {
     private void startScan() throws Exception {
         synchronized (mMySync) {
             mMySync.expectedState = STATE_SCANNING;
+            mScanResults = null;
             assertTrue(mWifiManager.startScan());
             long timeout = System.currentTimeMillis() + TIMEOUT_MSEC;
             while (System.currentTimeMillis() < timeout && mMySync.expectedState == STATE_SCANNING)
@@ -239,10 +240,17 @@ public class WifiManagerTest extends AndroidTestCase {
         assertTrue(mWifiManager.reconnect());
         assertTrue(mWifiManager.reassociate());
         assertTrue(mWifiManager.disconnect());
-        startScan();
         setWifiEnabled(false);
+        startScan();
         Thread.sleep(DURATION);
-        assertTrue(mWifiManager.isScanAlwaysAvailable());
+        if (mWifiManager.isScanAlwaysAvailable()) {
+            // Make sure at least one AP is found.
+            assertNotNull("mScanResult should not be null!", mScanResults);
+            assertFalse("empty scan results!", mScanResults.isEmpty());
+        } else {
+            // Make sure no scan results are available.
+            assertNull("mScanResult should be null!", mScanResults);
+        }
         final String TAG = "Test";
         assertNotNull(mWifiManager.createWifiLock(TAG));
         assertNotNull(mWifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL, TAG));
