@@ -586,15 +586,12 @@ public class WifiManagerTest extends AndroidTestCase {
     private PasspointConfiguration generatePasspointConfig(Credential credential) {
         PasspointConfiguration config = new PasspointConfiguration();
         config.setCredential(credential);
-        // Setting update identifier to indicate R2 configuration, to avoid CA
-        // certificate being verified, since we're using a fake CA certificate
-        // for testing.
-        config.setUpdateIdentifier(1);
 
         // Setup HomeSp.
         HomeSp homeSp = new HomeSp();
         homeSp.setFqdn("Test.com");
         homeSp.setFriendlyName("Test Provider");
+        homeSp.setRoamingConsortiumOis(new long[] {0x11223344});
         config.setHomeSp(homeSp);
 
         return config;
@@ -614,7 +611,7 @@ public class WifiManagerTest extends AndroidTestCase {
         userCred.setPassword("password");
         userCred.setNonEapInnerMethod("PAP");
         credential.setUserCredential(userCred);
-        credential.setCaCertificate(FakeKeys.CA_CERT0);
+        credential.setCaCertificate(FakeKeys.CA_PUBLIC_CERT);
         return credential;
     }
 
@@ -631,7 +628,7 @@ public class WifiManagerTest extends AndroidTestCase {
         certCredential.setCertSha256Fingerprint(
                 MessageDigest.getInstance("SHA-256").digest(FakeKeys.CLIENT_CERT.getEncoded()));
         credential.setCertCredential(certCredential);
-        credential.setCaCertificate(FakeKeys.CA_CERT0);
+        credential.setCaCertificate(FakeKeys.CA_PUBLIC_CERT);
         credential.setClientCertificateChain(new X509Certificate[] {FakeKeys.CLIENT_CERT});
         credential.setClientPrivateKey(FakeKeys.RSA_KEY1);
         return credential;
