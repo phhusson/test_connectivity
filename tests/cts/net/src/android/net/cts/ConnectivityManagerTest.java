@@ -419,7 +419,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         final TestNetworkCallback callback = new TestNetworkCallback();
         mCm.requestNetwork(new NetworkRequest.Builder()
                 .addTransportType(TRANSPORT_WIFI)
-                .build(), 100, callback);
+                .build(), callback, 100);
 
         try {
             // Wait to get callback for unavailability of requested network
