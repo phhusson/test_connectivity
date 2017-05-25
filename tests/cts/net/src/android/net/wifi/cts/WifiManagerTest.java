@@ -59,6 +59,7 @@ public class WifiManagerTest extends AndroidTestCase {
     private static MySync mMySync;
     private List<ScanResult> mScanResults = null;
     private NetworkInfo mNetworkInfo;
+    private Object mLOHSLock = new Object();
 
     // Please refer to WifiManager
     private static final int MIN_RSSI = -100;
@@ -173,14 +174,25 @@ public class WifiManagerTest extends AndroidTestCase {
 
     private void setWifiEnabled(boolean enable) throws Exception {
         synchronized (mMySync) {
-            assertTrue(mWifiManager.setWifiEnabled(enable));
             if (mWifiManager.isWifiEnabled() != enable) {
+                // the new state is different, we expect it to change
                 mMySync.expectedState = STATE_WIFI_CHANGING;
-                long timeout = System.currentTimeMillis() + TIMEOUT_MSEC;
-                int expectedState = (enable ? STATE_WIFI_ENABLED : STATE_WIFI_DISABLED);
-                while (System.currentTimeMillis() < timeout
-                        && mMySync.expectedState != expectedState)
-                    mMySync.wait(WAIT_MSEC);
+            } else {
+                mMySync.expectedState = (enable ? STATE_WIFI_ENABLED : STATE_WIFI_DISABLED);
+            }
+            // now trigger the change
+            assertTrue(mWifiManager.setWifiEnabled(enable));
+            waitForExpectedWifiState(enable);
+        }
+    }
+
+    private void waitForExpectedWifiState(boolean enabled) throws InterruptedException {
+        synchronized (mMySync) {
+            long timeout = System.currentTimeMillis() + TIMEOUT_MSEC;
+            int expected = (enabled ? STATE_WIFI_ENABLED : STATE_WIFI_DISABLED);
+            while (System.currentTimeMillis() < timeout
+                    && mMySync.expectedState != expected) {
+                mMySync.wait(WAIT_MSEC);
             }
         }
     }
@@ -517,6 +529,13 @@ public class WifiManagerTest extends AndroidTestCase {
         }
         assertTrue(mWifiManager.isWifiEnabled());
 
+        // give the test a chance to autoconnect
+        Thread.sleep(DURATION);
+        if (mNetworkInfo.getState() != NetworkInfo.State.CONNECTED) {
+            // this test requires a connectable network be configured
+            fail("This test requires a wifi network connection.");
+        }
+
         // This will generate a distinct stack trace if the initial connection fails.
         connectWifi();
 
@@ -685,5 +704,149 @@ public class WifiManagerTest extends AndroidTestCase {
         } catch (UnsupportedOperationException e) {
             // Passpoint build config |config_wifi_hotspot2_enabled| is disabled, so noop.
         }
+    }
+
+    public class TestLocalOnlyHotspotCallback extends WifiManager.LocalOnlyHotspotCallback {
+        Object hotspotLock;
+        WifiManager.LocalOnlyHotspotReservation reservation = null;
+        boolean onStartedCalled = false;
+        boolean onStoppedCalled = false;
+        boolean onFailedCalled = false;
+        int failureReason = -1;
+
+        TestLocalOnlyHotspotCallback(Object lock) {
+            hotspotLock = lock;
+        }
+
+        @Override
+        public void onStarted(WifiManager.LocalOnlyHotspotReservation r) {
+            synchronized (hotspotLock) {
+                reservation = r;
+                onStartedCalled = true;
+                hotspotLock.notify();
+            }
+        }
+
+        @Override
+        public void onStopped() {
+            synchronized (hotspotLock) {
+                onStoppedCalled = true;
+                hotspotLock.notify();
+            }
+        }
+
+        @Override
+        public void onFailed(int reason) {
+            synchronized (hotspotLock) {
+                onFailedCalled = true;
+                failureReason = reason;
+                hotspotLock.notify();
+            }
+        }
+    }
+
+    private TestLocalOnlyHotspotCallback startLocalOnlyHotspot() {
+        // Location mode must be enabled for this test
+        if (!isLocationEnabled()) {
+            fail("Please enable location for this test");
+        }
+
+        TestLocalOnlyHotspotCallback callback = new TestLocalOnlyHotspotCallback(mLOHSLock);
+        synchronized (mLOHSLock) {
+            try {
+                mWifiManager.startLocalOnlyHotspot(callback, null);
+                // now wait for callback
+                mLOHSLock.wait(DURATION);
+            } catch (InterruptedException e) {
+            }
+            // check if we got the callback
+            assertTrue(callback.onStartedCalled);
+            assertNotNull(callback.reservation.getWifiConfiguration());
+            assertFalse(callback.onFailedCalled);
+            assertFalse(callback.onStoppedCalled);
+        }
+        return callback;
+    }
+
+    private void stopLocalOnlyHotspot(TestLocalOnlyHotspotCallback callback, boolean wifiEnabled) {
+       synchronized (mMySync) {
+           // we are expecting a new state
+           mMySync.expectedState = STATE_WIFI_CHANGING;
+
+           // now shut down LocalOnlyHotspot
+           callback.reservation.close();
+
+           try {
+               waitForExpectedWifiState(wifiEnabled);
+           } catch (InterruptedException e) {}
+        }
+    }
+
+    /**
+     * Verify that calls to startLocalOnlyHotspot succeed with proper permissions.
+     *
+     * Note: Location mode must be enabled for this test.
+     */
+    public void testStartLocalOnlyHotspotSuccess() {
+        boolean wifiEnabled = mWifiManager.isWifiEnabled();
+
+        TestLocalOnlyHotspotCallback callback = startLocalOnlyHotspot();
+
+        // at this point, wifi should be off
+        assertFalse(mWifiManager.isWifiEnabled());
+
+        stopLocalOnlyHotspot(callback, wifiEnabled);
+        assertEquals(wifiEnabled, mWifiManager.isWifiEnabled());
+    }
+
+    /**
+     * Verify calls to setWifiEnabled from a non-settings app while softap mode is active do not
+     * exit softap mode.
+     *
+     * This test uses the LocalOnlyHotspot API to enter softap mode.  This should also be true when
+     * tethering is started.
+     * Note: Location mode must be enabled for this test.
+     */
+    public void testSetWifiEnabledByAppDoesNotStopHotspot() {
+        boolean wifiEnabled = mWifiManager.isWifiEnabled();
+
+        TestLocalOnlyHotspotCallback callback = startLocalOnlyHotspot();
+        // at this point, wifi should be off
+        assertFalse(mWifiManager.isWifiEnabled());
+
+        // now we should fail to turn on wifi
+        assertFalse(mWifiManager.setWifiEnabled(true));
+
+        stopLocalOnlyHotspot(callback, wifiEnabled);
+        assertEquals(wifiEnabled, mWifiManager.isWifiEnabled());
+    }
+
+    /**
+     * Verify that applications can only have one registered LocalOnlyHotspot request at a time.
+     *
+     * Note: Location mode must be enabled for this test.
+     */
+    public void testStartLocalOnlyHotspotSingleRequestByApps() {
+        boolean caughtException = false;
+
+        boolean wifiEnabled = mWifiManager.isWifiEnabled();
+
+        TestLocalOnlyHotspotCallback callback = startLocalOnlyHotspot();
+
+        // at this point, wifi should be off
+        assertFalse(mWifiManager.isWifiEnabled());
+
+        // now make a second request - this should fail.
+        TestLocalOnlyHotspotCallback callback2 = new TestLocalOnlyHotspotCallback(mLOHSLock);
+        try {
+            mWifiManager.startLocalOnlyHotspot(callback2, null);
+        } catch (IllegalStateException e) {
+            Log.d(TAG, "Caught the IllegalStateException we expected: called startLOHS twice");
+            caughtException = true;
+        }
+        assertTrue(caughtException);
+
+        stopLocalOnlyHotspot(callback, wifiEnabled);
+        assertEquals(wifiEnabled, mWifiManager.isWifiEnabled());
     }
 }
