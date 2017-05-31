@@ -41,6 +41,7 @@ public class MyActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        Log.d(TAG, "MyActivity.onCreate()");
         Common.notifyNetworkStateObserver(this, getIntent());
         finishCommandReceiver = new BroadcastReceiver() {
             @Override
