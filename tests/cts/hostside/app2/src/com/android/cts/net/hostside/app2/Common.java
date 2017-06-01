@@ -72,12 +72,21 @@ public final class Common {
         final INetworkStateObserver observer = INetworkStateObserver.Stub.asInterface(
                 extras.getBinder(KEY_NETWORK_STATE_OBSERVER));
         if (observer != null) {
+            try {
+                if (!observer.isForeground()) {
+                    Log.e(TAG, "App didn't come to foreground");
+                    observer.onNetworkStateChecked(null);
+                    return;
+                }
+            } catch (RemoteException e) {
+                Log.e(TAG, "Error occurred while reading the proc state: " + e);
+            }
             AsyncTask.execute(() -> {
                 try {
                     observer.onNetworkStateChecked(
                             MyBroadcastReceiver.checkNetworkStatus(context));
                 } catch (RemoteException e) {
-                    Log.e(TAG, "Error occured while notifying the observer: " + e);
+                    Log.e(TAG, "Error occurred while notifying the observer: " + e);
                 }
             });
         }
