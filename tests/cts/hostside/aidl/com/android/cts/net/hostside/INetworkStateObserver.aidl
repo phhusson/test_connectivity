@@ -16,6 +16,7 @@
 
 package com.android.cts.net.hostside;
 
-oneway interface INetworkStateObserver {
+interface INetworkStateObserver {
+    boolean isForeground();
     void onNetworkStateChecked(String resultData);
 }

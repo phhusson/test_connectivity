@@ -31,12 +31,14 @@ import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.NetworkInfo.DetailedState;
 import android.net.NetworkInfo.State;
 import android.net.wifi.WifiManager;
+import android.os.BatteryManager;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.SystemClock;
@@ -90,10 +92,18 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     protected static final int TYPE_COMPONENT_ACTIVTIY = 0;
     protected static final int TYPE_COMPONENT_FOREGROUND_SERVICE = 1;
 
+    private static final int BATTERY_STATE_TIMEOUT_MS = 5000;
+    private static final int BATTERY_STATE_CHECK_INTERVAL_MS = 500;
+
     private static final int FOREGROUND_PROC_NETWORK_TIMEOUT_MS = 6000;
 
     // Must be higher than NETWORK_TIMEOUT_MS
     private static final int ORDERED_BROADCAST_TIMEOUT_MS = NETWORK_TIMEOUT_MS * 4;
+
+    private static final IntentFilter BATTERY_CHANGED_FILTER =
+            new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+
+    private static final String APP_NOT_FOREGROUND_ERROR = "app_not_fg";
 
     protected Context mContext;
     protected Instrumentation mInstrumentation;
@@ -722,10 +732,29 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
 
     protected void turnBatteryOff() throws Exception {
         executeSilentShellCommand("cmd battery unplug");
+        assertBatteryState(false);
     }
 
     protected void turnBatteryOn() throws Exception {
         executeSilentShellCommand("cmd battery reset");
+        assertBatteryState(true);
+
+    }
+
+    private void assertBatteryState(boolean pluggedIn) throws Exception {
+        final long endTime = SystemClock.elapsedRealtime() + BATTERY_STATE_TIMEOUT_MS;
+        while (isDevicePluggedIn() != pluggedIn && SystemClock.elapsedRealtime() <= endTime) {
+            Thread.sleep(BATTERY_STATE_CHECK_INTERVAL_MS);
+        }
+        if (isDevicePluggedIn() != pluggedIn) {
+            fail("Timed out waiting for the plugged-in state to change,"
+                    + " expected pluggedIn: " + pluggedIn);
+        }
+    }
+
+    private boolean isDevicePluggedIn() {
+        final Intent batteryIntent = mContext.registerReceiver(null, BATTERY_CHANGED_FILTER);
+        return batteryIntent.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) > 0;
     }
 
     protected void turnScreenOff() throws Exception {
@@ -795,11 +824,12 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     protected void registerBroadcastReceiver() throws Exception {
         mServiceClient.registerBroadcastReceiver();
 
+        final Intent intent = new Intent(ACTION_RECEIVER_READY)
+                .addFlags(Intent.FLAG_RECEIVER_FOREGROUND);
         // Wait until receiver is ready.
         final int maxTries = 10;
         for (int i = 1; i <= maxTries; i++) {
-            final String message =
-                    sendOrderedBroadcast(new Intent(ACTION_RECEIVER_READY), SECOND_IN_MS);
+            final String message = sendOrderedBroadcast(intent, SECOND_IN_MS * 4);
             Log.d(TAG, "app2 receiver acked: " + message);
             if (message != null) {
                 return;
@@ -859,7 +889,12 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             mContext.startActivity(launchIntent);
             if (latch.await(FOREGROUND_PROC_NETWORK_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
                 if (!errors[0].isEmpty()) {
-                    fail("Network is not available for app2 (" + mUid + "): " + errors[0]);
+                    if (errors[0] == APP_NOT_FOREGROUND_ERROR) {
+                        // App didn't come to foreground when the activity is started, so try again.
+                        assertForegroundNetworkAccess();
+                    } else {
+                        fail("Network is not available for app2 (" + mUid + "): " + errors[0]);
+                    }
                 }
             } else {
                 fail("Timed out waiting for network availability status from app2 (" + mUid + ")");
@@ -898,8 +933,21 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             final String[] errors) {
         return new INetworkStateObserver.Stub() {
             @Override
+            public boolean isForeground() {
+                try {
+                    final ProcessState state = getProcessStateByUid(mUid);
+                    return !isBackground(state.state);
+                } catch (Exception e) {
+                    Log.d(TAG, "Error while reading the proc state for " + mUid + ": " + e);
+                    return false;
+                }
+            }
+
+            @Override
             public void onNetworkStateChecked(String resultData) {
-                errors[0] = checkForAvailabilityInResultData(resultData, true);
+                errors[0] = resultData == null
+                        ? APP_NOT_FOREGROUND_ERROR
+                        : checkForAvailabilityInResultData(resultData, true);
                 latch.countDown();
             }
         };
