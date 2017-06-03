@@ -44,6 +44,7 @@ import android.os.Bundle;
 import android.os.SystemClock;
 import android.service.notification.NotificationListenerService;
 import android.test.InstrumentationTestCase;
+import android.text.TextUtils;
 import android.util.Log;
 
 import com.android.cts.net.hostside.INetworkStateObserver;
@@ -308,6 +309,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             }
             Log.d(TAG, "App not on foreground state on attempt #" + i
                     + "; sleeping 1s before trying again");
+            turnScreenOn();
             SystemClock.sleep(SECOND_IN_MS);
         }
         fail("App2 is not on foreground state after " + maxTries + " attempts: " + state );
@@ -806,8 +808,36 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
 
     protected void setAppIdle(boolean enabled) throws Exception {
         Log.i(TAG, "Setting app idle to " + enabled);
+        final String beforeStats = getUsageStatsDump();
         executeSilentShellCommand("am set-inactive " + TEST_APP2_PKG + " " + enabled );
-        assertAppIdle(enabled); // Sanity check
+        try {
+            assertAppIdle(enabled); // Sanity check
+        } catch (Exception e) {
+            final String afterStats = getUsageStatsDump();
+            Log.d(TAG, "UsageStats before:\n" + beforeStats);
+            Log.d(TAG, "UsageStats after:\n" + afterStats);
+            throw e;
+        }
+    }
+
+    private String getUsageStatsDump() throws Exception {
+        final String output = runShellCommand(mInstrumentation, "dumpsys usagestats").trim();
+        final StringBuilder sb = new StringBuilder();
+        final TextUtils.SimpleStringSplitter splitter = new TextUtils.SimpleStringSplitter('\n');
+        splitter.setString(output);
+        String str;
+        while (splitter.hasNext()) {
+            str = splitter.next();
+            if (str.contains("package=")
+                    && !str.contains(TEST_PKG) && !str.contains(TEST_APP2_PKG)) {
+                continue;
+            }
+            if (str.contains("config=")) {
+                continue;
+            }
+            sb.append(str).append('\n');
+        }
+        return sb.toString();
     }
 
     protected void assertAppIdle(boolean enabled) throws Exception {
