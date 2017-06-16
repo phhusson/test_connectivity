@@ -24,7 +24,7 @@ LOCAL_MODULE_STEM_32 := $(LOCAL_MODULE)32
 LOCAL_MODULE_STEM_64 := $(LOCAL_MODULE)64
 
 LOCAL_SRC_FILES := \
-    src/NativeSocketRefCnt.cpp
+    src/NativeQtaguidTest.cpp
 
 LOCAL_SHARED_LIBRARIES := \
     libutils \
