@@ -812,7 +812,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         executeSilentShellCommand("am set-inactive " + TEST_APP2_PKG + " " + enabled );
         try {
             assertAppIdle(enabled); // Sanity check
-        } catch (Exception e) {
+        } catch (Throwable e) {
             final String afterStats = getUsageStatsDump();
             Log.d(TAG, "UsageStats before:\n" + beforeStats);
             Log.d(TAG, "UsageStats after:\n" + afterStats);
