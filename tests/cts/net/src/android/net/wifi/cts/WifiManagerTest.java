@@ -385,6 +385,7 @@ public class WifiManagerTest extends AndroidTestCase {
 
             wifiConfiguration = new WifiConfiguration();
             wifiConfiguration.SSID = SSID1;
+            wifiConfiguration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
             int netId = mWifiManager.addNetwork(wifiConfiguration);
             assertTrue(existSSID(SSID1));
 
