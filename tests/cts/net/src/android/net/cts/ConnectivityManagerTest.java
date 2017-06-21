@@ -789,24 +789,40 @@ public class ConnectivityManagerTest extends AndroidTestCase {
 
     /** Verify that accept_ra_rt_info_min_plen exists and is set to the expected value */
     public void testAcceptRaRtInfoMinPlen() throws Exception {
+        if (!mPackageManager.hasSystemFeature(PackageManager.FEATURE_WIFI)) {
+            Log.i(TAG, "testConnectivityChanged_manifestRequestOnlyPreN_shouldReceiveIntent cannot execute unless device supports WiFi");
+            return;
+        }
         Scanner s = makeWifiSysctlScanner("accept_ra_rt_info_min_plen");
         assertEquals(IPV6_WIFI_ACCEPT_RA_RT_INFO_MIN_PLEN, s.nextInt());
     }
 
     /** Verify that accept_ra_rt_info_max_plen exists and is set to the expected value */
     public void testAcceptRaRtInfoMaxPlen() throws Exception {
+        if (!mPackageManager.hasSystemFeature(PackageManager.FEATURE_WIFI)) {
+            Log.i(TAG, "testConnectivityChanged_manifestRequestOnlyPreN_shouldReceiveIntent cannot execute unless device supports WiFi");
+            return;
+        }
         Scanner s = makeWifiSysctlScanner("accept_ra_rt_info_max_plen");
         assertEquals(IPV6_WIFI_ACCEPT_RA_RT_INFO_MAX_PLEN, s.nextInt());
     }
 
     /** Verify that router_solicitations exists and is set to the expected value */
     public void testRouterSolicitations() throws Exception {
+        if (!mPackageManager.hasSystemFeature(PackageManager.FEATURE_WIFI)) {
+            Log.i(TAG, "testConnectivityChanged_manifestRequestOnlyPreN_shouldReceiveIntent cannot execute unless device supports WiFi");
+            return;
+        }
         Scanner s = makeWifiSysctlScanner("router_solicitations");
         assertEquals(IPV6_WIFI_ROUTER_SOLICITATIONS, s.nextInt());
     }
 
     /** Verify that router_solicitation_max_interval exists and is in an acceptable interval */
     public void testRouterSolicitationMaxInterval() throws Exception {
+        if (!mPackageManager.hasSystemFeature(PackageManager.FEATURE_WIFI)) {
+            Log.i(TAG, "testConnectivityChanged_manifestRequestOnlyPreN_shouldReceiveIntent cannot execute unless device supports WiFi");
+            return;
+        }
         Scanner s = makeWifiSysctlScanner("router_solicitation_max_interval");
         int interval = s.nextInt();
         // Verify we're in the interval [15 minutes, 60 minutes]. Lower values may adversely
