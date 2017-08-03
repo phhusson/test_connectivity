@@ -127,6 +127,19 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
         assertBackgroundNetworkAccess(false);
     }
 
+    public void testBackgroundNetworkAccess_tempWhitelisted() throws Exception {
+        if (!isSupported()) return;
+
+        setAppIdle(true);
+        assertBackgroundNetworkAccess(false);
+
+        addTempPowerSaveModeWhitelist(TEST_APP2_PKG, TEMP_POWERSAVE_WHITELIST_DURATION_MS);
+        assertBackgroundNetworkAccess(true);
+        // Wait until the whitelist duration is expired.
+        SystemClock.sleep(TEMP_POWERSAVE_WHITELIST_DURATION_MS);
+        assertBackgroundNetworkAccess(false);
+    }
+
     public void testBackgroundNetworkAccess_disabled() throws Exception {
         if (!isSupported()) return;
 

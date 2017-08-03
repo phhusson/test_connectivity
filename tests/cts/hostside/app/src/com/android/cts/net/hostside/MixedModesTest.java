@@ -15,6 +15,7 @@
  */
 package com.android.cts.net.hostside;
 
+import android.os.SystemClock;
 import android.util.Log;
 
 /**
@@ -269,6 +270,57 @@ public class MixedModesTest extends AbstractRestrictBackgroundNetworkTestCase {
         } finally {
             setAppIdle(false);
             setDozeMode(false);
+        }
+    }
+
+    public void testAppIdleAndDoze_tempPowerSaveWhitelists() throws Exception {
+        if (!isSupported()) {
+            return;
+        }
+        if (!isDozeModeEnabled()) {
+            Log.i(TAG, "Skipping " + getClass() + "." + getName()
+                    + "() because device does not support Doze Mode");
+            return;
+        }
+
+        setDozeMode(true);
+        setAppIdle(true);
+
+        try {
+            assertBackgroundNetworkAccess(false);
+
+            addTempPowerSaveModeWhitelist(TEST_APP2_PKG, TEMP_POWERSAVE_WHITELIST_DURATION_MS);
+            assertBackgroundNetworkAccess(true);
+
+            // Wait until the whitelist duration is expired.
+            SystemClock.sleep(TEMP_POWERSAVE_WHITELIST_DURATION_MS);
+            assertBackgroundNetworkAccess(false);
+        } finally {
+            setAppIdle(false);
+            setDozeMode(false);
+        }
+    }
+
+    public void testAppIdleAndBatterySaver_tempPowerSaveWhitelists() throws Exception {
+        if (!isSupported()) {
+            return;
+        }
+
+        setBatterySaverMode(true);
+        setAppIdle(true);
+
+        try {
+            assertBackgroundNetworkAccess(false);
+
+            addTempPowerSaveModeWhitelist(TEST_APP2_PKG, TEMP_POWERSAVE_WHITELIST_DURATION_MS);
+            assertBackgroundNetworkAccess(true);
+
+            // Wait until the whitelist duration is expired.
+            SystemClock.sleep(TEMP_POWERSAVE_WHITELIST_DURATION_MS);
+            assertBackgroundNetworkAccess(false);
+        } finally {
+            setAppIdle(false);
+            setBatterySaverMode(false);
         }
     }
 }
