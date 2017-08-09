@@ -476,7 +476,11 @@ public class VpnTest extends InstrumentationTestCase {
     private FileDescriptor openSocketFd(String host, int port, int timeoutMs) throws Exception {
         Socket s = new Socket(host, port);
         s.setSoTimeout(timeoutMs);
-        return ParcelFileDescriptor.fromSocket(s).getFileDescriptor();
+        // Dup the filedescriptor so ParcelFileDescriptor's finalizer doesn't garbage collect it
+        // and cause our fd to become invalid. http://b/35927643 .
+        FileDescriptor fd = Os.dup(ParcelFileDescriptor.fromSocket(s).getFileDescriptor());
+        s.close();
+        return fd;
     }
 
     private FileDescriptor openSocketFdInOtherApp(
@@ -506,7 +510,9 @@ public class VpnTest extends InstrumentationTestCase {
 
     private void assertSocketStillOpen(FileDescriptor fd, String host) throws Exception {
         try {
+            assertTrue(fd.valid());
             sendRequest(fd, host);
+            assertTrue(fd.valid());
         } finally {
             Os.close(fd);
         }
@@ -514,10 +520,12 @@ public class VpnTest extends InstrumentationTestCase {
 
     private void assertSocketClosed(FileDescriptor fd, String host) throws Exception {
         try {
+            assertTrue(fd.valid());
             sendRequest(fd, host);
             fail("Socket opened before VPN connects should be closed when VPN connects");
         } catch (ErrnoException expected) {
             assertEquals(ECONNABORTED, expected.errno);
+            assertTrue(fd.valid());
         } finally {
             Os.close(fd);
         }
