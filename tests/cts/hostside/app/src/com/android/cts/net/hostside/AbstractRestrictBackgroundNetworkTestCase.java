@@ -114,7 +114,6 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     private int mMyUid;
     private String mMeteredWifi;
     private MyServiceClient mServiceClient;
-    private boolean mHasWatch;
     private String mDeviceIdleConstantsSetting;
     private boolean mSupported;
 
@@ -130,13 +129,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         mMyUid = getUid(mContext.getPackageName());
         mServiceClient = new MyServiceClient(mContext);
         mServiceClient.bind();
-        mHasWatch = mContext.getPackageManager().hasSystemFeature(
-                PackageManager.FEATURE_WATCH);
-        if (mHasWatch) {
-            mDeviceIdleConstantsSetting = "device_idle_constants_watch";
-        } else {
-            mDeviceIdleConstantsSetting = "device_idle_constants";
-        }
+        mDeviceIdleConstantsSetting = "device_idle_constants";
         mSupported = setUpActiveNetworkMeteringState();
 
         Log.i(TAG, "Apps status on " + getName() + ":\n"
