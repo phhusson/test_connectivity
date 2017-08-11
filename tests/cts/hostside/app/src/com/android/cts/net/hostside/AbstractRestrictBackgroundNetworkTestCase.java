@@ -106,6 +106,8 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
 
     private static final String APP_NOT_FOREGROUND_ERROR = "app_not_fg";
 
+    protected static final long TEMP_POWERSAVE_WHITELIST_DURATION_MS = 5_000; // 5 sec
+
     protected Context mContext;
     protected Instrumentation mInstrumentation;
     protected ConnectivityManager mCm;
@@ -674,6 +676,12 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         }
         fail(list + " check for uid " + uid + " failed: expected " + expected + ", got " + actual
                 + ". Full list: " + uids);
+    }
+
+    protected void addTempPowerSaveModeWhitelist(String packageName, long duration)
+            throws Exception {
+        Log.i(TAG, "Adding pkg " + packageName + " to temp-power-save-mode whitelist");
+        executeShellCommand("dumpsys deviceidle tempwhitelist -d " + duration + " " + packageName);
     }
 
     protected void assertPowerSaveModeWhitelist(String packageName, boolean expected)
