@@ -42,6 +42,7 @@ import android.os.BatteryManager;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
 import android.test.InstrumentationTestCase;
 import android.text.TextUtils;
@@ -118,6 +119,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     private MyServiceClient mServiceClient;
     private String mDeviceIdleConstantsSetting;
     private boolean mSupported;
+    private boolean mIsLocationOn;
 
     @Override
     protected void setUp() throws Exception {
@@ -132,6 +134,10 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         mServiceClient = new MyServiceClient(mContext);
         mServiceClient.bind();
         mDeviceIdleConstantsSetting = "device_idle_constants";
+        mIsLocationOn = isLocationOn();
+        if (!mIsLocationOn) {
+            enableLocation();
+        }
         mSupported = setUpActiveNetworkMeteringState();
 
         Log.i(TAG, "Apps status on " + getName() + ":\n"
@@ -141,9 +147,33 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
 
     @Override
     protected void tearDown() throws Exception {
+        if (!mIsLocationOn) {
+            disableLocation();
+        }
         mServiceClient.unbind();
 
         super.tearDown();
+    }
+
+    private void enableLocation() throws Exception {
+        Settings.Secure.putInt(mContext.getContentResolver(), Settings.Secure.LOCATION_MODE,
+                Settings.Secure.LOCATION_MODE_SENSORS_ONLY);
+        assertEquals(Settings.Secure.LOCATION_MODE_SENSORS_ONLY,
+                Settings.Secure.getInt(mContext.getContentResolver(),
+                        Settings.Secure.LOCATION_MODE));
+    }
+
+    private void disableLocation() throws Exception {
+        Settings.Secure.putInt(mContext.getContentResolver(), Settings.Secure.LOCATION_MODE,
+                Settings.Secure.LOCATION_MODE_OFF);
+        assertEquals(Settings.Secure.LOCATION_MODE_OFF,
+                Settings.Secure.getInt(mContext.getContentResolver(),
+                        Settings.Secure.LOCATION_MODE));
+    }
+
+    private boolean isLocationOn() throws Exception {
+        return Settings.Secure.getInt(mContext.getContentResolver(),
+                Settings.Secure.LOCATION_MODE) != Settings.Secure.LOCATION_MODE_OFF;
     }
 
     protected int getUid(String packageName) throws Exception {
