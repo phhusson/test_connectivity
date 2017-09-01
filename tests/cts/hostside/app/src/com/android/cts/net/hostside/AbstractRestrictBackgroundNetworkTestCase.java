@@ -27,12 +27,12 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import android.app.Instrumentation;
+import android.app.NotificationManager;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.NetworkInfo.DetailedState;
@@ -898,19 +898,12 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
      * notification actions right after the notification is sent.
      */
     protected void registerNotificationListenerService() throws Exception {
-        final StringBuilder listeners = new StringBuilder(getNotificationListenerServices());
-        if (listeners.length() > 0) {
-            listeners.append(":");
-        }
-        listeners.append(MyNotificationListenerService.getId());
-        executeShellCommand("settings put secure enabled_notification_listeners " + listeners);
-        final String newListeners = getNotificationListenerServices();
-        assertEquals("Failed to set 'enabled_notification_listeners'",
-                listeners.toString(), newListeners);
-    }
-
-    private String getNotificationListenerServices() throws Exception {
-        return executeShellCommand("settings get secure enabled_notification_listeners");
+        executeShellCommand("cmd notification allow_listener "
+                + MyNotificationListenerService.getId());
+        final NotificationManager nm = mContext.getSystemService(NotificationManager.class);
+        final ComponentName listenerComponent = MyNotificationListenerService.getComponentName();
+        assertTrue(listenerComponent + " has not been granted access",
+                nm.isNotificationListenerAccessGranted(listenerComponent));
     }
 
     protected void setPendingIntentWhitelistDuration(int durationMs) throws Exception {
