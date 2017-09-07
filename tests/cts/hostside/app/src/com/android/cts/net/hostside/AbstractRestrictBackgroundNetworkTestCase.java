@@ -387,8 +387,32 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             // Exponential back-off.
             timeoutMs = Math.min(timeoutMs*2, NETWORK_TIMEOUT_MS);
         }
+        dumpAllNetworkRules();
         fail("Invalid state for expectAvailable=" + expectAvailable + " after " + maxTries
                 + " attempts.\nLast error: " + error);
+    }
+
+    private void dumpAllNetworkRules() throws Exception {
+        final String networkManagementDump = runShellCommand(mInstrumentation,
+                "dumpsys network_management").trim();
+        final String networkPolicyDump = runShellCommand(mInstrumentation,
+                "dumpsys netpolicy").trim();
+        TextUtils.SimpleStringSplitter splitter = new TextUtils.SimpleStringSplitter('\n');
+        splitter.setString(networkManagementDump);
+        String next;
+        Log.d(TAG, ">>> Begin network_management dump");
+        while (splitter.hasNext()) {
+            next = splitter.next();
+            Log.d(TAG, next);
+        }
+        Log.d(TAG, "<<< End network_management dump");
+        splitter.setString(networkPolicyDump);
+        Log.d(TAG, ">>> Begin netpolicy dump");
+        while (splitter.hasNext()) {
+            next = splitter.next();
+            Log.d(TAG, next);
+        }
+        Log.d(TAG, "<<< End netpolicy dump");
     }
 
     /**
