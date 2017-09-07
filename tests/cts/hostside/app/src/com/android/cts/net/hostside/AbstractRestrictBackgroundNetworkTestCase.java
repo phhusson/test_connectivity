@@ -729,10 +729,10 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     protected void registerBroadcastReceiver() throws Exception {
         executeShellCommand("am startservice com.android.cts.net.hostside.app2/.MyService");
         // Wait until receiver is ready.
-        final int maxTries = 5;
+        final int maxTries = 10;
         for (int i = 1; i <= maxTries; i++) {
             final String message =
-                    sendOrderedBroadcast(new Intent(ACTION_RECEIVER_READY), SECOND_IN_MS);
+                    sendOrderedBroadcast(new Intent(ACTION_RECEIVER_READY), 4 * SECOND_IN_MS);
             Log.d(TAG, "app2 receiver acked: " + message);
             if (message != null) {
                 return;
