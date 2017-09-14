@@ -612,11 +612,15 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         NetworkInfo info = null;
         for (int i = 1; i <= maxTries; i++) {
             info = mCm.getActiveNetworkInfo();
-            if (info != null) {
+            if (info == null) {
+                Log.v(TAG, "No active network info on attempt #" + i
+                        + "; sleeping 1s before polling again");
+            } else if (mCm.isActiveNetworkMetered() != expected) {
+                Log.v(TAG, "Wrong metered status for active network " + info + "; expected="
+                        + expected + "; sleeping 1s before polling again");
+            } else {
                 break;
             }
-            Log.v(TAG, "No active network info on attempt #" + i
-                    + "; sleeping 1s before polling again");
             Thread.sleep(SECOND_IN_MS);
         }
         assertNotNull("No active network after " + maxTries + " attempts", info);
