@@ -141,6 +141,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         Log.i(TAG, "Apps status on " + getName() + ":\n"
                 + "\ttest app: uid=" + mMyUid + ", state=" + getProcessStateByUid(mMyUid) + "\n"
                 + "\tapp2: uid=" + mUid + ", state=" + getProcessStateByUid(mUid));
+        executeShellCommand("settings get global app_idle_constants");
    }
 
     @Override
@@ -388,6 +389,8 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             timeoutMs = Math.min(timeoutMs*2, NETWORK_TIMEOUT_MS);
         }
         dumpAllNetworkRules();
+        Log.d(TAG, "Usagestats dump: " + getUsageStatsDump());
+        executeShellCommand("settings get global app_idle_constants");
         fail("Invalid state for expectAvailable=" + expectAvailable + " after " + maxTries
                 + " attempts.\nLast error: " + error);
     }
@@ -859,16 +862,8 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
 
     protected void setAppIdle(boolean enabled) throws Exception {
         Log.i(TAG, "Setting app idle to " + enabled);
-        final String beforeStats = getUsageStatsDump();
         executeSilentShellCommand("am set-inactive " + TEST_APP2_PKG + " " + enabled );
-        try {
-            assertAppIdle(enabled); // Sanity check
-        } catch (Throwable e) {
-            final String afterStats = getUsageStatsDump();
-            Log.d(TAG, "UsageStats before:\n" + beforeStats);
-            Log.d(TAG, "UsageStats after:\n" + afterStats);
-            throw e;
-        }
+        assertAppIdle(enabled); // Sanity check
     }
 
     private String getUsageStatsDump() throws Exception {
@@ -883,7 +878,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
                     && !str.contains(TEST_PKG) && !str.contains(TEST_APP2_PKG)) {
                 continue;
             }
-            if (str.contains("config=")) {
+            if (str.trim().startsWith("config=") || str.trim().startsWith("time=")) {
                 continue;
             }
             sb.append(str).append('\n');
@@ -892,7 +887,13 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     }
 
     protected void assertAppIdle(boolean enabled) throws Exception {
-        assertDelayedShellCommand("am get-inactive " + TEST_APP2_PKG, 15, 2, "Idle=" + enabled);
+        try {
+            assertDelayedShellCommand("am get-inactive " + TEST_APP2_PKG, 15, 2, "Idle=" + enabled);
+        } catch (Throwable e) {
+            Log.d(TAG, "UsageStats dump:\n" + getUsageStatsDump());
+            executeShellCommand("settings get global app_idle_constants");
+            throw e;
+        }
     }
 
     /**
