@@ -386,15 +386,22 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             Log.w(TAG, "Network status didn't match for expectAvailable=" + expectAvailable
                     + " on attempt #" + i + ": " + error + "\n"
                     + "Sleeping " + timeoutMs + "ms before trying again");
-            SystemClock.sleep(timeoutMs);
+            // No sleep after the last turn
+            if (i < maxTries) {
+                SystemClock.sleep(timeoutMs);
+            }
             // Exponential back-off.
             timeoutMs = Math.min(timeoutMs*2, NETWORK_TIMEOUT_MS);
         }
+        dumpOnFailure();
+        fail("Invalid state for expectAvailable=" + expectAvailable + " after " + maxTries
+                + " attempts.\nLast error: " + error);
+    }
+
+    private void dumpOnFailure() throws Exception {
         dumpAllNetworkRules();
         Log.d(TAG, "Usagestats dump: " + getUsageStatsDump());
         executeShellCommand("settings get global app_idle_constants");
-        fail("Invalid state for expectAvailable=" + expectAvailable + " after " + maxTries
-                + " attempts.\nLast error: " + error);
     }
 
     private void dumpAllNetworkRules() throws Exception {
@@ -976,10 +983,12 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
                         // App didn't come to foreground when the activity is started, so try again.
                         assertForegroundNetworkAccess();
                     } else {
+                        dumpOnFailure();
                         fail("Network is not available for app2 (" + mUid + "): " + errors[0]);
                     }
                 }
             } else {
+                dumpOnFailure();
                 fail("Timed out waiting for network availability status from app2 (" + mUid + ")");
             }
         } else {
