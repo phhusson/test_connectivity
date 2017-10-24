@@ -30,7 +30,7 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
 
-    <application>
+    <application android:usesCleartextTraffic="true">
         <uses-library android:name="android.test.runner" />
         <uses-library android:name="org.apache.http.legacy" android:required="false" />
 
