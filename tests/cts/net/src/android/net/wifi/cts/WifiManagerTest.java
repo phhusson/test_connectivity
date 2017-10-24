@@ -697,6 +697,12 @@ public class WifiManagerTest extends AndroidTestCase {
      */
     private void testAddPasspointConfig(PasspointConfiguration config) throws Exception {
         try {
+
+            // obtain number of passpoint networks already present in device (preloaded)
+            List<PasspointConfiguration> preConfigList = mWifiManager.getPasspointConfigurations();
+            int numOfNetworks = preConfigList.size();
+
+            // add new (test) configuration
             mWifiManager.addOrUpdatePasspointConfiguration(config);
 
             // Certificates and keys will be set to null after it is installed to the KeyStore by
@@ -706,14 +712,23 @@ public class WifiManagerTest extends AndroidTestCase {
             config.getCredential().setClientCertificateChain(null);
             config.getCredential().setClientPrivateKey(null);
 
-            // Retrieve the configuration and verify it.
+            // retrieve the configuration and verify it. The retrieved list may not be in order -
+            // check all configs to see if any match
             List<PasspointConfiguration> configList = mWifiManager.getPasspointConfigurations();
-            assertEquals(1, configList.size());
-            assertEquals(config, configList.get(0));
+            assertEquals(numOfNetworks + 1, configList.size());
 
-            // Remove the configuration and verify no installed configuration.
+            boolean anyMatch = false;
+            for (PasspointConfiguration passpointConfiguration : configList) {
+                if (passpointConfiguration.equals(config)) {
+                    anyMatch = true;
+                    break;
+                }
+            }
+            assertTrue(anyMatch);
+
+            // remove the (test) configuration and verify number of installed configurations
             mWifiManager.removePasspointConfiguration(config.getHomeSp().getFqdn());
-            assertTrue(mWifiManager.getPasspointConfigurations().isEmpty());
+            assertEquals(mWifiManager.getPasspointConfigurations().size(), numOfNetworks);
         } catch (UnsupportedOperationException e) {
             // Passpoint build config |config_wifi_hotspot2_enabled| is disabled, so noop.
         }
