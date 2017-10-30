@@ -139,6 +139,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             enableLocation();
         }
         mSupported = setUpActiveNetworkMeteringState();
+        setAppIdle(false);
 
         Log.i(TAG, "Apps status on " + getName() + ":\n"
                 + "\ttest app: uid=" + mMyUid + ", state=" + getProcessStateByUid(mMyUid) + "\n"
