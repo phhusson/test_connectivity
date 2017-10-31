@@ -155,8 +155,9 @@ public class IpSecManagerTest extends AndroidTestCase {
                                         CRYPT_KEY.length * 8))
                         .buildTransportModeTransform(local);
 
-        // Hack to ensure the socket doesn't block indefinitely on failure
-        DatagramSocket localSocket = new DatagramSocket(8888);
+        // Bind localSocket to a random available port.
+        DatagramSocket localSocket = new DatagramSocket(0);
+        int localPort = localSocket.getLocalPort();
         localSocket.setSoTimeout(500);
         ParcelFileDescriptor pin = ParcelFileDescriptor.fromDatagramSocket(localSocket);
         FileDescriptor udpSocket = pin.getFileDescriptor();
@@ -165,7 +166,7 @@ public class IpSecManagerTest extends AndroidTestCase {
         byte[] data = new String("Best test data ever!").getBytes("UTF-8");
 
         byte[] in = new byte[data.length];
-        Os.sendto(udpSocket, data, 0, data.length, 0, local, 8888);
+        Os.sendto(udpSocket, data, 0, data.length, 0, local, localPort);
         Os.read(udpSocket, in, 0, in.length);
         assertTrue("Encapsulated data did not match.", Arrays.equals(data, in));
         mISM.removeTransportModeTransform(udpSocket, transform);
