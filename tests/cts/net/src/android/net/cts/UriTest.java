@@ -109,6 +109,11 @@ public class UriTest extends AndroidTestCase {
         uri = Uri.parse("http://localhost");
         assertEquals("localhost", uri.getHost());
         assertEquals(-1, uri.getPort());
+
+        uri = Uri.parse("http://a:a@example.com:a@example2.com/path");
+        assertEquals("a:a@example.com:a@example2.com", uri.getAuthority());
+        assertEquals("example2.com", uri.getHost());
+        assertEquals(-1, uri.getPort());
     }
 
     public void testCompareTo() {
