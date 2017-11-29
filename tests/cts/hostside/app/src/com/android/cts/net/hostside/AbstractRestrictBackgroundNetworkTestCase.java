@@ -139,8 +139,6 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             enableLocation();
         }
         mSupported = setUpActiveNetworkMeteringState();
-        // TODO: Remove this once b/69867516 is fixed.
-        executeShellCommand("am set-standby-bucket " + TEST_APP2_PKG + " 12");
         setAppIdle(false);
 
         Log.i(TAG, "Apps status on " + getName() + ":\n"
