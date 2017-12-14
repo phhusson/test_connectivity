@@ -99,20 +99,20 @@ public class IpSecManagerTest extends AndroidTestCase {
     public void testAllocSpi() throws Exception {
         for (InetAddress addr : GOOGLE_DNS_LIST) {
             IpSecManager.SecurityParameterIndex randomSpi = null, droidSpi = null;
-            randomSpi = mISM.reserveSecurityParameterIndex(IpSecTransform.DIRECTION_OUT, addr);
+            randomSpi = mISM.allocateSecurityParameterIndex(IpSecTransform.DIRECTION_OUT, addr);
             assertTrue(
                     "Failed to receive a valid SPI",
                     randomSpi.getSpi() != IpSecManager.INVALID_SECURITY_PARAMETER_INDEX);
 
             droidSpi =
-                    mISM.reserveSecurityParameterIndex(
+                    mISM.allocateSecurityParameterIndex(
                             IpSecTransform.DIRECTION_IN, addr, DROID_SPI);
             assertTrue(
                     "Failed to allocate specified SPI, " + DROID_SPI,
                     droidSpi.getSpi() == DROID_SPI);
 
             try {
-                mISM.reserveSecurityParameterIndex(IpSecTransform.DIRECTION_IN, addr, DROID_SPI);
+                mISM.allocateSecurityParameterIndex(IpSecTransform.DIRECTION_IN, addr, DROID_SPI);
                 fail("Duplicate SPI was allowed to be created");
             } catch (IpSecManager.SpiUnavailableException expected) {
                 // This is a success case because we expect a dupe SPI to throw
@@ -239,10 +239,10 @@ public class IpSecManagerTest extends AndroidTestCase {
     public void testCreateTransform() throws Exception {
         InetAddress local = LOOPBACK_4;
         IpSecManager.SecurityParameterIndex outSpi =
-                mISM.reserveSecurityParameterIndex(IpSecTransform.DIRECTION_OUT, local);
+                mISM.allocateSecurityParameterIndex(IpSecTransform.DIRECTION_OUT, local);
 
         IpSecManager.SecurityParameterIndex inSpi =
-                mISM.reserveSecurityParameterIndex(
+                mISM.allocateSecurityParameterIndex(
                         IpSecTransform.DIRECTION_IN, local, outSpi.getSpi());
 
         IpSecTransform transform =
@@ -293,10 +293,10 @@ public class IpSecManagerTest extends AndroidTestCase {
         InetAddress local = InetAddress.getByName(localAddress);
 
         IpSecManager.SecurityParameterIndex outSpi =
-                mISM.reserveSecurityParameterIndex(IpSecTransform.DIRECTION_OUT, local);
+                mISM.allocateSecurityParameterIndex(IpSecTransform.DIRECTION_OUT, local);
 
         IpSecManager.SecurityParameterIndex inSpi =
-                mISM.reserveSecurityParameterIndex(
+                mISM.allocateSecurityParameterIndex(
                         IpSecTransform.DIRECTION_IN, local, outSpi.getSpi());
 
         IpSecTransform transform =
@@ -505,9 +505,9 @@ public class IpSecManagerTest extends AndroidTestCase {
         // Create SPIs, UDP encap socket
         try (IpSecManager.UdpEncapsulationSocket encapSocket = mISM.openUdpEncapsulationSocket();
                 IpSecManager.SecurityParameterIndex outSpi =
-                        mISM.reserveSecurityParameterIndex(IpSecTransform.DIRECTION_OUT, local);
+                        mISM.allocateSecurityParameterIndex(IpSecTransform.DIRECTION_OUT, local);
                 IpSecManager.SecurityParameterIndex inSpi =
-                        mISM.reserveSecurityParameterIndex(
+                        mISM.allocateSecurityParameterIndex(
                                 IpSecTransform.DIRECTION_IN, local, outSpi.getSpi());
                 IpSecTransform transform =
                         buildIpSecTransform(mContext, inSpi, outSpi, encapSocket, local)) {
@@ -564,9 +564,9 @@ public class IpSecManagerTest extends AndroidTestCase {
         // separate sockets for inbound and outbound)
         try (IpSecManager.UdpEncapsulationSocket encapSocket = mISM.openUdpEncapsulationSocket();
                 IpSecManager.SecurityParameterIndex outSpi =
-                        mISM.reserveSecurityParameterIndex(IpSecTransform.DIRECTION_OUT, local);
+                        mISM.allocateSecurityParameterIndex(IpSecTransform.DIRECTION_OUT, local);
                 IpSecManager.SecurityParameterIndex inSpi =
-                        mISM.reserveSecurityParameterIndex(IpSecTransform.DIRECTION_IN, local);
+                        mISM.allocateSecurityParameterIndex(IpSecTransform.DIRECTION_IN, local);
                 IpSecTransform transform =
                         buildIpSecTransform(mContext, inSpi, outSpi, encapSocket, local)) {
 
