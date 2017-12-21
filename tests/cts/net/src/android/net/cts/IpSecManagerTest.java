@@ -218,7 +218,7 @@ public class IpSecManagerTest extends AndroidTestCase {
         mISM.applyTransportModeTransform(accepted, transform);
 
         // Wait for TCP handshake packets to be counted
-        Thread.sleep(250);
+        StatsChecker.waitForNumPackets(3); // (SYN, SYN+ACK, ACK)
 
         // Reset StatsChecker, to ignore negotiation overhead.
         StatsChecker.initStatsChecker();
@@ -229,11 +229,18 @@ public class IpSecManagerTest extends AndroidTestCase {
             Os.read(accepted, in, 0, in.length);
             assertArrayEquals("Client-to-server encrypted data did not match.", TEST_DATA, in);
 
+            // Allow for newest data + ack packets to be returned before sending next packet
+            // Also add the number of expected packets in each of the previous runs (4 per run)
+            StatsChecker.waitForNumPackets(2 + (4 * i));
             in = new byte[TEST_DATA.length];
 
             Os.write(accepted, TEST_DATA, 0, TEST_DATA.length);
             Os.read(client, in, 0, in.length);
             assertArrayEquals("Server-to-client encrypted data did not match.", TEST_DATA, in);
+
+            // Allow for all data + ack packets to be returned before sending next packet
+            // Also add the number of expected packets in each of the previous runs (4 per run)
+            StatsChecker.waitForNumPackets(4 * (i + 1));
         }
 
         mISM.removeTransportModeTransform(server, transform);
@@ -312,6 +319,7 @@ public class IpSecManagerTest extends AndroidTestCase {
         private static final String LOOPBACK_INTERFACE = "lo";
         private static final double ERROR_MARGIN_BYTES = 1.05;
         private static final double ERROR_MARGIN_PKTS = 1.05;
+        private static final int MAX_WAIT_TIME_MILLIS = 1000;
 
         private static long uidTxBytes;
         private static long uidRxBytes;
@@ -322,6 +330,34 @@ public class IpSecManagerTest extends AndroidTestCase {
         private static long ifaceRxBytes;
         private static long ifaceTxPackets;
         private static long ifaceRxPackets;
+
+        /**
+         * This method counts the number of incoming packets, polling intermittently up to
+         * MAX_WAIT_TIME_MILLIS.
+         */
+        private static void waitForNumPackets(int numPackets) throws Exception {
+            long uidTxDelta = 0;
+            long uidRxDelta = 0;
+            for (int i = 0; i < 100; i++) {
+                uidTxDelta = TrafficStats.getUidTxPackets(Os.getuid()) - uidTxPackets;
+                uidRxDelta = TrafficStats.getUidRxPackets(Os.getuid()) - uidRxPackets;
+
+                // TODO: Check Rx packets as well once kernel security policy bug is fixed.
+                // (b/70635417)
+                if (uidTxDelta >= numPackets) {
+                    return;
+                }
+                Thread.sleep(MAX_WAIT_TIME_MILLIS / 100);
+            }
+            fail(
+                    "Not enough traffic was recorded to satisfy the provided conditions: wanted "
+                            + numPackets
+                            + ", got "
+                            + uidTxDelta
+                            + " tx and "
+                            + uidRxDelta
+                            + " rx packets");
+        }
 
         private static void assertUidStatsDelta(
                 int expectedTxByteDelta,
@@ -449,9 +485,6 @@ public class IpSecManagerTest extends AndroidTestCase {
                 }
             }
 
-            // Wait for stats to be counted
-            Thread.sleep(250);
-
             checkStatsChecker(
                     protocol,
                     ipHdrLen,
@@ -498,6 +531,8 @@ public class IpSecManagerTest extends AndroidTestCase {
                 expectedInnerBytes += (TCP_HDRLEN_WITH_OPTIONS + ipHdrLen) * (sendCount);
                 expectedPackets += sendCount;
         }
+
+        StatsChecker.waitForNumPackets(expectedPackets);
 
         if (udpEncapLen != 0) {
             StatsChecker.assertUidStatsDelta(
