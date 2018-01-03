@@ -26,6 +26,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
+import android.app.ActivityManager;
 import android.app.Instrumentation;
 import android.app.NotificationManager;
 import android.content.BroadcastReceiver;
@@ -474,6 +475,12 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             errors.append("\tconnectionCheckDetails: " + connectionCheckDetails + "\n");
         }
         return errors.toString();
+    }
+
+    protected boolean isLowRamDevice() {
+        final ActivityManager am = (ActivityManager) mContext.getSystemService(
+            Context.ACTIVITY_SERVICE);
+        return am.isLowRamDevice();
     }
 
     protected String executeShellCommand(String command) throws Exception {
