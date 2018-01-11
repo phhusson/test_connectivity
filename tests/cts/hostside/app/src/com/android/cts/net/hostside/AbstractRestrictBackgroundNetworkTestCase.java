@@ -87,7 +87,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     private static final String NETWORK_STATUS_SEPARATOR = "\\|";
     private static final int SECOND_IN_MS = 1000;
     static final int NETWORK_TIMEOUT_MS = 15 * SECOND_IN_MS;
-    private static final int PROCESS_STATE_FOREGROUND_SERVICE = 4;
+    private static final int PROCESS_STATE_FOREGROUND_SERVICE = 3;
     private static final int PROCESS_STATE_TOP = 2;
 
     private static final String KEY_NETWORK_STATE_OBSERVER = TEST_PKG + ".observer";
