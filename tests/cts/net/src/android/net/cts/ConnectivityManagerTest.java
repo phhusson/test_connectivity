@@ -502,6 +502,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         startIntent.setComponent(new ComponentName("android.net.cts.appForApi23",
                 "android.net.cts.appForApi23.ConnectivityListeningActivity"));
         mContext.startActivity(startIntent);
+        Thread.sleep(200);
 
         toggleWifi();
 
