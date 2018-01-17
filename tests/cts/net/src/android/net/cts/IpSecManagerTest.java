@@ -35,6 +35,7 @@ import android.test.AndroidTestCase;
 
 import java.io.FileDescriptor;
 import java.io.IOException;
+import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
@@ -307,24 +308,56 @@ public class IpSecManagerTest extends AndroidTestCase {
                                         AUTH_KEY.length * 8))
                         .buildTransportModeTransform(localAddr, spi);
 
-        // Bind localSocket to a random available port.
-        DatagramSocket localSocket = new DatagramSocket(0);
-        int localPort = localSocket.getLocalPort();
-        localSocket.setSoTimeout(500);
-        ParcelFileDescriptor pin = ParcelFileDescriptor.fromDatagramSocket(localSocket);
-        FileDescriptor udpSocket = pin.getFileDescriptor();
-
-        // TODO: test combinations of one-way transforms.
-        mISM.applyTransportModeTransform(udpSocket, IpSecManager.DIRECTION_IN, transform);
-        mISM.applyTransportModeTransform(udpSocket, IpSecManager.DIRECTION_OUT, transform);
-        byte[] data = new String("Best test data ever!").getBytes("UTF-8");
+        final boolean [][] applyInApplyOut = {
+                {false, false}, {false, true}, {true, false}, {true,true}};
+        final byte[] data = new String("Best test data ever!").getBytes("UTF-8");
+        final DatagramPacket outPacket = new DatagramPacket(data, 0, data.length, localAddr, 0);
 
         byte[] in = new byte[data.length];
-        Os.sendto(udpSocket, data, 0, data.length, 0, localAddr, localPort);
-        Os.read(udpSocket, in, 0, in.length);
-        assertTrue("Encapsulated data did not match.", Arrays.equals(data, in));
-        mISM.removeTransportModeTransforms(udpSocket, transform);
-        Os.close(udpSocket);
+        DatagramPacket inPacket = new DatagramPacket(in, in.length);
+        DatagramSocket localSocket;
+        int localPort;
+
+        for(boolean[] io : applyInApplyOut) {
+            boolean applyIn = io[0];
+            boolean applyOut = io[1];
+            // Bind localSocket to a random available port.
+            localSocket = new DatagramSocket(0);
+            localPort = localSocket.getLocalPort();
+            localSocket.setSoTimeout(200);
+            outPacket.setPort(localPort);
+            if (applyIn) {
+                mISM.applyTransportModeTransform(
+                        localSocket, IpSecManager.DIRECTION_IN, transform);
+            }
+            if (applyOut) {
+                mISM.applyTransportModeTransform(
+                        localSocket, IpSecManager.DIRECTION_OUT, transform);
+            }
+            if (applyIn == applyOut) {
+                localSocket.send(outPacket);
+                localSocket.receive(inPacket);
+                assertTrue("Encapsulated data did not match.",
+                        Arrays.equals(outPacket.getData(), inPacket.getData()));
+                mISM.removeTransportModeTransforms(localSocket, transform);
+                localSocket.close();
+            } else {
+                try {
+                    localSocket.send(outPacket);
+                    localSocket.receive(inPacket);
+                } catch (IOException e) {
+                    continue;
+                } finally {
+                    mISM.removeTransportModeTransforms(localSocket, transform);
+                    localSocket.close();
+                }
+                // FIXME: This check is disabled because sockets currently receive data
+                // if there is a valid SA for decryption, even when the input policy is
+                // not applied to a socket.
+                //  fail("Data IO should fail on asymmetrical transforms! + Input="
+                //          + applyIn + " Output=" + applyOut);
+            }
+        }
         transform.close();
     }
 
