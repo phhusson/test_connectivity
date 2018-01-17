@@ -36,6 +36,7 @@ import android.test.AndroidTestCase;
 import java.io.FileDescriptor;
 import java.io.IOException;
 import java.net.DatagramSocket;
+import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -61,7 +62,6 @@ public class IpSecManagerTest extends AndroidTestCase {
 
     private static final InetAddress GOOGLE_DNS_4 = IpAddress("8.8.8.8");
     private static final InetAddress GOOGLE_DNS_6 = IpAddress("2001:4860:4860::8888");
-    private static final InetAddress LOOPBACK_4 = IpAddress("127.0.0.1");
 
     private static final InetAddress[] GOOGLE_DNS_LIST =
             new InetAddress[] {GOOGLE_DNS_4, GOOGLE_DNS_6};
@@ -110,20 +110,17 @@ public class IpSecManagerTest extends AndroidTestCase {
     public void testAllocSpi() throws Exception {
         for (InetAddress addr : GOOGLE_DNS_LIST) {
             IpSecManager.SecurityParameterIndex randomSpi = null, droidSpi = null;
-            randomSpi = mISM.allocateSecurityParameterIndex(IpSecTransform.DIRECTION_OUT, addr);
+            randomSpi = mISM.allocateSecurityParameterIndex(addr);
             assertTrue(
                     "Failed to receive a valid SPI",
                     randomSpi.getSpi() != IpSecManager.INVALID_SECURITY_PARAMETER_INDEX);
 
-            droidSpi =
-                    mISM.allocateSecurityParameterIndex(
-                            IpSecTransform.DIRECTION_IN, addr, DROID_SPI);
-            assertTrue(
-                    "Failed to allocate specified SPI, " + DROID_SPI,
+            droidSpi = mISM.allocateSecurityParameterIndex(addr, DROID_SPI);
+            assertTrue("Failed to allocate specified SPI, " + DROID_SPI,
                     droidSpi.getSpi() == DROID_SPI);
 
             try {
-                mISM.allocateSecurityParameterIndex(IpSecTransform.DIRECTION_IN, addr, DROID_SPI);
+                mISM.allocateSecurityParameterIndex(addr, DROID_SPI);
                 fail("Duplicate SPI was allowed to be created");
             } catch (IpSecManager.SpiUnavailableException expected) {
                 // This is a success case because we expect a dupe SPI to throw
@@ -197,7 +194,8 @@ public class IpSecManagerTest extends AndroidTestCase {
             localPort = getPort(udpSocket);
         }
 
-        mISM.applyTransportModeTransform(udpSocket, transform);
+        mISM.applyTransportModeTransform(udpSocket, IpSecManager.DIRECTION_IN, transform);
+        mISM.applyTransportModeTransform(udpSocket, IpSecManager.DIRECTION_OUT, transform);
 
         for (int i = 0; i < sendCount; i++) {
             byte[] in = new byte[TEST_DATA.length];
@@ -206,7 +204,7 @@ public class IpSecManagerTest extends AndroidTestCase {
             assertArrayEquals("Encapsulated data did not match.", TEST_DATA, in);
         }
 
-        mISM.removeTransportModeTransform(udpSocket, transform);
+        mISM.removeTransportModeTransforms(udpSocket, transform);
         Os.close(udpSocket);
     }
 
@@ -236,14 +234,17 @@ public class IpSecManagerTest extends AndroidTestCase {
         Os.bind(server, local, 0);
         int port = ((InetSocketAddress) Os.getsockname(server)).getPort();
 
-        mISM.applyTransportModeTransform(client, transform);
-        mISM.applyTransportModeTransform(server, transform);
+        mISM.applyTransportModeTransform(client, IpSecManager.DIRECTION_IN, transform);
+        mISM.applyTransportModeTransform(client, IpSecManager.DIRECTION_OUT, transform);
+        mISM.applyTransportModeTransform(server, IpSecManager.DIRECTION_IN, transform);
+        mISM.applyTransportModeTransform(server, IpSecManager.DIRECTION_OUT, transform);
 
         Os.listen(server, 10);
         Os.connect(client, local, port);
         FileDescriptor accepted = Os.accept(server, null);
 
-        mISM.applyTransportModeTransform(accepted, transform);
+        mISM.applyTransportModeTransform(accepted, IpSecManager.DIRECTION_IN, transform);
+        mISM.applyTransportModeTransform(accepted, IpSecManager.DIRECTION_OUT, transform);
 
         // Wait for TCP handshake packets to be counted
         StatsChecker.waitForNumPackets(3); // (SYN, SYN+ACK, ACK)
@@ -271,9 +272,9 @@ public class IpSecManagerTest extends AndroidTestCase {
             StatsChecker.waitForNumPackets(4 * (i + 1));
         }
 
-        mISM.removeTransportModeTransform(server, transform);
-        mISM.removeTransportModeTransform(client, transform);
-        mISM.removeTransportModeTransform(accepted, transform);
+        mISM.removeTransportModeTransforms(server, transform);
+        mISM.removeTransportModeTransforms(client, transform);
+        mISM.removeTransportModeTransforms(accepted, transform);
 
         Os.close(server);
         Os.close(client);
@@ -291,37 +292,20 @@ public class IpSecManagerTest extends AndroidTestCase {
      * send data (expect exception)
      */
     public void testCreateTransform() throws Exception {
-        InetAddress local = LOOPBACK_4;
-        IpSecManager.SecurityParameterIndex outSpi =
-                mISM.allocateSecurityParameterIndex(IpSecTransform.DIRECTION_OUT, local);
-
-        IpSecManager.SecurityParameterIndex inSpi =
-                mISM.allocateSecurityParameterIndex(
-                        IpSecTransform.DIRECTION_IN, local, outSpi.getSpi());
+        InetAddress localAddr = InetAddress.getByName(IPV4_LOOPBACK);
+        IpSecManager.SecurityParameterIndex spi =
+                mISM.allocateSecurityParameterIndex(localAddr);
 
         IpSecTransform transform =
                 new IpSecTransform.Builder(mContext)
-                        .setSpi(IpSecTransform.DIRECTION_OUT, outSpi)
                         .setEncryption(
-                                IpSecTransform.DIRECTION_OUT,
                                 new IpSecAlgorithm(IpSecAlgorithm.CRYPT_AES_CBC, CRYPT_KEY))
                         .setAuthentication(
-                                IpSecTransform.DIRECTION_OUT,
                                 new IpSecAlgorithm(
                                         IpSecAlgorithm.AUTH_HMAC_SHA256,
                                         AUTH_KEY,
                                         AUTH_KEY.length * 8))
-                        .setSpi(IpSecTransform.DIRECTION_IN, inSpi)
-                        .setEncryption(
-                                IpSecTransform.DIRECTION_IN,
-                                new IpSecAlgorithm(IpSecAlgorithm.CRYPT_AES_CBC, CRYPT_KEY))
-                        .setAuthentication(
-                                IpSecTransform.DIRECTION_IN,
-                                new IpSecAlgorithm(
-                                        IpSecAlgorithm.AUTH_HMAC_SHA256,
-                                        AUTH_KEY,
-                                        CRYPT_KEY.length * 8))
-                        .buildTransportModeTransform(local);
+                        .buildTransportModeTransform(localAddr, spi);
 
         // Bind localSocket to a random available port.
         DatagramSocket localSocket = new DatagramSocket(0);
@@ -330,14 +314,16 @@ public class IpSecManagerTest extends AndroidTestCase {
         ParcelFileDescriptor pin = ParcelFileDescriptor.fromDatagramSocket(localSocket);
         FileDescriptor udpSocket = pin.getFileDescriptor();
 
-        mISM.applyTransportModeTransform(udpSocket, transform);
+        // TODO: test combinations of one-way transforms.
+        mISM.applyTransportModeTransform(udpSocket, IpSecManager.DIRECTION_IN, transform);
+        mISM.applyTransportModeTransform(udpSocket, IpSecManager.DIRECTION_OUT, transform);
         byte[] data = new String("Best test data ever!").getBytes("UTF-8");
 
         byte[] in = new byte[data.length];
-        Os.sendto(udpSocket, data, 0, data.length, 0, local, localPort);
+        Os.sendto(udpSocket, data, 0, data.length, 0, localAddr, localPort);
         Os.read(udpSocket, in, 0, in.length);
         assertTrue("Encapsulated data did not match.", Arrays.equals(data, in));
-        mISM.removeTransportModeTransform(udpSocket, transform);
+        mISM.removeTransportModeTransforms(udpSocket, transform);
         Os.close(udpSocket);
         transform.close();
     }
@@ -476,20 +462,13 @@ public class IpSecManagerTest extends AndroidTestCase {
         InetAddress local = InetAddress.getByName(localAddress);
 
         try (IpSecManager.UdpEncapsulationSocket encapSocket = mISM.openUdpEncapsulationSocket();
-                IpSecManager.SecurityParameterIndex outSpi =
-                        mISM.allocateSecurityParameterIndex(IpSecTransform.DIRECTION_OUT, local);
-                IpSecManager.SecurityParameterIndex inSpi =
-                        mISM.allocateSecurityParameterIndex(
-                                IpSecTransform.DIRECTION_IN, local, outSpi.getSpi())) {
+                IpSecManager.SecurityParameterIndex spi =
+                        mISM.allocateSecurityParameterIndex(local)) {
 
             IpSecTransform.Builder transformBuilder =
                     new IpSecTransform.Builder(mContext)
-                            .setSpi(IpSecTransform.DIRECTION_OUT, outSpi)
-                            .setEncryption(IpSecTransform.DIRECTION_OUT, crypt)
-                            .setAuthentication(IpSecTransform.DIRECTION_OUT, auth)
-                            .setSpi(IpSecTransform.DIRECTION_IN, inSpi)
-                            .setEncryption(IpSecTransform.DIRECTION_IN, crypt)
-                            .setAuthentication(IpSecTransform.DIRECTION_IN, auth);
+                            .setEncryption(crypt)
+                            .setAuthentication(auth);
 
             if (doUdpEncap) {
                 transformBuilder =
@@ -500,7 +479,8 @@ public class IpSecManagerTest extends AndroidTestCase {
             int transportHdrLen = 0;
             int udpEncapLen = doUdpEncap ? UDP_HDRLEN : 0;
 
-            try (IpSecTransform transform = transformBuilder.buildTransportModeTransform(local)) {
+            try (IpSecTransform transform =
+                        transformBuilder.buildTransportModeTransform(local, spi)) {
                 if (protocol == IPPROTO_TCP) {
                     transportHdrLen = TCP_HDRLEN_WITH_OPTIONS;
                     checkTcp(transform, local, sendCount, useJavaSockets);
@@ -920,19 +900,16 @@ public class IpSecManagerTest extends AndroidTestCase {
     }
 
     public void testUdpEncapsulation() throws Exception {
-        InetAddress local = LOOPBACK_4;
+        InetAddress local = InetAddress.getByName(IPV4_LOOPBACK);
 
         // TODO: Refactor to make this more representative of a normal application use case. (use
         // separate sockets for inbound and outbound)
         // Create SPIs, UDP encap socket
         try (IpSecManager.UdpEncapsulationSocket encapSocket = mISM.openUdpEncapsulationSocket();
-                IpSecManager.SecurityParameterIndex outSpi =
-                        mISM.allocateSecurityParameterIndex(IpSecTransform.DIRECTION_OUT, local);
-                IpSecManager.SecurityParameterIndex inSpi =
-                        mISM.allocateSecurityParameterIndex(
-                                IpSecTransform.DIRECTION_IN, local, outSpi.getSpi());
+                IpSecManager.SecurityParameterIndex spi =
+                        mISM.allocateSecurityParameterIndex(local);
                 IpSecTransform transform =
-                        buildIpSecTransform(mContext, inSpi, outSpi, encapSocket, local)) {
+                        buildIpSecTransform(mContext, spi, encapSocket, local)) {
 
             // Create user socket, apply transform to it
             FileDescriptor udpSocket = null;
@@ -940,7 +917,10 @@ public class IpSecManagerTest extends AndroidTestCase {
                 udpSocket = getBoundUdpSocket(local);
                 int port = getPort(udpSocket);
 
-                mISM.applyTransportModeTransform(udpSocket, transform);
+                mISM.applyTransportModeTransform(
+                        udpSocket, IpSecManager.DIRECTION_IN, transform);
+                mISM.applyTransportModeTransform(
+                        udpSocket, IpSecManager.DIRECTION_OUT, transform);
 
                 // Send an ESP packet from this socket to itself. Since the inbound and
                 // outbound transforms match, we should receive the data we sent.
@@ -970,7 +950,7 @@ public class IpSecManagerTest extends AndroidTestCase {
                         "Encap socket was unable to send/receive IKE data",
                         Arrays.equals(data, in));
 
-                mISM.removeTransportModeTransform(udpSocket, transform);
+                mISM.removeTransportModeTransforms(udpSocket, transform);
             } finally {
                 if (udpSocket != null) {
                     Os.close(udpSocket);
@@ -980,26 +960,25 @@ public class IpSecManagerTest extends AndroidTestCase {
     }
 
     public void testIke() throws Exception {
-        InetAddress local = LOOPBACK_4;
+        InetAddress localAddr = InetAddress.getByName(IPV4_LOOPBACK);
 
         // TODO: Refactor to make this more representative of a normal application use case. (use
         // separate sockets for inbound and outbound)
         try (IpSecManager.UdpEncapsulationSocket encapSocket = mISM.openUdpEncapsulationSocket();
-                IpSecManager.SecurityParameterIndex outSpi =
-                        mISM.allocateSecurityParameterIndex(IpSecTransform.DIRECTION_OUT, local);
-                IpSecManager.SecurityParameterIndex inSpi =
-                        mISM.allocateSecurityParameterIndex(IpSecTransform.DIRECTION_IN, local);
+                IpSecManager.SecurityParameterIndex spi =
+                        mISM.allocateSecurityParameterIndex(localAddr);
                 IpSecTransform transform =
-                        buildIpSecTransform(mContext, inSpi, outSpi, encapSocket, local)) {
+                        buildIpSecTransform(mContext, spi, encapSocket, localAddr)) {
 
             // Create user socket, apply transform to it
             FileDescriptor sock = null;
 
             try {
-                sock = getBoundUdpSocket(local);
+                sock = getBoundUdpSocket(localAddr);
                 int port = getPort(sock);
 
-                mISM.applyTransportModeTransform(sock, transform);
+                mISM.applyTransportModeTransform(sock, IpSecManager.DIRECTION_IN, transform);
+                mISM.applyTransportModeTransform(sock, IpSecManager.DIRECTION_OUT, transform);
 
                 // TODO: Find a way to set a timeout on the socket, and assert the ESP packet
                 // doesn't make it through. Setting sockopts currently throws EPERM (possibly
@@ -1010,7 +989,7 @@ public class IpSecManagerTest extends AndroidTestCase {
                 byte[] header = new byte[] {1, 1, 1, 1};
                 String message = "Sample ESP Packet";
                 byte[] data = (new String(header) + message).getBytes("UTF-8");
-                Os.sendto(sock, data, 0, data.length, 0, local, encapSocket.getPort());
+                Os.sendto(sock, data, 0, data.length, 0, localAddr, encapSocket.getPort());
 
                 // Send IKE packet from the encap socket to itself. Since IKE is not
                 // transformed in any way, this should succeed.
@@ -1023,7 +1002,7 @@ public class IpSecManagerTest extends AndroidTestCase {
                         0,
                         data.length,
                         0,
-                        local,
+                        localAddr,
                         encapSocket.getPort());
 
                 // ESP data should be dropped, due to different input SPI (as opposed to being
@@ -1038,7 +1017,7 @@ public class IpSecManagerTest extends AndroidTestCase {
                         "Encap socket received UDP-encap-ESP data despite invalid SPIs",
                         Arrays.equals(header, in));
 
-                mISM.removeTransportModeTransform(sock, transform);
+                mISM.removeTransportModeTransforms(sock, transform);
             } finally {
                 if (sock != null) {
                     Os.close(sock);
@@ -1049,30 +1028,20 @@ public class IpSecManagerTest extends AndroidTestCase {
 
     private static IpSecTransform buildIpSecTransform(
             Context mContext,
-            IpSecManager.SecurityParameterIndex inSpi,
-            IpSecManager.SecurityParameterIndex outSpi,
+            IpSecManager.SecurityParameterIndex spi,
             IpSecManager.UdpEncapsulationSocket encapSocket,
             InetAddress remoteAddr)
             throws Exception {
+            String localAddr = (remoteAddr instanceof Inet4Address)
+                    ? IPV4_LOOPBACK : IPV6_LOOPBACK;
         return new IpSecTransform.Builder(mContext)
-                .setSpi(IpSecTransform.DIRECTION_IN, inSpi)
-                .setSpi(IpSecTransform.DIRECTION_OUT, outSpi)
                 .setEncryption(
-                        IpSecTransform.DIRECTION_IN,
-                        new IpSecAlgorithm(IpSecAlgorithm.CRYPT_AES_CBC, CRYPT_KEY))
-                .setEncryption(
-                        IpSecTransform.DIRECTION_OUT,
                         new IpSecAlgorithm(IpSecAlgorithm.CRYPT_AES_CBC, CRYPT_KEY))
                 .setAuthentication(
-                        IpSecTransform.DIRECTION_IN,
-                        new IpSecAlgorithm(
-                                IpSecAlgorithm.AUTH_HMAC_SHA256, AUTH_KEY, AUTH_KEY.length * 4))
-                .setAuthentication(
-                        IpSecTransform.DIRECTION_OUT,
                         new IpSecAlgorithm(
                                 IpSecAlgorithm.AUTH_HMAC_SHA256, AUTH_KEY, AUTH_KEY.length * 4))
                 .setIpv4Encapsulation(encapSocket, encapSocket.getPort())
-                .buildTransportModeTransform(remoteAddr);
+                .buildTransportModeTransform(InetAddress.getByName(localAddr), spi);
     }
 
     private static int getPort(FileDescriptor sock) throws Exception {
