@@ -205,7 +205,7 @@ public class IpSecManagerTest extends AndroidTestCase {
             assertArrayEquals("Encapsulated data did not match.", TEST_DATA, in);
         }
 
-        mISM.removeTransportModeTransforms(udpSocket, transform);
+        mISM.removeTransportModeTransforms(udpSocket);
         Os.close(udpSocket);
     }
 
@@ -273,9 +273,9 @@ public class IpSecManagerTest extends AndroidTestCase {
             StatsChecker.waitForNumPackets(4 * (i + 1));
         }
 
-        mISM.removeTransportModeTransforms(server, transform);
-        mISM.removeTransportModeTransforms(client, transform);
-        mISM.removeTransportModeTransforms(accepted, transform);
+        mISM.removeTransportModeTransforms(server);
+        mISM.removeTransportModeTransforms(client);
+        mISM.removeTransportModeTransforms(accepted);
 
         Os.close(server);
         Os.close(client);
@@ -339,7 +339,7 @@ public class IpSecManagerTest extends AndroidTestCase {
                 localSocket.receive(inPacket);
                 assertTrue("Encapsulated data did not match.",
                         Arrays.equals(outPacket.getData(), inPacket.getData()));
-                mISM.removeTransportModeTransforms(localSocket, transform);
+                mISM.removeTransportModeTransforms(localSocket);
                 localSocket.close();
             } else {
                 try {
@@ -348,7 +348,7 @@ public class IpSecManagerTest extends AndroidTestCase {
                 } catch (IOException e) {
                     continue;
                 } finally {
-                    mISM.removeTransportModeTransforms(localSocket, transform);
+                    mISM.removeTransportModeTransforms(localSocket);
                     localSocket.close();
                 }
                 // FIXME: This check is disabled because sockets currently receive data
@@ -983,7 +983,7 @@ public class IpSecManagerTest extends AndroidTestCase {
                         "Encap socket was unable to send/receive IKE data",
                         Arrays.equals(data, in));
 
-                mISM.removeTransportModeTransforms(udpSocket, transform);
+                mISM.removeTransportModeTransforms(udpSocket);
             } finally {
                 if (udpSocket != null) {
                     Os.close(udpSocket);
@@ -1050,7 +1050,7 @@ public class IpSecManagerTest extends AndroidTestCase {
                         "Encap socket received UDP-encap-ESP data despite invalid SPIs",
                         Arrays.equals(header, in));
 
-                mISM.removeTransportModeTransforms(sock, transform);
+                mISM.removeTransportModeTransforms(sock);
             } finally {
                 if (sock != null) {
                     Os.close(sock);
