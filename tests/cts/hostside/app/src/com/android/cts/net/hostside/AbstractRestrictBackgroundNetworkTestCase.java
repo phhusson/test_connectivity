@@ -1013,7 +1013,8 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     private Intent getIntentForComponent(int type) {
         final Intent intent = new Intent();
         if (type == TYPE_COMPONENT_ACTIVTIY) {
-            intent.setComponent(new ComponentName(TEST_APP2_PKG, TEST_APP2_ACTIVITY_CLASS));
+            intent.setComponent(new ComponentName(TEST_APP2_PKG, TEST_APP2_ACTIVITY_CLASS))
+                    .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         } else if (type == TYPE_COMPONENT_FOREGROUND_SERVICE) {
             intent.setComponent(new ComponentName(TEST_APP2_PKG, TEST_APP2_SERVICE_CLASS))
                     .setFlags(1);
