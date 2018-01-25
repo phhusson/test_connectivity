@@ -28,7 +28,7 @@ LOCAL_JAVA_LIBRARIES := \
     voip-common \
     conscrypt \
     org.apache.http.legacy \
-    android.test.base \
+    android.test.base.stubs \
 
 
 LOCAL_JNI_SHARED_LIBRARIES := libcts_jni libnativedns_jni \
