@@ -34,7 +34,7 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
         removePowerSaveModeWhitelist(TEST_APP2_PKG);
         removePowerSaveModeExceptIdleWhitelist(TEST_APP2_PKG);
         setAppIdle(false);
-        turnBatteryOff();
+        turnBatteryOn();
 
         registerBroadcastReceiver();
     }
@@ -48,7 +48,7 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
         try {
             tearDownMeteredNetwork();
         } finally {
-            turnBatteryOn();
+            turnBatteryOff();
             setAppIdle(false);
         }
     }
@@ -155,9 +155,9 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
         // Check that app is paroled when charging
         setAppIdle(true);
         assertBackgroundNetworkAccess(false);
-        turnBatteryOn();
-        assertBackgroundNetworkAccess(true);
         turnBatteryOff();
+        assertBackgroundNetworkAccess(true);
+        turnBatteryOn();
         assertBackgroundNetworkAccess(false);
 
         // Check that app is restricted when not idle but power-save is on
@@ -167,11 +167,11 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
         assertBackgroundNetworkAccess(false);
         // Use setBatterySaverMode API to leave power-save mode instead of plugging in charger
         setBatterySaverMode(false);
-        turnBatteryOn();
+        turnBatteryOff();
         assertBackgroundNetworkAccess(true);
 
         // And when no longer charging, it still has network access, since it's not idle
-        turnBatteryOff();
+        turnBatteryOn();
         assertBackgroundNetworkAccess(true);
     }
 
