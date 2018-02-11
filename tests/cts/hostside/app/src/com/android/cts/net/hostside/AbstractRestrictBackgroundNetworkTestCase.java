@@ -49,8 +49,6 @@ import android.test.InstrumentationTestCase;
 import android.text.TextUtils;
 import android.util.Log;
 
-import com.android.cts.net.hostside.INetworkStateObserver;
-
 /**
  * Superclass for tests related to background network restrictions.
  */
@@ -150,6 +148,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
 
     @Override
     protected void tearDown() throws Exception {
+        batteryReset();
         if (!mIsLocationOn) {
             disableLocation();
         }
@@ -809,15 +808,18 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         assertPowerSaveModeExceptIdleWhitelist(packageName, false); // Sanity check
     }
 
-    protected void turnBatteryOff() throws Exception {
+    protected void turnBatteryOn() throws Exception {
         executeSilentShellCommand("cmd battery unplug");
         assertBatteryState(false);
     }
 
-    protected void turnBatteryOn() throws Exception {
-        executeSilentShellCommand("cmd battery reset");
+    protected void turnBatteryOff() throws Exception {
+        executeSilentShellCommand("cmd battery set ac " + BatteryManager.BATTERY_PLUGGED_AC);
         assertBatteryState(true);
+    }
 
+    private void batteryReset() throws Exception {
+        executeSilentShellCommand("cmd battery reset");
     }
 
     private void assertBatteryState(boolean pluggedIn) throws Exception {
@@ -848,11 +850,11 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     protected void setBatterySaverMode(boolean enabled) throws Exception {
         Log.i(TAG, "Setting Battery Saver Mode to " + enabled);
         if (enabled) {
-            turnBatteryOff();
+            turnBatteryOn();
             executeSilentShellCommand("cmd power set-mode 1");
         } else {
             executeSilentShellCommand("cmd power set-mode 0");
-            turnBatteryOn();
+            turnBatteryOff();
         }
     }
 
@@ -862,12 +864,12 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
 
         Log.i(TAG, "Setting Doze Mode to " + enabled);
         if (enabled) {
-            turnBatteryOff();
+            turnBatteryOn();
             turnScreenOff();
             executeShellCommand("dumpsys deviceidle force-idle deep");
         } else {
             turnScreenOn();
-            turnBatteryOn();
+            turnBatteryOff();
             executeShellCommand("dumpsys deviceidle unforce");
         }
         // Sanity check.
