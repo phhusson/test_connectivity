@@ -45,6 +45,7 @@ LOCAL_STATIC_JAVA_LIBRARIES := \
 
 # uncomment when b/13249961 is fixed
 #LOCAL_SDK_VERSION := current
+LOCAL_PRIVATE_PLATFORM_APIS := true
 
 # Tag this module as a cts test artifact
 LOCAL_COMPATIBILITY_SUITE := cts vts general-tests
