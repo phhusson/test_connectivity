@@ -607,10 +607,10 @@ public class ConnectivityManagerTest extends AndroidTestCase {
             Log.i(TAG, "testConnectivityChanged_manifestRequestOnlyPreN_shouldReceiveIntent cannot execute unless device supports WiFi");
             return;
         }
-        Intent startIntent = new Intent();
-        startIntent.setComponent(new ComponentName("android.net.cts.appForApi23",
-                "android.net.cts.appForApi23.ConnectivityListeningActivity"));
-        mContext.startActivity(startIntent);
+        mContext.startActivity(new Intent()
+                .setComponent(new ComponentName("android.net.cts.appForApi23",
+                        "android.net.cts.appForApi23.ConnectivityListeningActivity"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         Thread.sleep(200);
 
         toggleWifi();
