@@ -20,6 +20,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.location.LocationManager;
 import android.net.ConnectivityManager;
 import android.net.MacAddress;
 import android.net.NetworkCapabilities;
@@ -38,9 +39,7 @@ import android.net.wifi.aware.WifiAwareManager;
 import android.net.wifi.aware.WifiAwareSession;
 import android.os.Handler;
 import android.os.HandlerThread;
-import android.provider.Settings;
 import android.test.AndroidTestCase;
-import android.util.Log;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -75,13 +74,6 @@ public class SingleDeviceTest extends AndroidTestCase {
 
     // used to store any WifiAwareSession allocated during tests - will clean-up after tests
     private List<WifiAwareSession> mSessions = new ArrayList<>();
-
-    // Return true if location is enabled.
-    private boolean isLocationEnabled() {
-        return Settings.Secure.getInt(getContext().getContentResolver(),
-                Settings.Secure.LOCATION_MODE, Settings.Secure.LOCATION_MODE_OFF) !=
-                Settings.Secure.LOCATION_MODE_OFF;
-    }
 
     private class WifiAwareBroadcastReceiver extends BroadcastReceiver {
         private CountDownLatch mBlocker = new CountDownLatch(1);
@@ -358,6 +350,10 @@ public class SingleDeviceTest extends AndroidTestCase {
             return;
         }
 
+        assertTrue("Wi-Fi Aware requires Location to be Enabled",
+                ((LocationManager) getContext().getSystemService(
+                        Context.LOCATION_SERVICE)).isLocationEnabled());
+
         mWifiAwareManager = (WifiAwareManager) getContext().getSystemService(
                 Context.WIFI_AWARE_SERVICE);
         assertNotNull("Wi-Fi Aware Manager", mWifiAwareManager);
@@ -428,18 +424,6 @@ public class SingleDeviceTest extends AndroidTestCase {
      */
     public void testAvailabilityStatusChange() throws Exception {
         if (!TestUtils.shouldTestWifiAware(getContext())) {
-            return;
-        }
-
-        if (isLocationEnabled()) {
-            /* Can't execute this test with location on since it means that Aware will not get
-             * disabled even if we disable Wi-Fi (which when location is enabled does not correspond
-             * to disabling the Wi-Fi chip).
-             *
-             * Considering other tests may require locationing to be enable we can't also fail the
-             * test in such a case. Hence it is skipped.
-             */
-            Log.d(TAG, "Skipping test since location scans are enabled");
             return;
         }
 
