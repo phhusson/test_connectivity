@@ -20,6 +20,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.location.LocationManager;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
@@ -66,10 +67,8 @@ public class TestBase extends AndroidTestCase {
      * should be tested if the feature is supported on the current device.
      */
     static boolean shouldTestWifiRtt(Context context) {
-        // TODO b/74457054: enable when t/31350604 resolved
-        return false;
-//        final PackageManager pm = context.getPackageManager();
-//        return pm.hasSystemFeature(PackageManager.FEATURE_WIFI_RTT);
+        final PackageManager pm = context.getPackageManager();
+        return pm.hasSystemFeature(PackageManager.FEATURE_WIFI_RTT);
     }
 
     @Override
