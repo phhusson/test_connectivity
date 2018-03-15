@@ -148,36 +148,6 @@ public class WifiRttTest extends TestBase {
     }
 
     /**
-     * Validate that on Wi-Fi RTT availability change we get a broadcast + the API returns
-     * correct status.
-     */
-    public void testAvailabilityStatusChange() throws Exception {
-        if (!shouldTestWifiRtt(getContext())) {
-            return;
-        }
-
-        // 1. Disable Wi-Fi
-        WifiRttBroadcastReceiver receiver1 = new WifiRttBroadcastReceiver();
-        mContext.registerReceiver(receiver1, mRttIntent);
-        mWifiManager.setWifiEnabled(false);
-
-        assertTrue("Timeout waiting for Wi-Fi RTT to change status",
-                receiver1.waitForStateChange());
-        assertFalse("Wi-Fi RTT is available (should not be)", mWifiRttManager.isAvailable());
-        mContext.unregisterReceiver(receiver1);
-
-        // 2. Enable Wi-Fi
-        WifiRttBroadcastReceiver receiver2 = new WifiRttBroadcastReceiver();
-        mContext.registerReceiver(receiver2, mRttIntent);
-        mWifiManager.setWifiEnabled(true);
-
-        assertTrue("Timeout waiting for Wi-Fi RTT to change status",
-                receiver2.waitForStateChange());
-        assertTrue("Wi-Fi RTT is not available (should be)", mWifiRttManager.isAvailable());
-        mContext.unregisterReceiver(receiver2);
-    }
-
-    /**
      * Validate that when a request contains more range operations than allowed (by API) that we
      * get an exception.
      */
