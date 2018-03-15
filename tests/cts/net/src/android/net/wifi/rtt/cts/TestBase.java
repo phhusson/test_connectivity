@@ -21,7 +21,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.location.LocationManager;
+import android.net.NetworkInfo;
 import android.net.wifi.ScanResult;
+import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiManager;
 import android.net.wifi.rtt.RangingResult;
 import android.net.wifi.rtt.RangingResultCallback;
@@ -43,9 +45,8 @@ import java.util.concurrent.TimeUnit;
 public class TestBase extends AndroidTestCase {
     protected static final String TAG = "WifiRttCtsTests";
 
-    // The SSID of the test AP which supports IEEE 802.11mc
-    // TODO b/74518964: finalize correct method to refer to an AP in the test lab
-    static final String SSID_OF_TEST_AP = "standalone_rtt";
+    // wait for Wi-Fi to enable and/or connect
+    private static final int WAIT_FOR_WIFI_ENABLE_SECS = 10;
 
     // wait for Wi-Fi RTT to become available
     private static final int WAIT_FOR_RTT_CHANGE_SECS = 10;
@@ -57,6 +58,10 @@ public class TestBase extends AndroidTestCase {
     protected WifiManager mWifiManager;
     private LocationManager mLocationManager;
     private WifiManager.WifiLock mWifiLock;
+
+    protected IntentFilter mRttIntent;
+    protected IntentFilter mWifiStateIntent;
+    protected IntentFilter mWifiConnectedIntent;
 
     private final HandlerThread mHandlerThread = new HandlerThread("SingleDeviceTest");
     protected final Executor mExecutor;
@@ -93,22 +98,43 @@ public class TestBase extends AndroidTestCase {
                 Context.WIFI_RTT_RANGING_SERVICE);
         assertNotNull("Wi-Fi RTT Manager", mWifiRttManager);
 
+        mRttIntent = new IntentFilter();
+        mRttIntent.addAction(WifiRttManager.ACTION_WIFI_RTT_STATE_CHANGED);
+
+        mWifiStateIntent = new IntentFilter();
+        mWifiStateIntent.addAction(WifiManager.WIFI_STATE_CHANGED_ACTION);
+
+        mWifiConnectedIntent = new IntentFilter();
+        mWifiConnectedIntent.addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION);
+
         mWifiManager = (WifiManager) getContext().getSystemService(Context.WIFI_SERVICE);
         assertNotNull("Wi-Fi Manager", mWifiManager);
         mWifiLock = mWifiManager.createWifiLock(TAG);
         mWifiLock.acquire();
+        assertTrue("Location scans must be enabled", mWifiManager.isScanAlwaysAvailable());
         if (!mWifiManager.isWifiEnabled()) {
             mWifiManager.setWifiEnabled(true);
+            WifiEnableBroadcastReceiver receiver = new WifiEnableBroadcastReceiver(true);
+            mContext.registerReceiver(receiver, mWifiStateIntent);
+            receiver.waitForDesiredState();
+            mContext.unregisterReceiver(receiver);
         }
 
-        IntentFilter intentFilter = new IntentFilter();
-        intentFilter.addAction(WifiRttManager.ACTION_WIFI_RTT_STATE_CHANGED);
-        WifiRttBroadcastReceiver receiver = new WifiRttBroadcastReceiver();
-        mContext.registerReceiver(receiver, intentFilter);
+        if (!mWifiManager.getConnectionInfo().getSupplicantState().equals(
+                SupplicantState.COMPLETED)) {
+            WifiConnectedBroadcastReceiver receiver = new WifiConnectedBroadcastReceiver();
+            mContext.registerReceiver(receiver, mWifiConnectedIntent);
+            receiver.waitForConnected();
+            mContext.unregisterReceiver(receiver);
+        }
+
         if (!mWifiRttManager.isAvailable()) {
+            WifiRttBroadcastReceiver receiver = new WifiRttBroadcastReceiver();
+            mContext.registerReceiver(receiver, mRttIntent);
             assertTrue("Timeout waiting for Wi-Fi RTT to change status",
                     receiver.waitForStateChange());
             assertTrue("Wi-Fi RTT is not available (should be)", mWifiRttManager.isAvailable());
+            mContext.unregisterReceiver(receiver);
         }
     }
 
@@ -122,33 +148,77 @@ public class TestBase extends AndroidTestCase {
         super.tearDown();
     }
 
-    class WifiRttBroadcastReceiver extends BroadcastReceiver {
+    private class SyncBroadcastReceiver extends BroadcastReceiver {
         private CountDownLatch mBlocker = new CountDownLatch(1);
+        private String mAction;
+        private int mTimeout;
+
+        SyncBroadcastReceiver(String action, int timeout) {
+            mAction = action;
+            mTimeout = timeout;
+        }
 
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (WifiRttManager.ACTION_WIFI_RTT_STATE_CHANGED.equals(intent.getAction())) {
+            if (mAction.equals(intent.getAction())) {
                 mBlocker.countDown();
             }
         }
 
         boolean waitForStateChange() throws InterruptedException {
-            return mBlocker.await(WAIT_FOR_RTT_CHANGE_SECS, TimeUnit.SECONDS);
+            return mBlocker.await(mTimeout, TimeUnit.SECONDS);
+        }
+    };
+
+    class WifiEnableBroadcastReceiver extends BroadcastReceiver {
+        private CountDownLatch mBlocker = new CountDownLatch(1);
+        private boolean mDesiredState;
+
+        WifiEnableBroadcastReceiver(boolean desiredState) {
+            mDesiredState = desiredState;
+        }
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (WifiManager.WIFI_STATE_CHANGED_ACTION.equals(intent.getAction())) {
+                if (mWifiManager.isWifiEnabled() == mDesiredState) {
+                    mBlocker.countDown();
+                }
+            }
+        }
+
+        boolean waitForDesiredState() throws InterruptedException {
+            return mBlocker.await(WAIT_FOR_WIFI_ENABLE_SECS, TimeUnit.SECONDS);
         }
     }
 
-    class WifiScansBroadcastReceiver extends BroadcastReceiver {
+    class WifiConnectedBroadcastReceiver extends BroadcastReceiver {
         private CountDownLatch mBlocker = new CountDownLatch(1);
 
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (WifiManager.SCAN_RESULTS_AVAILABLE_ACTION.equals(intent.getAction())) {
-                mBlocker.countDown();
+            if (WifiManager.NETWORK_STATE_CHANGED_ACTION.equals(intent.getAction())) {
+                NetworkInfo ni = intent.getParcelableExtra(WifiManager.EXTRA_NETWORK_INFO);
+                if (ni.getState() == NetworkInfo.State.CONNECTED) {
+                    mBlocker.countDown();
+                }
             }
         }
 
-        boolean waitForStateChange() throws InterruptedException {
-            return mBlocker.await(WAIT_FOR_SCAN_RESULTS_SECS, TimeUnit.SECONDS);
+        boolean waitForConnected() throws InterruptedException {
+            return mBlocker.await(WAIT_FOR_WIFI_ENABLE_SECS, TimeUnit.SECONDS);
+        }
+    }
+
+    class WifiRttBroadcastReceiver extends SyncBroadcastReceiver {
+        WifiRttBroadcastReceiver() {
+            super(WifiRttManager.ACTION_WIFI_RTT_STATE_CHANGED, WAIT_FOR_RTT_CHANGE_SECS);
+        }
+    }
+
+    class WifiScansBroadcastReceiver extends SyncBroadcastReceiver {
+        WifiScansBroadcastReceiver() {
+            super(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION, WAIT_FOR_SCAN_RESULTS_SECS);
         }
     }
 
@@ -217,10 +287,10 @@ public class TestBase extends AndroidTestCase {
      *
      * Returns null if test AP is not found in the specified number of scans.
      *
-     * @param ssid The SSID of the test AP
+     * @param bssid The BSSID of the test AP
      * @param maxScanRetries Maximum number of scans retries (in addition to first scan).
      */
-    protected ScanResult scanForTestAp(String ssid, int maxScanRetries)
+    protected ScanResult scanForTestAp(String bssid, int maxScanRetries)
             throws InterruptedException {
         int scanCount = 0;
         while (scanCount <= maxScanRetries) {
@@ -228,7 +298,7 @@ public class TestBase extends AndroidTestCase {
                 if (!scanResult.is80211mcResponder()) {
                     continue;
                 }
-                if (!ssid.equals(scanResult.SSID)) {
+                if (!bssid.equals(scanResult.BSSID)) {
                     continue;
                 }
 
