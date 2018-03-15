@@ -201,6 +201,25 @@ public class WifiManagerTest extends AndroidTestCase {
         }
     }
 
+    // Get the current scan status from sticky broadcast.
+    private boolean isScanCurrentlyAvailable() {
+        boolean isAvailable = false;
+        IntentFilter intentFilter = new IntentFilter();
+        intentFilter.addAction(WifiManager.WIFI_SCAN_AVAILABLE);
+        Intent intent = mContext.registerReceiver(null, intentFilter);
+        assertNotNull(intent);
+        if (intent.getAction().equals(WifiManager.WIFI_SCAN_AVAILABLE)) {
+            int state = intent.getIntExtra(
+                    WifiManager.EXTRA_SCAN_AVAILABLE, WifiManager.WIFI_STATE_UNKNOWN);
+            if (state == WifiManager.WIFI_STATE_ENABLED) {
+                isAvailable = true;
+            } else if (state == WifiManager.WIFI_STATE_DISABLED) {
+                isAvailable = false;
+            }
+        }
+        return isAvailable;
+    }
+
     private void startScan() throws Exception {
         synchronized (mMySync) {
             mMySync.expectedState = STATE_SCANNING;
@@ -245,8 +264,7 @@ public class WifiManagerTest extends AndroidTestCase {
      * 1.reconnect
      * 2.reassociate
      * 3.disconnect
-     * 4.pingSupplicant
-     * 5.satrtScan
+     * 4.createWifiLock
      */
     public void testWifiManagerActions() throws Exception {
         if (!WifiFeature.isWifiSupported(getContext())) {
@@ -256,10 +274,32 @@ public class WifiManagerTest extends AndroidTestCase {
         assertTrue(mWifiManager.reconnect());
         assertTrue(mWifiManager.reassociate());
         assertTrue(mWifiManager.disconnect());
+        final String TAG = "Test";
+        assertNotNull(mWifiManager.createWifiLock(TAG));
+        assertNotNull(mWifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL, TAG));
+    }
+
+    /**
+     * Test wifi scanning when location scan is turned off.
+     */
+    public void testWifiManagerScanWhenWifiOffLocationTurnedOn() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        if (!hasLocationFeature()) {
+            Log.d(TAG, "Skipping test as location is not supported");
+            return;
+        }
+        if (!isLocationEnabled()) {
+            fail("Please enable location for this test - since Marshmallow WiFi scan results are"
+                    + " empty when location is disabled!");
+        }
+        assertTrue(mWifiManager.isScanAlwaysAvailable());
         setWifiEnabled(false);
-        startScan();
         Thread.sleep(DURATION);
-        if (mWifiManager.isScanAlwaysAvailable()) {
+        startScan();
+        if (isScanCurrentlyAvailable()) {
             // Make sure at least one AP is found.
             assertNotNull("mScanResult should not be null!", mScanResults);
             assertFalse("empty scan results!", mScanResults.isEmpty());
