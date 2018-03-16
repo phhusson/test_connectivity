@@ -464,6 +464,38 @@ public class IpSecManagerTest extends AndroidTestCase {
         }
     }
 
+    private int getTruncLenBits(IpSecAlgorithm auth) {
+        return auth == null ? 0 : auth.getTruncationLengthBits();
+    }
+
+    private int getIvLen(IpSecAlgorithm crypt) {
+        if (crypt == null) {
+            return 0;
+        }
+
+        switch (crypt.getName()) {
+            case IpSecAlgorithm.CRYPT_AES_CBC:
+                return AES_CBC_IV_LEN;
+            default:
+                throw new IllegalArgumentException(
+                        "IV length unknown for algorithm" + crypt.getName());
+        }
+    }
+
+    private int getBlkSize(IpSecAlgorithm crypt) {
+        if (crypt == null) {
+            return 4;
+        }
+
+        switch (crypt.getName()) {
+            case IpSecAlgorithm.CRYPT_AES_CBC:
+                return AES_CBC_BLK_SIZE;
+            default:
+                throw new IllegalArgumentException(
+                        "Blk size unknown for algorithm" + crypt.getName());
+        }
+    }
+
     /** Helper function to calculate expected ESP packet size. */
     private int calculateEspPacketSize(
             int payloadLen, int cryptIvLength, int cryptBlockSize, int authTruncLen) {
@@ -475,11 +507,6 @@ public class IpSecManagerTest extends AndroidTestCase {
         // Align to block size of encryption algorithm
         payloadLen += (cryptBlockSize - (payloadLen % cryptBlockSize)) % cryptBlockSize;
         return payloadLen + ESP_HDRLEN + ICV_LEN;
-    }
-
-    /** Helper function to calculate expected ESP packet size using AES-CBC encryption. */
-    private int calculateAesCbcEspPacketSizeWithAuth(int payloadLen, int authTruncLen) {
-        return calculateEspPacketSize(payloadLen, AES_CBC_IV_LEN, AES_CBC_BLK_SIZE, authTruncLen);
     }
 
     public void checkTransform(
@@ -498,10 +525,13 @@ public class IpSecManagerTest extends AndroidTestCase {
                 IpSecManager.SecurityParameterIndex spi =
                         mISM.allocateSecurityParameterIndex(local)) {
 
-            IpSecTransform.Builder transformBuilder =
-                    new IpSecTransform.Builder(mContext)
-                            .setEncryption(crypt)
-                            .setAuthentication(auth);
+            IpSecTransform.Builder transformBuilder = new IpSecTransform.Builder(mContext);
+            if (crypt != null) {
+                transformBuilder.setEncryption(crypt);
+            }
+            if (auth != null) {
+                transformBuilder.setAuthentication(auth);
+            }
 
             if (doUdpEncap) {
                 transformBuilder =
@@ -533,7 +563,9 @@ public class IpSecManagerTest extends AndroidTestCase {
                     transportHdrLen,
                     udpEncapLen,
                     sendCount,
-                    auth.getTruncationLengthBits());
+                    getIvLen(crypt),
+                    getBlkSize(crypt),
+                    getTruncLenBits(auth));
         }
     }
 
@@ -543,13 +575,15 @@ public class IpSecManagerTest extends AndroidTestCase {
             int transportHdrLen,
             int udpEncapLen,
             int sendCount,
+            int ivLen,
+            int blkSize,
             int truncLenBits)
             throws Exception {
 
         int innerPacketSize = TEST_DATA.length + transportHdrLen + ipHdrLen;
         int outerPacketSize =
-                calculateAesCbcEspPacketSizeWithAuth(
-                                TEST_DATA.length + transportHdrLen, truncLenBits)
+                calculateEspPacketSize(
+                                TEST_DATA.length + transportHdrLen, ivLen, blkSize, truncLenBits)
                         + udpEncapLen
                         + ipHdrLen;
 
@@ -560,7 +594,7 @@ public class IpSecManagerTest extends AndroidTestCase {
         // Add TCP ACKs for data packets
         if (protocol == IPPROTO_TCP) {
             int encryptedTcpPktSize =
-                    calculateAesCbcEspPacketSizeWithAuth(TCP_HDRLEN_WITH_OPTIONS, truncLenBits);
+                    calculateEspPacketSize(TCP_HDRLEN_WITH_OPTIONS, ivLen, blkSize, truncLenBits);
 
                 // Each run sends two packets, one in each direction.
                 sendCount *= 2;
@@ -896,6 +930,84 @@ public class IpSecManagerTest extends AndroidTestCase {
         IpSecAlgorithm auth =
                 new IpSecAlgorithm(IpSecAlgorithm.AUTH_HMAC_SHA512, getAuthKey(512), 256);
         checkTransform(IPPROTO_UDP, IPV4_LOOPBACK, crypt, auth, true, 1, false);
+    }
+
+    public void testCryptUdp4() throws Exception {
+        IpSecAlgorithm crypt = new IpSecAlgorithm(IpSecAlgorithm.CRYPT_AES_CBC, CRYPT_KEY);
+        checkTransform(IPPROTO_UDP, IPV4_LOOPBACK, crypt, null, false, 1, false);
+        checkTransform(IPPROTO_UDP, IPV4_LOOPBACK, crypt, null, false, 1, true);
+    }
+
+    public void testAuthUdp4() throws Exception {
+        IpSecAlgorithm auth =
+                new IpSecAlgorithm(IpSecAlgorithm.AUTH_HMAC_SHA256, getAuthKey(256), 128);
+        checkTransform(IPPROTO_UDP, IPV4_LOOPBACK, null, auth, false, 1, false);
+        checkTransform(IPPROTO_UDP, IPV4_LOOPBACK, null, auth, false, 1, true);
+    }
+
+    public void testCryptUdp6() throws Exception {
+        IpSecAlgorithm crypt = new IpSecAlgorithm(IpSecAlgorithm.CRYPT_AES_CBC, CRYPT_KEY);
+        checkTransform(IPPROTO_UDP, IPV6_LOOPBACK, crypt, null, false, 1, false);
+        checkTransform(IPPROTO_UDP, IPV6_LOOPBACK, crypt, null, false, 1, true);
+    }
+
+    public void testAuthUdp6() throws Exception {
+        IpSecAlgorithm auth =
+                new IpSecAlgorithm(IpSecAlgorithm.AUTH_HMAC_SHA256, getAuthKey(256), 128);
+        checkTransform(IPPROTO_UDP, IPV6_LOOPBACK, null, auth, false, 1, false);
+        checkTransform(IPPROTO_UDP, IPV6_LOOPBACK, null, auth, false, 1, true);
+    }
+
+    public void testCryptTcp4() throws Exception {
+        IpSecAlgorithm crypt = new IpSecAlgorithm(IpSecAlgorithm.CRYPT_AES_CBC, CRYPT_KEY);
+        checkTransform(IPPROTO_TCP, IPV4_LOOPBACK, crypt, null, false, 1, false);
+        checkTransform(IPPROTO_TCP, IPV4_LOOPBACK, crypt, null, false, 1, true);
+    }
+
+    public void testAuthTcp4() throws Exception {
+        IpSecAlgorithm auth =
+                new IpSecAlgorithm(IpSecAlgorithm.AUTH_HMAC_SHA256, getAuthKey(256), 128);
+        checkTransform(IPPROTO_TCP, IPV4_LOOPBACK, null, auth, false, 1, false);
+        checkTransform(IPPROTO_TCP, IPV4_LOOPBACK, null, auth, false, 1, true);
+    }
+
+    public void testCryptTcp6() throws Exception {
+        IpSecAlgorithm crypt = new IpSecAlgorithm(IpSecAlgorithm.CRYPT_AES_CBC, CRYPT_KEY);
+        checkTransform(IPPROTO_TCP, IPV6_LOOPBACK, crypt, null, false, 1, false);
+        checkTransform(IPPROTO_TCP, IPV6_LOOPBACK, crypt, null, false, 1, true);
+    }
+
+    public void testAuthTcp6() throws Exception {
+        IpSecAlgorithm auth =
+                new IpSecAlgorithm(IpSecAlgorithm.AUTH_HMAC_SHA256, getAuthKey(256), 128);
+        checkTransform(IPPROTO_TCP, IPV6_LOOPBACK, null, auth, false, 1, false);
+        checkTransform(IPPROTO_TCP, IPV6_LOOPBACK, null, auth, false, 1, true);
+    }
+
+    public void testCryptUdp4UdpEncap() throws Exception {
+        IpSecAlgorithm crypt = new IpSecAlgorithm(IpSecAlgorithm.CRYPT_AES_CBC, CRYPT_KEY);
+        checkTransform(IPPROTO_UDP, IPV4_LOOPBACK, crypt, null, true, 1, false);
+        checkTransform(IPPROTO_UDP, IPV4_LOOPBACK, crypt, null, true, 1, true);
+    }
+
+    public void testAuthUdp4UdpEncap() throws Exception {
+        IpSecAlgorithm auth =
+                new IpSecAlgorithm(IpSecAlgorithm.AUTH_HMAC_SHA256, getAuthKey(256), 128);
+        checkTransform(IPPROTO_UDP, IPV4_LOOPBACK, null, auth, true, 1, false);
+        checkTransform(IPPROTO_UDP, IPV4_LOOPBACK, null, auth, true, 1, true);
+    }
+
+    public void testCryptTcp4UdpEncap() throws Exception {
+        IpSecAlgorithm crypt = new IpSecAlgorithm(IpSecAlgorithm.CRYPT_AES_CBC, CRYPT_KEY);
+        checkTransform(IPPROTO_TCP, IPV4_LOOPBACK, crypt, null, true, 1, false);
+        checkTransform(IPPROTO_TCP, IPV4_LOOPBACK, crypt, null, true, 1, true);
+    }
+
+    public void testAuthTcp4UdpEncap() throws Exception {
+        IpSecAlgorithm auth =
+                new IpSecAlgorithm(IpSecAlgorithm.AUTH_HMAC_SHA256, getAuthKey(256), 128);
+        checkTransform(IPPROTO_TCP, IPV4_LOOPBACK, null, auth, true, 1, false);
+        checkTransform(IPPROTO_TCP, IPV4_LOOPBACK, null, auth, true, 1, true);
     }
 
     public void testOpenUdpEncapSocketSpecificPort() throws Exception {
