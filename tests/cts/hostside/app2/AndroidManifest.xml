@@ -34,7 +34,7 @@
          This application also provides a service, RemoteSocketFactoryService, that the test app can
          use to open sockets to remote hosts as a different user ID.
     -->
-    <application>
+    <application android:usesCleartextTraffic="true">
         <activity android:name=".MyActivity" android:exported="true"/>
         <service android:name=".MyService" android:exported="true"/>
         <service android:name=".MyForegroundService" android:exported="true"/>
