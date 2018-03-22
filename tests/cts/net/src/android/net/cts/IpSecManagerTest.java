@@ -31,13 +31,11 @@ import android.os.ParcelFileDescriptor;
 import android.system.ErrnoException;
 import android.system.Os;
 import android.system.OsConstants;
-import android.test.AndroidTestCase;
 
 import java.io.FileDescriptor;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
-import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -45,11 +43,9 @@ import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.Arrays;
 
-public class IpSecManagerTest extends AndroidTestCase {
+public class IpSecManagerTest extends IpSecBaseTest {
 
     private static final String TAG = IpSecManagerTest.class.getSimpleName();
-
-    private IpSecManager mISM;
 
     private ConnectivityManager mCM;
 
@@ -70,26 +66,12 @@ public class IpSecManagerTest extends AndroidTestCase {
     private static final int DROID_SPI = 0xD1201D;
     private static final int MAX_PORT_BIND_ATTEMPTS = 10;
 
-    private static final byte[] KEY_DATA = {
-        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-        0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
-        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
-        0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
-        0x20, 0x21, 0x22, 0x23
-    };
-
-    private static final byte[] AUTH_KEY = getKey(256);
-    private static final byte[] CRYPT_KEY = getKey(256);
     private static final byte[] AEAD_KEY = getKey(288);
 
-    private static final String IPV4_LOOPBACK = "127.0.0.1";
-    private static final String IPV6_LOOPBACK = "::1";
     private static final int TCP_HDRLEN_WITH_OPTIONS = 32;
     private static final int UDP_HDRLEN = 8;
     private static final int IP4_HDRLEN = 20;
     private static final int IP6_HDRLEN = 40;
-
-    private static final byte[] TEST_DATA = "Best test data ever!".getBytes();
 
     // Encryption parameters
     private static final int AES_GCM_IV_LEN = 8;
@@ -100,7 +82,6 @@ public class IpSecManagerTest extends AndroidTestCase {
     protected void setUp() throws Exception {
         super.setUp();
         mCM = (ConnectivityManager) getContext().getSystemService(Context.CONNECTIVITY_SERVICE);
-        mISM = (IpSecManager) getContext().getSystemService(Context.IPSEC_SERVICE);
     }
 
     /*
@@ -131,19 +112,6 @@ public class IpSecManagerTest extends AndroidTestCase {
             randomSpi.close();
             droidSpi.close();
         }
-    }
-
-    private static byte[] getKey(int bitLength) {
-        return Arrays.copyOf(KEY_DATA, bitLength / 8);
-    }
-
-    private static int getDomain(InetAddress address) {
-        int domain;
-        if (address instanceof Inet6Address)
-            domain = OsConstants.AF_INET6;
-        else
-            domain = OsConstants.AF_INET;
-        return domain;
     }
 
     /** This function finds an available port */
@@ -1284,28 +1252,5 @@ public class IpSecManagerTest extends AndroidTestCase {
                 }
             }
         }
-    }
-
-    private static IpSecTransform buildIpSecTransform(
-            Context mContext,
-            IpSecManager.SecurityParameterIndex spi,
-            IpSecManager.UdpEncapsulationSocket encapSocket,
-            InetAddress remoteAddr)
-            throws Exception {
-            String localAddr = (remoteAddr instanceof Inet4Address)
-                    ? IPV4_LOOPBACK : IPV6_LOOPBACK;
-        return new IpSecTransform.Builder(mContext)
-                .setEncryption(new IpSecAlgorithm(IpSecAlgorithm.CRYPT_AES_CBC, CRYPT_KEY))
-                .setAuthentication(
-                        new IpSecAlgorithm(
-                                IpSecAlgorithm.AUTH_HMAC_SHA256,
-                                AUTH_KEY,
-                                AUTH_KEY.length * 4))
-                .setIpv4Encapsulation(encapSocket, encapSocket.getPort())
-                .buildTransportModeTransform(InetAddress.getByName(localAddr), spi);
-    }
-
-    private static int getPort(FileDescriptor sock) throws Exception {
-        return ((InetSocketAddress) Os.getsockname(sock)).getPort();
     }
 }
