@@ -16,25 +16,40 @@
 
 package android.net.cts;
 
+import static com.google.common.truth.Truth.assertThat;
+
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assume.assumeTrue;
+
 import android.content.Context;
 import android.net.ConnectivityManager;
 import android.os.FileUtils;
+import android.support.test.filters.SmallTest;
+import android.support.test.runner.AndroidJUnit4;
 import android.support.test.InstrumentationRegistry;
-import android.test.AndroidTestCase;
 
 import com.android.compatibility.common.util.ApiLevelUtil;
 import com.android.compatibility.common.util.SystemUtil;
 
+import org.junit.After;
 import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+
 
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Formatter;
 
-public class NetworkWatchlistTest extends AndroidTestCase {
+@SmallTest
+@RunWith(AndroidJUnit4.class)
+public class NetworkWatchlistTest {
 
     private static final String TEST_WATCHLIST_XML = "assets/network_watchlist_config_for_test.xml";
+    private static final String TEST_EMPTY_WATCHLIST_XML =
+            "assets/network_watchlist_config_empty_for_test.xml";
     private static final String SDCARD_CONFIG_PATH =
             "/sdcard/network_watchlist_config_for_test.xml";
     private static final String TMP_CONFIG_PATH =
@@ -43,21 +58,32 @@ public class NetworkWatchlistTest extends AndroidTestCase {
     private static final String TEST_WATCHLIST_CONFIG_HASH =
             "B5FC4636994180D54E1E912F78178AB1D8BD2BE71D90CA9F5BBC3284E4D04ED4";
 
-    private Context mContext;
+    private ConnectivityManager mConnectivityManager;
     private boolean mHasFeature;
 
-    @Override
-    protected void setUp() throws Exception {
-        super.setUp();
-        mContext = getContext();
+    @Before
+    public void setUp() throws Exception {
         mHasFeature = isAtLeastP();
-        runCommand("rm " + SDCARD_CONFIG_PATH);
-        runCommand("rm " + TMP_CONFIG_PATH);
+        mConnectivityManager =
+                (ConnectivityManager) InstrumentationRegistry.getContext().getSystemService(
+                        Context.CONNECTIVITY_SERVICE);
+        assumeTrue(mHasFeature);
+        // Set empty watchlist test config before testing
+        setWatchlistConfig(TEST_EMPTY_WATCHLIST_XML);
+        // Verify test watchlist config is not set before testing
+        byte[] result = mConnectivityManager.getNetworkWatchlistConfigHash();
+        assertNotEquals(TEST_WATCHLIST_CONFIG_HASH, byteArrayToHexString(result));
     }
 
-    @Override
-    protected void tearDown() throws Exception {
-        super.tearDown();
+    @After
+    public void tearDown() throws Exception {
+        if (mHasFeature) {
+            // Set empty watchlist test config after testing
+            setWatchlistConfig(TEST_EMPTY_WATCHLIST_XML);
+        }
+    }
+
+    private void cleanup() throws Exception {
         runCommand("rm " + SDCARD_CONFIG_PATH);
         runCommand("rm " + TMP_CONFIG_PATH);
     }
@@ -72,25 +98,12 @@ public class NetworkWatchlistTest extends AndroidTestCase {
      * Test if ConnectivityManager.getNetworkWatchlistConfigHash() correctly
      * returns the hash of config we set.
      */
+    @Test
     public void testGetWatchlistConfigHash() throws Exception {
-        if (!mHasFeature) {
-            return;
-        }
-        // TODO: Test watchlist config does not exist case
-        // Save test watchlist config to sdcard as app can't access /data/local/tmp
-        saveResourceToFile(TEST_WATCHLIST_XML, SDCARD_CONFIG_PATH);
-        // Copy test watchlist config from sdcard to /data/local/tmp as systerm service
-        // can't access /sdcard
-        runCommand("cp " + SDCARD_CONFIG_PATH + " " + TMP_CONFIG_PATH);
-        // Set test watchlist config to system
-        final String cmdResult = runCommand(
-                "cmd network_watchlist set-test-config " + TMP_CONFIG_PATH).trim();
-        assertTrue(cmdResult.contains("Success"));
+        // Set watchlist config file for test
+        setWatchlistConfig(TEST_WATCHLIST_XML);
         // Test if watchlist config hash value is correct
-        ConnectivityManager connectivityManager =
-                (ConnectivityManager) getContext().getSystemService(
-                        Context.CONNECTIVITY_SERVICE);
-        byte[] result = connectivityManager.getNetworkWatchlistConfigHash();
+        byte[] result = mConnectivityManager.getNetworkWatchlistConfigHash();
         Assert.assertEquals(TEST_WATCHLIST_CONFIG_HASH, byteArrayToHexString(result));
     }
 
@@ -109,5 +122,19 @@ public class NetworkWatchlistTest extends AndroidTestCase {
 
     private static String runCommand(String command) throws IOException {
         return SystemUtil.runShellCommand(InstrumentationRegistry.getInstrumentation(), command);
+    }
+
+    private void setWatchlistConfig(String watchlistConfigFile) throws Exception {
+        cleanup();
+        // Save test watchlist config to sdcard as app can't access /data/local/tmp
+        saveResourceToFile(watchlistConfigFile, SDCARD_CONFIG_PATH);
+        // Copy test watchlist config from sdcard to /data/local/tmp as system service
+        // can't access /sdcard
+        runCommand("cp " + SDCARD_CONFIG_PATH + " " + TMP_CONFIG_PATH);
+        // Set test watchlist config to system
+        final String cmdResult = runCommand(
+                "cmd network_watchlist set-test-config " + TMP_CONFIG_PATH).trim();
+        assertThat(cmdResult).contains("Success");
+        cleanup();
     }
 }
