@@ -18,11 +18,16 @@ package android.net.cts;
 
 import static android.net.NetworkCapabilities.NET_CAPABILITY_IMS;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
+import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED;
 import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
+import static android.provider.Settings.Global.NETWORK_METERED_MULTIPATH_PREFERENCE;
+import static com.android.compatibility.common.util.SystemUtil.runShellCommand;
 
+import android.app.Instrumentation;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -38,12 +43,17 @@ import android.net.NetworkInfo.State;
 import android.net.NetworkRequest;
 import android.net.wifi.WifiManager;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.os.SystemProperties;
+import android.provider.Settings;
+import android.support.test.InstrumentationRegistry;
 import android.system.Os;
 import android.system.OsConstants;
 import android.test.AndroidTestCase;
+import android.text.TextUtils;
 import android.util.Log;
 
+import com.android.internal.R;
 import com.android.internal.telephony.PhoneConstants;
 
 import java.io.File;
@@ -51,6 +61,7 @@ import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.lang.NumberFormatException;
 import java.net.Socket;
 import java.net.InetSocketAddress;
 import java.util.HashMap;
@@ -58,6 +69,8 @@ import java.util.Scanner;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class ConnectivityManagerTest extends AndroidTestCase {
 
@@ -72,6 +85,9 @@ public class ConnectivityManagerTest extends AndroidTestCase {
     private static final String TEST_HOST = "connectivitycheck.gstatic.com";
     private static final int SOCKET_TIMEOUT_MS = 2000;
     private static final int SEND_BROADCAST_TIMEOUT = 30000;
+    private static final int NETWORK_CHANGE_METEREDNESS_TIMEOUT = 5000;
+    private static final int NUM_TRIES_MULTIPATH_PREF_CHECK = 20;
+    private static final long INTERVAL_MULTIPATH_PREF_CHECK_MS = 500;
     private static final int HTTP_PORT = 80;
     private static final String HTTP_REQUEST =
             "GET /generate_204 HTTP/1.0\r\n" +
@@ -101,6 +117,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
     private static final int MIN_NUM_NETWORK_TYPES = 1;
 
     private Context mContext;
+    private Instrumentation mInstrumentation;
     private ConnectivityManager mCm;
     private WifiManager mWifiManager;
     private PackageManager mPackageManager;
@@ -113,6 +130,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         super.setUp();
         Looper.prepare();
         mContext = getContext();
+        mInstrumentation = InstrumentationRegistry.getInstrumentation();
         mCm = (ConnectivityManager) mContext.getSystemService(Context.CONNECTIVITY_SERVICE);
         mWifiManager = (WifiManager) mContext.getSystemService(Context.WIFI_SERVICE);
         mPackageManager = mContext.getPackageManager();
@@ -834,5 +852,147 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         final int upperBoundSec = 60 * 60;
         assertTrue(lowerBoundSec <= interval);
         assertTrue(interval <= upperBoundSec);
+    }
+
+    // Returns "true", "false" or "none"
+    private String getWifiMeteredStatus(String ssid) throws Exception {
+        // Interestingly giving the SSID as an argument to list wifi-networks
+        // only works iff the network in question has the "false" policy.
+        // Also unfortunately runShellCommand does not pass the command to the interpreter
+        // so it's not possible to | grep the ssid.
+        final String command = "cmd netpolicy list wifi-networks";
+        final String policyString = runShellCommand(mInstrumentation, command);
+
+        final Matcher m = Pattern.compile("^" + ssid + ";(true|false|none)$",
+                Pattern.MULTILINE | Pattern.UNIX_LINES).matcher(policyString);
+        if (!m.find()) {
+            fail("Unexpected format from cmd netpolicy");
+        }
+        return m.group(1);
+    }
+
+    // metered should be "true", "false" or "none"
+    private void setWifiMeteredStatus(String ssid, String metered) throws Exception {
+        final String setCommand = "cmd netpolicy set metered-network " + ssid + " " + metered;
+        runShellCommand(mInstrumentation, setCommand);
+        assertEquals(getWifiMeteredStatus(ssid), metered);
+    }
+
+    private String unquoteSSID(String ssid) {
+        // SSID is returned surrounded by quotes if it can be decoded as UTF-8.
+        // Otherwise it's guaranteed not to start with a quote.
+        if (ssid.charAt(0) == '"') {
+            return ssid.substring(1, ssid.length() - 1);
+        } else {
+            return ssid;
+        }
+    }
+
+    private void waitForActiveNetworkMetered(boolean requestedMeteredness) throws Exception {
+        final CountDownLatch latch = new CountDownLatch(1);
+        final NetworkCallback networkCallback = new NetworkCallback() {
+            @Override
+            public void onCapabilitiesChanged(Network network, NetworkCapabilities nc) {
+                final boolean metered = !nc.hasCapability(NET_CAPABILITY_NOT_METERED);
+                if (metered == requestedMeteredness) {
+                    latch.countDown();
+                }
+            }
+        };
+        // Registering a callback here guarantees onCapabilitiesChanged is called immediately
+        // with the current setting. Therefore, if the setting has already been changed,
+        // this method will return right away, and if not it will wait for the setting to change.
+        mCm.registerDefaultNetworkCallback(networkCallback);
+        if (!latch.await(NETWORK_CHANGE_METEREDNESS_TIMEOUT, TimeUnit.MILLISECONDS)) {
+            fail("Timed out waiting for active network metered status to change to "
+                 + requestedMeteredness + " ; network = " + mCm.getActiveNetwork());
+        }
+        mCm.unregisterNetworkCallback(networkCallback);
+    }
+
+    private void assertMultipathPreferenceIsEventually(Network network, int oldValue,
+            int expectedValue) {
+        // Sanity check : if oldValue == expectedValue, there is no way to guarantee the test
+        // is not flaky.
+        assertNotSame(oldValue, expectedValue);
+
+        for (int i = 0; i < NUM_TRIES_MULTIPATH_PREF_CHECK; ++i) {
+            final int actualValue = mCm.getMultipathPreference(network);
+            if (actualValue == expectedValue) {
+                return;
+            }
+            if (actualValue != oldValue) {
+                fail("Multipath preference is neither previous (" + oldValue
+                        + ") nor expected (" + expectedValue + ")");
+            }
+            SystemClock.sleep(INTERVAL_MULTIPATH_PREF_CHECK_MS);
+        }
+        fail("Timed out waiting for multipath preference to change. expected = "
+                + expectedValue + " ; actual = " + mCm.getMultipathPreference(network));
+    }
+
+    private int getCurrentMeteredMultipathPreference(ContentResolver resolver) {
+        final String rawMeteredPref = Settings.Global.getString(resolver,
+                NETWORK_METERED_MULTIPATH_PREFERENCE);
+        return TextUtils.isEmpty(rawMeteredPref)
+            ? mContext.getResources().getInteger(R.integer.config_networkMeteredMultipathPreference)
+            : Integer.parseInt(rawMeteredPref);
+    }
+
+    private int findNextPrefValue(ContentResolver resolver) {
+        // A bit of a nuclear hammer, but race conditions in CTS are bad. To be able to
+        // detect a correct setting value without race conditions, the next pref must
+        // be a valid value (range 0..3) that is different from the old setting of the
+        // metered preference and from the unmetered preference.
+        final int meteredPref = getCurrentMeteredMultipathPreference(resolver);
+        final int unmeteredPref = ConnectivityManager.MULTIPATH_PREFERENCE_UNMETERED;
+        if (0 != meteredPref && 0 != unmeteredPref) return 0;
+        if (1 != meteredPref && 1 != unmeteredPref) return 1;
+        return 2;
+    }
+
+    /**
+     * Verify that getMultipathPreference does return appropriate values
+     * for metered and unmetered networks.
+     */
+    public void testGetMultipathPreference() throws Exception {
+        final ContentResolver resolver = mContext.getContentResolver();
+        final Network network = ensureWifiConnected();
+        final String ssid = unquoteSSID(mWifiManager.getConnectionInfo().getSSID());
+        final String oldMeteredSetting = getWifiMeteredStatus(ssid);
+        final String oldMeteredMultipathPreference = Settings.Global.getString(
+                resolver, NETWORK_METERED_MULTIPATH_PREFERENCE);
+        try {
+            final int initialMeteredPreference = getCurrentMeteredMultipathPreference(resolver);
+            int newMeteredPreference = findNextPrefValue(resolver);
+            Settings.Global.putString(resolver, NETWORK_METERED_MULTIPATH_PREFERENCE,
+                    Integer.toString(newMeteredPreference));
+            setWifiMeteredStatus(ssid, "true");
+            waitForActiveNetworkMetered(true);
+            assertEquals(mCm.getNetworkCapabilities(network).hasCapability(
+                    NET_CAPABILITY_NOT_METERED), false);
+            assertMultipathPreferenceIsEventually(network, initialMeteredPreference,
+                    newMeteredPreference);
+
+            final int oldMeteredPreference = newMeteredPreference;
+            newMeteredPreference = findNextPrefValue(resolver);
+            Settings.Global.putString(resolver, NETWORK_METERED_MULTIPATH_PREFERENCE,
+                    Integer.toString(newMeteredPreference));
+            assertEquals(mCm.getNetworkCapabilities(network).hasCapability(
+                    NET_CAPABILITY_NOT_METERED), false);
+            assertMultipathPreferenceIsEventually(network,
+                    oldMeteredPreference, newMeteredPreference);
+
+            setWifiMeteredStatus(ssid, "false");
+            waitForActiveNetworkMetered(false);
+            assertEquals(mCm.getNetworkCapabilities(network).hasCapability(
+                    NET_CAPABILITY_NOT_METERED), true);
+            assertMultipathPreferenceIsEventually(network, newMeteredPreference,
+                    ConnectivityManager.MULTIPATH_PREFERENCE_UNMETERED);
+        } finally {
+            Settings.Global.putString(resolver, NETWORK_METERED_MULTIPATH_PREFERENCE,
+                    oldMeteredMultipathPreference);
+            setWifiMeteredStatus(ssid, oldMeteredSetting);
+        }
     }
 }
