@@ -597,7 +597,7 @@ public class IpSecManagerTest extends AndroidTestCase {
         StatsChecker.initStatsChecker();
 
         try (IpSecManager.UdpEncapsulationSocket encapSocket = mISM.openUdpEncapsulationSocket()) {
-            int localPort = getPort(encapSocket.getSocket());
+            int localPort = getPort(encapSocket.getFileDescriptor());
 
             // Append ESP header - 4 bytes of SPI, 4 bytes of seq number
             byte[] dataWithEspHeader = new byte[TEST_DATA.length + 8];
@@ -605,14 +605,14 @@ public class IpSecManagerTest extends AndroidTestCase {
 
             byte[] in = new byte[dataWithEspHeader.length];
             Os.sendto(
-                    encapSocket.getSocket(),
+                    encapSocket.getFileDescriptor(),
                     dataWithEspHeader,
                     0,
                     dataWithEspHeader.length,
                     0,
                     local,
                     localPort);
-            Os.read(encapSocket.getSocket(), in, 0, in.length);
+            Os.read(encapSocket.getFileDescriptor(), in, 0, in.length);
             assertArrayEquals("Encapsulated data did not match.", dataWithEspHeader, in);
 
             int ipHdrLen = local instanceof Inet6Address ? IP6_HDRLEN : IP4_HDRLEN;
@@ -970,7 +970,7 @@ public class IpSecManagerTest extends AndroidTestCase {
                 final String message = "Sample IKE Packet";
                 data = (new String(header) + message).getBytes("UTF-8");
                 Os.sendto(
-                        encapSocket.getSocket(),
+                        encapSocket.getFileDescriptor(),
                         data,
                         0,
                         data.length,
@@ -978,7 +978,7 @@ public class IpSecManagerTest extends AndroidTestCase {
                         local,
                         encapSocket.getPort());
                 in = new byte[data.length];
-                Os.read(encapSocket.getSocket(), in, 0, in.length);
+                Os.read(encapSocket.getFileDescriptor(), in, 0, in.length);
                 assertTrue(
                         "Encap socket was unable to send/receive IKE data",
                         Arrays.equals(data, in));
@@ -1030,7 +1030,7 @@ public class IpSecManagerTest extends AndroidTestCase {
                 message = "Sample IKE Packet";
                 data = (new String(header) + message).getBytes("UTF-8");
                 Os.sendto(
-                        encapSocket.getSocket(),
+                        encapSocket.getFileDescriptor(),
                         data,
                         0,
                         data.length,
@@ -1045,7 +1045,7 @@ public class IpSecManagerTest extends AndroidTestCase {
                 // Expect an nulled out SPI just as we sent out, without being modified.
                 byte[] in = new byte[4];
                 in[0] = 1; // Make sure the array has to be overwritten to pass
-                Os.read(encapSocket.getSocket(), in, 0, in.length);
+                Os.read(encapSocket.getFileDescriptor(), in, 0, in.length);
                 assertTrue(
                         "Encap socket received UDP-encap-ESP data despite invalid SPIs",
                         Arrays.equals(header, in));
