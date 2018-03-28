@@ -25,6 +25,7 @@ import android.net.IpSecTransform;
 import android.system.Os;
 import android.system.OsConstants;
 import android.test.AndroidTestCase;
+import android.util.Log;
 
 import java.io.FileDescriptor;
 import java.io.IOException;
@@ -38,6 +39,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class IpSecBaseTest extends AndroidTestCase {
 
@@ -51,6 +53,7 @@ public class IpSecBaseTest extends AndroidTestCase {
 
     protected static final byte[] TEST_DATA = "Best test data ever!".getBytes();
     protected static final int DATA_BUFFER_LEN = 4096;
+    protected static final int SOCK_TIMEOUT = 500;
 
     private static final byte[] KEY_DATA = {
         0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
@@ -124,9 +127,27 @@ public class IpSecBaseTest extends AndroidTestCase {
         @Override
         public byte[] receive() throws Exception {
             byte[] in = new byte[DATA_BUFFER_LEN];
-            int bytesRead = Os.read(mFd, in, 0, DATA_BUFFER_LEN);
+            AtomicInteger bytesRead = new AtomicInteger(-1);
 
-            return Arrays.copyOfRange(in, 0, bytesRead);
+            Thread readSockThread = new Thread(() -> {
+                long startTime = System.currentTimeMillis();
+                while (bytesRead.get() < 0 && System.currentTimeMillis() < startTime + SOCK_TIMEOUT) {
+                    try {
+                        bytesRead.set(Os.recvfrom(mFd, in, 0, DATA_BUFFER_LEN, 0, null));
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error encountered reading from socket", e);
+                    }
+                }
+            });
+
+            readSockThread.start();
+            readSockThread.join(SOCK_TIMEOUT);
+
+            if (bytesRead.get() < 0) {
+                throw new IOException("No data received from socket");
+            }
+
+            return Arrays.copyOfRange(in, 0, bytesRead.get());
         }
 
         @Override
@@ -174,7 +195,7 @@ public class IpSecBaseTest extends AndroidTestCase {
         public JavaUdpSocket(InetAddress localAddr) {
             try {
                 mSocket = new DatagramSocket(0, localAddr);
-                mSocket.setSoTimeout(500);
+                mSocket.setSoTimeout(SOCK_TIMEOUT);
             } catch (SocketException e) {
                 // Fail loudly if we can't set up sockets properly. And without the timeout, we
                 // could easily end up in an endless wait.
@@ -227,7 +248,7 @@ public class IpSecBaseTest extends AndroidTestCase {
         public JavaTcpSocket(Socket socket) {
             mSocket = socket;
             try {
-                mSocket.setSoTimeout(500);
+                mSocket.setSoTimeout(SOCK_TIMEOUT);
             } catch (SocketException e) {
                 // Fail loudly if we can't set up sockets properly. And without the timeout, we
                 // could easily end up in an endless wait.
@@ -279,7 +300,7 @@ public class IpSecBaseTest extends AndroidTestCase {
         }
     }
 
-    private static void applyTransformBidirectionally(
+    protected static void applyTransformBidirectionally(
             IpSecManager ism, IpSecTransform transform, GenericSocket socket) throws Exception {
         for (int direction : DIRECTIONS) {
             socket.applyTransportModeTransform(ism, direction, transform);
