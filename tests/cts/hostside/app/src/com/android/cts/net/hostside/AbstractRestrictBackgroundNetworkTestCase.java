@@ -148,7 +148,6 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
 
     @Override
     protected void tearDown() throws Exception {
-        batteryReset();
         if (!mIsLocationOn) {
             disableLocation();
         }
@@ -818,20 +817,12 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
 
     protected void turnBatteryOn() throws Exception {
         executeSilentShellCommand("cmd battery unplug");
-        executeSilentShellCommand("cmd battery set status "
-                + BatteryManager.BATTERY_STATUS_NOT_CHARGING);
         assertBatteryState(false);
     }
 
     protected void turnBatteryOff() throws Exception {
-        executeSilentShellCommand("cmd battery set ac " + BatteryManager.BATTERY_PLUGGED_AC);
-        executeSilentShellCommand("cmd battery set status "
-                + BatteryManager.BATTERY_STATUS_CHARGING);
-        assertBatteryState(true);
-    }
-
-    private void batteryReset() throws Exception {
         executeSilentShellCommand("cmd battery reset");
+        assertBatteryState(true);
     }
 
     private void assertBatteryState(boolean pluggedIn) throws Exception {
