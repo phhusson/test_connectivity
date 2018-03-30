@@ -27,29 +27,22 @@ import android.net.IpSecAlgorithm;
 import android.net.IpSecManager;
 import android.net.IpSecTransform;
 import android.net.TrafficStats;
-import android.os.ParcelFileDescriptor;
 import android.system.ErrnoException;
 import android.system.Os;
 import android.system.OsConstants;
-import android.test.AndroidTestCase;
 
 import java.io.FileDescriptor;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
-import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.Arrays;
 
-public class IpSecManagerTest extends AndroidTestCase {
+public class IpSecManagerTest extends IpSecBaseTest {
 
     private static final String TAG = IpSecManagerTest.class.getSimpleName();
-
-    private IpSecManager mISM;
 
     private ConnectivityManager mCM;
 
@@ -70,26 +63,12 @@ public class IpSecManagerTest extends AndroidTestCase {
     private static final int DROID_SPI = 0xD1201D;
     private static final int MAX_PORT_BIND_ATTEMPTS = 10;
 
-    private static final byte[] KEY_DATA = {
-        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-        0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
-        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
-        0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
-        0x20, 0x21, 0x22, 0x23
-    };
-
-    private static final byte[] AUTH_KEY = getKey(256);
-    private static final byte[] CRYPT_KEY = getKey(256);
     private static final byte[] AEAD_KEY = getKey(288);
 
-    private static final String IPV4_LOOPBACK = "127.0.0.1";
-    private static final String IPV6_LOOPBACK = "::1";
     private static final int TCP_HDRLEN_WITH_OPTIONS = 32;
     private static final int UDP_HDRLEN = 8;
     private static final int IP4_HDRLEN = 20;
     private static final int IP6_HDRLEN = 40;
-
-    private static final byte[] TEST_DATA = "Best test data ever!".getBytes();
 
     // Encryption parameters
     private static final int AES_GCM_IV_LEN = 8;
@@ -100,7 +79,6 @@ public class IpSecManagerTest extends AndroidTestCase {
     protected void setUp() throws Exception {
         super.setUp();
         mCM = (ConnectivityManager) getContext().getSystemService(Context.CONNECTIVITY_SERVICE);
-        mISM = (IpSecManager) getContext().getSystemService(Context.IPSEC_SERVICE);
     }
 
     /*
@@ -131,19 +109,6 @@ public class IpSecManagerTest extends AndroidTestCase {
             randomSpi.close();
             droidSpi.close();
         }
-    }
-
-    private static byte[] getKey(int bitLength) {
-        return Arrays.copyOf(KEY_DATA, bitLength / 8);
-    }
-
-    private static int getDomain(InetAddress address) {
-        int domain;
-        if (address instanceof Inet6Address)
-            domain = OsConstants.AF_INET6;
-        else
-            domain = OsConstants.AF_INET;
-        return domain;
     }
 
     /** This function finds an available port */
@@ -181,72 +146,46 @@ public class IpSecManagerTest extends AndroidTestCase {
 
     private void checkUnconnectedUdp(IpSecTransform transform, InetAddress local, int sendCount,
                                      boolean useJavaSockets) throws Exception {
-        FileDescriptor udpSocket = null;
-        int localPort;
-
+        GenericUdpSocket sockLeft = null, sockRight = null;
         if (useJavaSockets) {
-            DatagramSocket localSocket = new DatagramSocket(0, local);
-            localSocket.setSoTimeout(500);
-            ParcelFileDescriptor pfd = ParcelFileDescriptor.fromDatagramSocket(localSocket);
-
-            localPort = localSocket.getLocalPort();
-            udpSocket = pfd.getFileDescriptor();
+            SocketPair<JavaUdpSocket> sockets = getJavaUdpSocketPair(local, mISM, transform, false);
+            sockLeft = sockets.mLeftSock;
+            sockRight = sockets.mRightSock;
         } else {
-            udpSocket = getBoundUdpSocket(local);
-            localPort = getPort(udpSocket);
+            SocketPair<NativeUdpSocket> sockets =
+                    getNativeUdpSocketPair(local, mISM, transform, false);
+            sockLeft = sockets.mLeftSock;
+            sockRight = sockets.mRightSock;
         }
-
-        mISM.applyTransportModeTransform(udpSocket, IpSecManager.DIRECTION_IN, transform);
-        mISM.applyTransportModeTransform(udpSocket, IpSecManager.DIRECTION_OUT, transform);
 
         for (int i = 0; i < sendCount; i++) {
-            byte[] in = new byte[TEST_DATA.length];
-            Os.sendto(udpSocket, TEST_DATA, 0, TEST_DATA.length, 0, local, localPort);
-            Os.read(udpSocket, in, 0, in.length);
-            assertArrayEquals("Encapsulated data did not match.", TEST_DATA, in);
+            byte[] in;
+
+            sockLeft.sendTo(TEST_DATA, local, sockRight.getPort());
+            in = sockRight.receive();
+            assertArrayEquals("Left-to-right encrypted data did not match.", TEST_DATA, in);
+
+            sockRight.sendTo(TEST_DATA, local, sockLeft.getPort());
+            in = sockLeft.receive();
+            assertArrayEquals("Right-to-left encrypted data did not match.", TEST_DATA, in);
         }
 
-        mISM.removeTransportModeTransforms(udpSocket);
-        Os.close(udpSocket);
+        sockLeft.close();
+        sockRight.close();
     }
 
     private void checkTcp(IpSecTransform transform, InetAddress local, int sendCount,
                           boolean useJavaSockets) throws Exception {
-
-        FileDescriptor server = null, client = null;
-
+        GenericTcpSocket client = null, accepted = null;
         if (useJavaSockets) {
-            Socket serverSocket = new Socket();
-            serverSocket.setSoTimeout(500);
-            ParcelFileDescriptor serverPfd = ParcelFileDescriptor.fromSocket(serverSocket);
-            server = serverPfd.getFileDescriptor();
-
-            Socket clientSocket = new Socket();
-            clientSocket.setSoTimeout(500);
-            ParcelFileDescriptor clientPfd = ParcelFileDescriptor.fromSocket(clientSocket);
-            client = clientPfd.getFileDescriptor();
+            SocketPair<JavaTcpSocket> sockets = getJavaTcpSocketPair(local, mISM, transform);
+            client = sockets.mLeftSock;
+            accepted = sockets.mRightSock;
         } else {
-            final int domain = getDomain(local);
-            server =
-              Os.socket(domain, OsConstants.SOCK_STREAM, IPPROTO_TCP);
-            client =
-              Os.socket(domain, OsConstants.SOCK_STREAM, IPPROTO_TCP);
+            SocketPair<NativeTcpSocket> sockets = getNativeTcpSocketPair(local, mISM, transform);
+            client = sockets.mLeftSock;
+            accepted = sockets.mRightSock;
         }
-
-        Os.bind(server, local, 0);
-        int port = ((InetSocketAddress) Os.getsockname(server)).getPort();
-
-        mISM.applyTransportModeTransform(client, IpSecManager.DIRECTION_IN, transform);
-        mISM.applyTransportModeTransform(client, IpSecManager.DIRECTION_OUT, transform);
-        mISM.applyTransportModeTransform(server, IpSecManager.DIRECTION_IN, transform);
-        mISM.applyTransportModeTransform(server, IpSecManager.DIRECTION_OUT, transform);
-
-        Os.listen(server, 10);
-        Os.connect(client, local, port);
-        FileDescriptor accepted = Os.accept(server, null);
-
-        mISM.applyTransportModeTransform(accepted, IpSecManager.DIRECTION_IN, transform);
-        mISM.applyTransportModeTransform(accepted, IpSecManager.DIRECTION_OUT, transform);
 
         // Wait for TCP handshake packets to be counted
         StatsChecker.waitForNumPackets(3); // (SYN, SYN+ACK, ACK)
@@ -254,19 +193,18 @@ public class IpSecManagerTest extends AndroidTestCase {
         // Reset StatsChecker, to ignore negotiation overhead.
         StatsChecker.initStatsChecker();
         for (int i = 0; i < sendCount; i++) {
-            byte[] in = new byte[TEST_DATA.length];
+            byte[] in;
 
-            Os.write(client, TEST_DATA, 0, TEST_DATA.length);
-            Os.read(accepted, in, 0, in.length);
+            client.send(TEST_DATA);
+            in = accepted.receive();
             assertArrayEquals("Client-to-server encrypted data did not match.", TEST_DATA, in);
 
             // Allow for newest data + ack packets to be returned before sending next packet
             // Also add the number of expected packets in each of the previous runs (4 per run)
             StatsChecker.waitForNumPackets(2 + (4 * i));
-            in = new byte[TEST_DATA.length];
 
-            Os.write(accepted, TEST_DATA, 0, TEST_DATA.length);
-            Os.read(client, in, 0, in.length);
+            accepted.send(TEST_DATA);
+            in = client.receive();
             assertArrayEquals("Server-to-client encrypted data did not match.", TEST_DATA, in);
 
             // Allow for all data + ack packets to be returned before sending next packet
@@ -286,9 +224,8 @@ public class IpSecManagerTest extends AndroidTestCase {
         //     Socket or FileDescriptor flavors of applyTransportModeTransform() in IpSecManager
         //     for more details.
 
-        Os.close(server);
-        Os.close(client);
-        Os.close(accepted);
+        client.close();
+        accepted.close();
     }
 
     /*
@@ -604,16 +541,17 @@ public class IpSecManagerTest extends AndroidTestCase {
         int expectedInnerBytes = innerPacketSize * sendCount;
         int expectedPackets = sendCount;
 
+        // Each run sends two packets, one in each direction.
+        sendCount *= 2;
+        expectedOuterBytes *= 2;
+        expectedInnerBytes *= 2;
+        expectedPackets *= 2;
+
         // Add TCP ACKs for data packets
         if (protocol == IPPROTO_TCP) {
             int encryptedTcpPktSize =
                     calculateEspPacketSize(TCP_HDRLEN_WITH_OPTIONS, ivLen, blkSize, truncLenBits);
 
-                // Each run sends two packets, one in each direction.
-                sendCount *= 2;
-                expectedOuterBytes *= 2;
-                expectedInnerBytes *= 2;
-                expectedPackets *= 2;
 
                 // Add data packet ACKs
                 expectedOuterBytes += (encryptedTcpPktSize + udpEncapLen + ipHdrLen) * (sendCount);
@@ -1284,28 +1222,5 @@ public class IpSecManagerTest extends AndroidTestCase {
                 }
             }
         }
-    }
-
-    private static IpSecTransform buildIpSecTransform(
-            Context mContext,
-            IpSecManager.SecurityParameterIndex spi,
-            IpSecManager.UdpEncapsulationSocket encapSocket,
-            InetAddress remoteAddr)
-            throws Exception {
-            String localAddr = (remoteAddr instanceof Inet4Address)
-                    ? IPV4_LOOPBACK : IPV6_LOOPBACK;
-        return new IpSecTransform.Builder(mContext)
-                .setEncryption(new IpSecAlgorithm(IpSecAlgorithm.CRYPT_AES_CBC, CRYPT_KEY))
-                .setAuthentication(
-                        new IpSecAlgorithm(
-                                IpSecAlgorithm.AUTH_HMAC_SHA256,
-                                AUTH_KEY,
-                                AUTH_KEY.length * 4))
-                .setIpv4Encapsulation(encapSocket, encapSocket.getPort())
-                .buildTransportModeTransform(InetAddress.getByName(localAddr), spi);
-    }
-
-    private static int getPort(FileDescriptor sock) throws Exception {
-        return ((InetSocketAddress) Os.getsockname(sock)).getPort();
     }
 }
