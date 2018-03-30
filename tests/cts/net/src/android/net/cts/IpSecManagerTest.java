@@ -576,34 +576,68 @@ public class IpSecManagerTest extends IpSecBaseTest {
         }
     }
 
-    public void testIkeOverUdpEncapSocket() throws Exception {
-        // IPv6 not supported for UDP-encap-ESP
-        InetAddress local = InetAddress.getByName(IPV4_LOOPBACK);
+    private void checkIkePacket(
+            NativeUdpSocket wrappedEncapSocket, InetAddress localAddr) throws Exception {
         StatsChecker.initStatsChecker();
 
-        try (IpSecManager.UdpEncapsulationSocket encapSocket = mISM.openUdpEncapsulationSocket()) {
-            int localPort = getPort(encapSocket.getFileDescriptor());
+        try (NativeUdpSocket remoteSocket = new NativeUdpSocket(getBoundUdpSocket(localAddr))) {
 
-            // Append ESP header - 4 bytes of SPI, 4 bytes of seq number
+            // Append IKE/ESP header - 4 bytes of SPI, 4 bytes of seq number, all zeroed out
+            // If the first four bytes are zero, assume non-ESP (IKE traffic)
             byte[] dataWithEspHeader = new byte[TEST_DATA.length + 8];
             System.arraycopy(TEST_DATA, 0, dataWithEspHeader, 8, TEST_DATA.length);
 
-            byte[] in = new byte[dataWithEspHeader.length];
-            Os.sendto(
-                    encapSocket.getFileDescriptor(),
-                    dataWithEspHeader,
-                    0,
-                    dataWithEspHeader.length,
-                    0,
-                    local,
-                    localPort);
-            Os.read(encapSocket.getFileDescriptor(), in, 0, in.length);
+            // Send the IKE packet from remoteSocket to wrappedEncapSocket. Since IKE packets
+            // are multiplexed over the socket, we expect them to appear on the encap socket
+            // (as opposed to being decrypted and received on the non-encap socket)
+            remoteSocket.sendTo(dataWithEspHeader, localAddr, wrappedEncapSocket.getPort());
+            byte[] in = wrappedEncapSocket.receive();
             assertArrayEquals("Encapsulated data did not match.", dataWithEspHeader, in);
 
-            int ipHdrLen = local instanceof Inet6Address ? IP6_HDRLEN : IP4_HDRLEN;
-            int expectedPacketSize = dataWithEspHeader.length + UDP_HDRLEN + ipHdrLen;
-            StatsChecker.assertUidStatsDelta(expectedPacketSize, 1, expectedPacketSize, 1);
-            StatsChecker.assertIfaceStatsDelta(expectedPacketSize, 1, expectedPacketSize, 1);
+            // Also test that the IKE socket can send data out.
+            wrappedEncapSocket.sendTo(dataWithEspHeader, localAddr, remoteSocket.getPort());
+            in = remoteSocket.receive();
+            assertArrayEquals("Encapsulated data did not match.", dataWithEspHeader, in);
+
+            // Calculate expected packet sizes. Always use IPv4 header, since our kernels only
+            // guarantee support of UDP encap on IPv4.
+            int expectedNumPkts = 2;
+            int expectedPacketSize =
+                    expectedNumPkts * (dataWithEspHeader.length + UDP_HDRLEN + IP4_HDRLEN);
+
+            StatsChecker.waitForNumPackets(expectedNumPkts);
+            StatsChecker.assertUidStatsDelta(
+                    expectedPacketSize, expectedNumPkts, expectedPacketSize, expectedNumPkts);
+            StatsChecker.assertIfaceStatsDelta(
+                    expectedPacketSize, expectedNumPkts, expectedPacketSize, expectedNumPkts);
+        }
+    }
+
+    public void testIkeOverUdpEncapSocket() throws Exception {
+        // IPv6 not supported for UDP-encap-ESP
+        InetAddress local = InetAddress.getByName(IPV4_LOOPBACK);
+        try (IpSecManager.UdpEncapsulationSocket encapSocket = mISM.openUdpEncapsulationSocket()) {
+            NativeUdpSocket wrappedEncapSocket =
+                    new NativeUdpSocket(encapSocket.getFileDescriptor());
+            checkIkePacket(wrappedEncapSocket, local);
+
+            // Now try with a transform applied to a socket using this Encap socket
+            IpSecAlgorithm crypt = new IpSecAlgorithm(IpSecAlgorithm.CRYPT_AES_CBC, CRYPT_KEY);
+            IpSecAlgorithm auth = new IpSecAlgorithm(IpSecAlgorithm.AUTH_HMAC_MD5, getKey(128), 96);
+
+            try (IpSecManager.SecurityParameterIndex spi =
+                            mISM.allocateSecurityParameterIndex(local);
+                    IpSecTransform transform =
+                            new IpSecTransform.Builder(mContext)
+                                    .setEncryption(crypt)
+                                    .setAuthentication(auth)
+                                    .setIpv4Encapsulation(encapSocket, encapSocket.getPort())
+                                    .buildTransportModeTransform(local, spi);
+                    JavaUdpSocket localSocket = new JavaUdpSocket(local)) {
+                applyTransformBidirectionally(mISM, transform, localSocket);
+
+                checkIkePacket(wrappedEncapSocket, local);
+            }
         }
     }
 
@@ -1094,133 +1128,6 @@ public class IpSecManagerTest extends IpSecBaseTest {
     public void testOpenUdpEncapSocketRandomPort() throws Exception {
         try (IpSecManager.UdpEncapsulationSocket encapSocket = mISM.openUdpEncapsulationSocket()) {
             assertTrue("Returned invalid port", encapSocket.getPort() != 0);
-        }
-    }
-
-    public void testUdpEncapsulation() throws Exception {
-        InetAddress local = InetAddress.getByName(IPV4_LOOPBACK);
-
-        // TODO: Refactor to make this more representative of a normal application use case. (use
-        // separate sockets for inbound and outbound)
-        // Create SPIs, UDP encap socket
-        try (IpSecManager.UdpEncapsulationSocket encapSocket = mISM.openUdpEncapsulationSocket();
-                IpSecManager.SecurityParameterIndex spi =
-                        mISM.allocateSecurityParameterIndex(local);
-                IpSecTransform transform =
-                        buildIpSecTransform(mContext, spi, encapSocket, local)) {
-
-            // Create user socket, apply transform to it
-            FileDescriptor udpSocket = null;
-            try {
-                udpSocket = getBoundUdpSocket(local);
-                int port = getPort(udpSocket);
-
-                mISM.applyTransportModeTransform(
-                        udpSocket, IpSecManager.DIRECTION_IN, transform);
-                mISM.applyTransportModeTransform(
-                        udpSocket, IpSecManager.DIRECTION_OUT, transform);
-
-                // Send an ESP packet from this socket to itself. Since the inbound and
-                // outbound transforms match, we should receive the data we sent.
-                byte[] data = new String("IPSec UDP-encap-ESP test data").getBytes("UTF-8");
-                Os.sendto(udpSocket, data, 0, data.length, 0, local, port);
-                byte[] in = new byte[data.length];
-                Os.read(udpSocket, in, 0, in.length);
-                assertTrue("Encapsulated data did not match.", Arrays.equals(data, in));
-
-                // Send an IKE packet from this socket to itself. IKE packets (SPI of 0)
-                // are not transformed in any way, and should be sent in the clear
-                // We expect this to work too (no inbound transforms)
-                final byte[] header = new byte[] {0, 0, 0, 0};
-                final String message = "Sample IKE Packet";
-                data = (new String(header) + message).getBytes("UTF-8");
-                Os.sendto(
-                        encapSocket.getFileDescriptor(),
-                        data,
-                        0,
-                        data.length,
-                        0,
-                        local,
-                        encapSocket.getPort());
-                in = new byte[data.length];
-                Os.read(encapSocket.getFileDescriptor(), in, 0, in.length);
-                assertTrue(
-                        "Encap socket was unable to send/receive IKE data",
-                        Arrays.equals(data, in));
-
-                mISM.removeTransportModeTransforms(udpSocket);
-            } finally {
-                if (udpSocket != null) {
-                    Os.close(udpSocket);
-                }
-            }
-        }
-    }
-
-    public void testIke() throws Exception {
-        InetAddress localAddr = InetAddress.getByName(IPV4_LOOPBACK);
-
-        // TODO: Refactor to make this more representative of a normal application use case. (use
-        // separate sockets for inbound and outbound)
-        try (IpSecManager.UdpEncapsulationSocket encapSocket = mISM.openUdpEncapsulationSocket();
-                IpSecManager.SecurityParameterIndex spi =
-                        mISM.allocateSecurityParameterIndex(localAddr);
-                IpSecTransform transform =
-                        buildIpSecTransform(mContext, spi, encapSocket, localAddr)) {
-
-            // Create user socket, apply transform to it
-            FileDescriptor sock = null;
-
-            try {
-                sock = getBoundUdpSocket(localAddr);
-                int port = getPort(sock);
-
-                mISM.applyTransportModeTransform(sock, IpSecManager.DIRECTION_IN, transform);
-                mISM.applyTransportModeTransform(sock, IpSecManager.DIRECTION_OUT, transform);
-
-                // TODO: Find a way to set a timeout on the socket, and assert the ESP packet
-                // doesn't make it through. Setting sockopts currently throws EPERM (possibly
-                // because it is owned by a different UID).
-
-                // Send ESP packet from our socket to the encap socket. The SPIs do not
-                // match, and we should expect this packet to be dropped.
-                byte[] header = new byte[] {1, 1, 1, 1};
-                String message = "Sample ESP Packet";
-                byte[] data = (new String(header) + message).getBytes("UTF-8");
-                Os.sendto(sock, data, 0, data.length, 0, localAddr, encapSocket.getPort());
-
-                // Send IKE packet from the encap socket to itself. Since IKE is not
-                // transformed in any way, this should succeed.
-                header = new byte[] {0, 0, 0, 0};
-                message = "Sample IKE Packet";
-                data = (new String(header) + message).getBytes("UTF-8");
-                Os.sendto(
-                        encapSocket.getFileDescriptor(),
-                        data,
-                        0,
-                        data.length,
-                        0,
-                        localAddr,
-                        encapSocket.getPort());
-
-                // ESP data should be dropped, due to different input SPI (as opposed to being
-                // readable from the encapSocket)
-                // Thus, only IKE data should be received from the socket.
-                // If the first four bytes are zero, assume non-ESP (IKE) traffic.
-                // Expect an nulled out SPI just as we sent out, without being modified.
-                byte[] in = new byte[4];
-                in[0] = 1; // Make sure the array has to be overwritten to pass
-                Os.read(encapSocket.getFileDescriptor(), in, 0, in.length);
-                assertTrue(
-                        "Encap socket received UDP-encap-ESP data despite invalid SPIs",
-                        Arrays.equals(header, in));
-
-                mISM.removeTransportModeTransforms(sock);
-            } finally {
-                if (sock != null) {
-                    Os.close(sock);
-                }
-            }
         }
     }
 }
