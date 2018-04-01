@@ -148,7 +148,6 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
 
     @Override
     protected void tearDown() throws Exception {
-        batteryReset();
         if (!mIsLocationOn) {
             disableLocation();
         }
@@ -260,17 +259,21 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
 
     protected void assertBackgroundNetworkAccess(boolean expectAllowed) throws Exception {
         assertBackgroundState(); // Sanity check.
-        assertNetworkAccess(expectAllowed);
+        assertNetworkAccess(expectAllowed /* expectAvailable */, false /* needScreenOn */);
     }
 
     protected void assertForegroundNetworkAccess() throws Exception {
         assertForegroundState(); // Sanity check.
-        assertNetworkAccess(true);
+        // We verified that app is in foreground state but if the screen turns-off while
+        // verifying for network access, the app will go into background state (in case app's
+        // foreground status was due to top activity). So, turn the screen on when verifying
+        // network connectivity.
+        assertNetworkAccess(true /* expectAvailable */, true /* needScreenOn */);
     }
 
     protected void assertForegroundServiceNetworkAccess() throws Exception {
         assertForegroundServiceState(); // Sanity check.
-        assertNetworkAccess(true);
+        assertNetworkAccess(true /* expectAvailable */, false /* needScreenOn */);
     }
 
     /**
@@ -369,7 +372,8 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     /**
      * Asserts whether the active network is available or not.
      */
-    private void assertNetworkAccess(boolean expectAvailable) throws Exception {
+    private void assertNetworkAccess(boolean expectAvailable, boolean needScreenOn)
+            throws Exception {
         final int maxTries = 5;
         String error = null;
         int timeoutMs = 500;
@@ -387,6 +391,9 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             Log.w(TAG, "Network status didn't match for expectAvailable=" + expectAvailable
                     + " on attempt #" + i + ": " + error + "\n"
                     + "Sleeping " + timeoutMs + "ms before trying again");
+            if (needScreenOn) {
+                turnScreenOn();
+            }
             // No sleep after the last turn
             if (i < maxTries) {
                 SystemClock.sleep(timeoutMs);
@@ -810,20 +817,12 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
 
     protected void turnBatteryOn() throws Exception {
         executeSilentShellCommand("cmd battery unplug");
-        executeSilentShellCommand("cmd battery set status "
-                + BatteryManager.BATTERY_STATUS_NOT_CHARGING);
         assertBatteryState(false);
     }
 
     protected void turnBatteryOff() throws Exception {
-        executeSilentShellCommand("cmd battery set ac " + BatteryManager.BATTERY_PLUGGED_AC);
-        executeSilentShellCommand("cmd battery set status "
-                + BatteryManager.BATTERY_STATUS_CHARGING);
-        assertBatteryState(true);
-    }
-
-    private void batteryReset() throws Exception {
         executeSilentShellCommand("cmd battery reset");
+        assertBatteryState(true);
     }
 
     private void assertBatteryState(boolean pluggedIn) throws Exception {
