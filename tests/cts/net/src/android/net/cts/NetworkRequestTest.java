@@ -30,6 +30,35 @@ public class NetworkRequestTest extends AndroidTestCase {
                 .hasCapability(NET_CAPABILITY_MMS));
     }
 
+    public void testUnwantedCapabilities() {
+        assertTrue(new NetworkRequest.Builder()
+                .addUnwantedCapability(NET_CAPABILITY_MMS)
+                .build()
+                .hasUnwantedCapability(NET_CAPABILITY_MMS));
+        assertFalse(new NetworkRequest.Builder()
+                .removeCapability(NET_CAPABILITY_MMS)
+                .build()
+                .hasCapability(NET_CAPABILITY_MMS));
+    }
+
+    public void testCapabilityMutualExclusivity() {
+        NetworkRequest.Builder reqBuilder = new NetworkRequest.Builder()
+                .addCapability(NET_CAPABILITY_MMS);
+
+        assertTrue(reqBuilder.build().hasCapability(NET_CAPABILITY_MMS));
+        assertFalse(reqBuilder.build().hasUnwantedCapability(NET_CAPABILITY_MMS));
+
+        // Move capability to unwanted list
+        reqBuilder.addUnwantedCapability(NET_CAPABILITY_MMS);
+        assertFalse(reqBuilder.build().hasCapability(NET_CAPABILITY_MMS));
+        assertTrue(reqBuilder.build().hasUnwantedCapability(NET_CAPABILITY_MMS));
+
+        // Move it back to the list of capabilities
+        reqBuilder.addCapability(NET_CAPABILITY_MMS);
+        assertTrue(reqBuilder.build().hasCapability(NET_CAPABILITY_MMS));
+        assertFalse(reqBuilder.build().hasUnwantedCapability(NET_CAPABILITY_MMS));
+    }
+
     public void testTransports() {
         assertTrue(new NetworkRequest.Builder().addTransportType(TRANSPORT_BLUETOOTH).build()
                 .hasTransport(TRANSPORT_BLUETOOTH));
