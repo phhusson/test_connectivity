@@ -45,7 +45,8 @@ LOCAL_STATIC_JAVA_LIBRARIES := \
     ctstestrunner \
     ctstestserver \
     mockwebserver \
-    junit
+    junit \
+    truth-prebuilt
 
 # uncomment when b/13249961 is fixed
 #LOCAL_SDK_VERSION := current
