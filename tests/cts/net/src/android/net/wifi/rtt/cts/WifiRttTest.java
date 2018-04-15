@@ -84,6 +84,11 @@ public class WifiRttTest extends TestBase {
         int[] distanceMms = new int[NUM_OF_RTT_ITERATIONS];
         int[] distanceStdDevMms = new int[NUM_OF_RTT_ITERATIONS];
         int[] rssis = new int[NUM_OF_RTT_ITERATIONS];
+        int[] numAttempted = new int[NUM_OF_RTT_ITERATIONS];
+        int[] numSuccessful = new int[NUM_OF_RTT_ITERATIONS];
+        long[] timestampsMs = new long[NUM_OF_RTT_ITERATIONS];
+        byte[] lastLci = null;
+        byte[] lastLcr = null;
         for (int i = 0; i < NUM_OF_RTT_ITERATIONS; ++i) {
             ResultCallback callback = new ResultCallback();
             mWifiRttManager.startRanging(request, mExecutor, callback);
@@ -98,6 +103,9 @@ public class WifiRttTest extends TestBase {
             RangingResult result = currentResults.get(0);
             assertTrue("Wi-Fi RTT results: invalid result (wrong BSSID) entry on iteration " + i,
                     result.getMacAddress().toString().equals(testAp.BSSID));
+            assertEquals(
+                    "Wi-Fi RTT results: invalid result (non-null PeerHandle) entry on iteration "
+                            + i, null, result.getPeerHandle());
 
             allResults.add(result);
             int status = result.getStatus();
@@ -118,6 +126,20 @@ public class WifiRttTest extends TestBase {
                 distanceMms[i - numFailures] = result.getDistanceMm();
                 distanceStdDevMms[i - numFailures] = result.getDistanceStdDevMm();
                 rssis[i - numFailures] = result.getRssi();
+                numAttempted[i - numFailures] = result.getNumAttemptedMeasurements();
+                numSuccessful[i - numFailures] = result.getNumSuccessfulMeasurements();
+                timestampsMs[i - numFailures] = result.getRangingTimestampMillis();
+
+                byte[] currentLci = result.getLci();
+                byte[] currentLcr = result.getLcr();
+                if (i - numFailures > 0) {
+                    assertTrue("Wi-Fi RTT results: invalid result (LCI mismatch) on iteration " + i,
+                            Arrays.equals(currentLci, lastLci));
+                    assertTrue("Wi-Fi RTT results: invalid result (LCR mismatch) on iteration " + i,
+                            Arrays.equals(currentLcr, lastLcr));
+                }
+                lastLci = currentLci;
+                lastLcr = currentLcr;
             } else {
                 numFailures++;
             }
@@ -133,6 +155,12 @@ public class WifiRttTest extends TestBase {
                 ResultType.NEUTRAL, ResultUnit.NONE);
         reportLog.addValues("rssi_dbm", Arrays.copyOf(rssis, numGoodResults), ResultType.NEUTRAL,
                 ResultUnit.NONE);
+        reportLog.addValues("num_attempted", Arrays.copyOf(numAttempted, numGoodResults),
+                ResultType.NEUTRAL, ResultUnit.NONE);
+        reportLog.addValues("num_successful", Arrays.copyOf(numSuccessful, numGoodResults),
+                ResultType.NEUTRAL, ResultUnit.NONE);
+        reportLog.addValues("timestamps", Arrays.copyOf(timestampsMs, numGoodResults),
+                ResultType.NEUTRAL, ResultUnit.NONE);
         reportLog.submit();
 
         // Analyze results
@@ -156,12 +184,20 @@ public class WifiRttTest extends TestBase {
             return;
         }
 
+        ScanResult dummy = new ScanResult();
+        dummy.BSSID = "00:01:02:03:04:05";
+
         RangingRequest.Builder builder = new RangingRequest.Builder();
-        for (int i = 0; i < RangingRequest.getMaxPeers() + 1; ++i) {
-            ScanResult dummy = new ScanResult();
-            dummy.BSSID = "00:01:02:03:04:05";
+        for (int i = 0; i < RangingRequest.getMaxPeers() - 2; ++i) {
             builder.addAccessPoint(dummy);
         }
+
+        List<ScanResult> scanResults = new ArrayList<>();
+        scanResults.add(dummy);
+        scanResults.add(dummy);
+        scanResults.add(dummy);
+
+        builder.addAccessPoints(scanResults);
 
         try {
             mWifiRttManager.startRanging(builder.build(), mExecutor, new ResultCallback());
