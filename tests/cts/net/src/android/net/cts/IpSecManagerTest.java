@@ -353,7 +353,8 @@ public class IpSecManagerTest extends IpSecBaseTest {
         private static void assertUidStatsDelta(
                 int expectedTxByteDelta,
                 int expectedTxPacketDelta,
-                int expectedRxByteDelta,
+                int minRxByteDelta,
+                int maxRxByteDelta,
                 int expectedRxPacketDelta) {
             long newUidTxBytes = TrafficStats.getUidTxBytes(Os.getuid());
             long newUidRxBytes = TrafficStats.getUidRxBytes(Os.getuid());
@@ -361,7 +362,9 @@ public class IpSecManagerTest extends IpSecBaseTest {
             long newUidRxPackets = TrafficStats.getUidRxPackets(Os.getuid());
 
             assertEquals(expectedTxByteDelta, newUidTxBytes - uidTxBytes);
-            assertEquals(expectedRxByteDelta, newUidRxBytes - uidRxBytes);
+            assertTrue(
+                    newUidRxBytes - uidRxBytes >= minRxByteDelta
+                            && newUidRxBytes - uidRxBytes <= maxRxByteDelta);
             assertEquals(expectedTxPacketDelta, newUidTxPackets - uidTxPackets);
             assertEquals(expectedRxPacketDelta, newUidRxPackets - uidRxPackets);
         }
@@ -561,13 +564,13 @@ public class IpSecManagerTest extends IpSecBaseTest {
 
         StatsChecker.waitForNumPackets(expectedPackets);
 
-        if (udpEncapLen != 0) {
-            StatsChecker.assertUidStatsDelta(
-                    expectedOuterBytes, expectedPackets, expectedOuterBytes, expectedPackets);
-        } else {
-            StatsChecker.assertUidStatsDelta(
-                    expectedOuterBytes, expectedPackets, expectedInnerBytes, expectedPackets);
-        }
+        // eBPF only counts inner packets, whereas xt_qtaguid counts outer packets. Allow both
+        StatsChecker.assertUidStatsDelta(
+                expectedOuterBytes,
+                expectedPackets,
+                expectedInnerBytes,
+                expectedOuterBytes,
+                expectedPackets);
 
         // Unreliable at low numbers due to potential interference from other processes.
         if (sendCount >= 1000) {
@@ -607,7 +610,11 @@ public class IpSecManagerTest extends IpSecBaseTest {
 
             StatsChecker.waitForNumPackets(expectedNumPkts);
             StatsChecker.assertUidStatsDelta(
-                    expectedPacketSize, expectedNumPkts, expectedPacketSize, expectedNumPkts);
+                    expectedPacketSize,
+                    expectedNumPkts,
+                    expectedPacketSize,
+                    expectedPacketSize,
+                    expectedNumPkts);
             StatsChecker.assertIfaceStatsDelta(
                     expectedPacketSize, expectedNumPkts, expectedPacketSize, expectedNumPkts);
         }
