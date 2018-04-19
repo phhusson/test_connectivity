@@ -295,11 +295,10 @@ public class WifiManagerTest extends AndroidTestCase {
             fail("Please enable location for this test - since Marshmallow WiFi scan results are"
                     + " empty when location is disabled!");
         }
-        assertTrue(mWifiManager.isScanAlwaysAvailable());
         setWifiEnabled(false);
         Thread.sleep(DURATION);
         startScan();
-        if (isScanCurrentlyAvailable()) {
+        if (mWifiManager.isScanAlwaysAvailable() && isScanCurrentlyAvailable()) {
             // Make sure at least one AP is found.
             assertNotNull("mScanResult should not be null!", mScanResults);
             assertFalse("empty scan results!", mScanResults.isEmpty());
