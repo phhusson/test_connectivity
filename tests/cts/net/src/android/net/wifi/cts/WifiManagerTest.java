@@ -70,7 +70,7 @@ public class WifiManagerTest extends AndroidTestCase {
     private static final int STATE_WIFI_ENABLED = 2;
     private static final int STATE_WIFI_DISABLED = 3;
     private static final int STATE_SCANNING = 4;
-    private static final int STATE_SCAN_RESULTS_AVAILABLE = 5;
+    private static final int STATE_SCAN_DONE = 5;
 
     private static final String TAG = "WifiManagerTest";
     private static final String SSID1 = "\"WifiManagerTest\"";
@@ -96,13 +96,15 @@ public class WifiManagerTest extends AndroidTestCase {
         public void onReceive(Context context, Intent intent) {
             final String action = intent.getAction();
             if (action.equals(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION)) {
+
                 synchronized (mMySync) {
-                    if (mWifiManager.getScanResults() != null) {
+                    if (intent.getBooleanExtra(WifiManager.EXTRA_RESULTS_UPDATED, false)) {
                         mScanResults = mWifiManager.getScanResults();
-                        mMySync.expectedState = STATE_SCAN_RESULTS_AVAILABLE;
-                        mScanResults = mWifiManager.getScanResults();
-                        mMySync.notifyAll();
+                    } else {
+                        mScanResults = null;
                     }
+                    mMySync.expectedState = STATE_SCAN_DONE;
+                    mMySync.notifyAll();
                 }
             } else if (action.equals(WifiManager.WIFI_STATE_CHANGED_ACTION)) {
                 int newState = intent.getIntExtra(WifiManager.EXTRA_WIFI_STATE,
