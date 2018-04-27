@@ -838,10 +838,9 @@ public class WifiManagerTest extends AndroidTestCase {
 
         TestLocalOnlyHotspotCallback callback = startLocalOnlyHotspot();
 
-        // at this point, wifi should be off
-        assertFalse(mWifiManager.isWifiEnabled());
-
         stopLocalOnlyHotspot(callback, wifiEnabled);
+
+        // wifi should either stay on, or come back on
         assertEquals(wifiEnabled, mWifiManager.isWifiEnabled());
     }
 
@@ -853,7 +852,7 @@ public class WifiManagerTest extends AndroidTestCase {
      * tethering is started.
      * Note: Location mode must be enabled for this test.
      */
-    public void testSetWifiEnabledByAppDoesNotStopHotspot() {
+    public void testSetWifiEnabledByAppDoesNotStopHotspot() throws Exception {
         if (!WifiFeature.isWifiSupported(getContext())) {
             // skip the test if WiFi is not supported
             return;
@@ -865,15 +864,18 @@ public class WifiManagerTest extends AndroidTestCase {
 
         boolean wifiEnabled = mWifiManager.isWifiEnabled();
 
+        if (wifiEnabled) {
+            // disable wifi so we have something to turn on (some devices may be able to run
+            // simultaneous modes)
+            setWifiEnabled(false);
+        }
+
         TestLocalOnlyHotspotCallback callback = startLocalOnlyHotspot();
-        // at this point, wifi should be off
-        assertFalse(mWifiManager.isWifiEnabled());
 
         // now we should fail to turn on wifi
         assertFalse(mWifiManager.setWifiEnabled(true));
 
         stopLocalOnlyHotspot(callback, wifiEnabled);
-        assertEquals(wifiEnabled, mWifiManager.isWifiEnabled());
     }
 
     /**
@@ -897,9 +899,6 @@ public class WifiManagerTest extends AndroidTestCase {
 
         TestLocalOnlyHotspotCallback callback = startLocalOnlyHotspot();
 
-        // at this point, wifi should be off
-        assertFalse(mWifiManager.isWifiEnabled());
-
         // now make a second request - this should fail.
         TestLocalOnlyHotspotCallback callback2 = new TestLocalOnlyHotspotCallback(mLOHSLock);
         try {
@@ -908,9 +907,12 @@ public class WifiManagerTest extends AndroidTestCase {
             Log.d(TAG, "Caught the IllegalStateException we expected: called startLOHS twice");
             caughtException = true;
         }
+        if (!caughtException) {
+            // second start did not fail, should clean up the hotspot.
+            stopLocalOnlyHotspot(callback2, wifiEnabled);
+        }
         assertTrue(caughtException);
 
         stopLocalOnlyHotspot(callback, wifiEnabled);
-        assertEquals(wifiEnabled, mWifiManager.isWifiEnabled());
     }
 }
