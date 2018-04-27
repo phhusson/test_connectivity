@@ -23,7 +23,7 @@
 #include <sys/utsname.h>
 
 #include <gtest/gtest.h>
-#include <cutils/qtaguid.h>
+#include <qtaguid/qtaguid.h>
 
 int hasQtaguidKernelSupport() {
     struct utsname buf;
@@ -87,7 +87,7 @@ void checkNoSocketPointerLeaks(int family) {
     uint64_t sk_addr;
     uint64_t expect_addr = 0;
 
-    EXPECT_EQ(0, qtaguid_tagSocket(sockfd, tag, uid));
+    EXPECT_EQ(0, legacy_tagSocket(sockfd, tag, uid));
     EXPECT_EQ(0, getCtrlSkInfo(tag, uid, &sk_addr, &ref_cnt));
     EXPECT_EQ(expect_addr, sk_addr);
     close(sockfd);
@@ -106,7 +106,7 @@ TEST (NativeQtaguidTest, close_socket_without_untag) {
     int tag = arc4random();
     int ref_cnt;
     uint64_t dummy_sk;
-    EXPECT_EQ(0, qtaguid_tagSocket(sockfd, tag, uid));
+    EXPECT_EQ(0, legacy_tagSocket(sockfd, tag, uid));
     EXPECT_EQ(0, getCtrlSkInfo(tag, uid, &dummy_sk, &ref_cnt));
     EXPECT_EQ(2, ref_cnt);
     close(sockfd);
@@ -125,7 +125,7 @@ TEST (NativeQtaguidTest, close_socket_without_untag_ipv6) {
     int tag = arc4random();
     int ref_cnt;
     uint64_t dummy_sk;
-    EXPECT_EQ(0, qtaguid_tagSocket(sockfd, tag, uid));
+    EXPECT_EQ(0, legacy_tagSocket(sockfd, tag, uid));
     EXPECT_EQ(0, getCtrlSkInfo(tag, uid, &dummy_sk, &ref_cnt));
     EXPECT_EQ(2, ref_cnt);
     close(sockfd);
