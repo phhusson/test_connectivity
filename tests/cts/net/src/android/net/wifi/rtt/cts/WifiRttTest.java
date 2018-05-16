@@ -16,9 +16,11 @@
 
 package android.net.wifi.rtt.cts;
 
+import android.content.IntentFilter;
 import android.net.wifi.ScanResult;
 import android.net.wifi.rtt.RangingRequest;
 import android.net.wifi.rtt.RangingResult;
+import android.net.wifi.rtt.WifiRttManager;
 
 import com.android.compatibility.common.util.DeviceReportLog;
 import com.android.compatibility.common.util.ResultType;
@@ -60,18 +62,10 @@ public class WifiRttTest extends TestBase {
             return;
         }
 
-        // Find the associated AP: get BSSID and disable Wi-Fi
-        String bssid = mWifiManager.getConnectionInfo().getBSSID();
-        assertNotNull("Null BSSID - must be associated!", bssid);
-        assertTrue("Cannot disable Wi-Fi (to disassociate)", mWifiManager.setWifiEnabled(false));
-        WifiEnableBroadcastReceiver receiver = new WifiEnableBroadcastReceiver(false);
-        mContext.registerReceiver(receiver, mWifiStateIntent);
-        receiver.waitForDesiredState();
-        mContext.unregisterReceiver(receiver);
-
         // Scan for IEEE 802.11mc supporting APs
-        ScanResult testAp = scanForTestAp(bssid, MAX_NUM_SCAN_RETRIES_SEARCHING_FOR_IEEE80211MC_AP);
-        assertTrue("Cannot find test AP: bssid=" + bssid, testAp != null);
+        ScanResult testAp = scanForTestAp(SSID_OF_TEST_AP,
+                MAX_NUM_SCAN_RETRIES_SEARCHING_FOR_IEEE80211MC_AP);
+        assertTrue("Cannot find test AP", testAp != null);
 
         // Perform RTT operations
         RangingRequest request = new RangingRequest.Builder().addAccessPoint(testAp).build();
