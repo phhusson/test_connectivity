@@ -43,10 +43,6 @@ import java.util.concurrent.TimeUnit;
 public class TestBase extends AndroidTestCase {
     protected static final String TAG = "WifiRttCtsTests";
 
-    // The SSID of the test AP which supports IEEE 802.11mc
-    // TODO b/74518964: finalize correct method to refer to an AP in the test lab
-    static final String SSID_OF_TEST_AP = "standalone_rtt";
-
     // wait for Wi-Fi RTT to become available
     private static final int WAIT_FOR_RTT_CHANGE_SECS = 10;
 
@@ -211,33 +207,30 @@ public class TestBase extends AndroidTestCase {
     }
 
     /**
-     * Start a scan and return the test AP with the specified SSID and which supports IEEE 802.11mc.
-     * If the AP is not found re-attempts the scan maxScanRetries times (i.e. total number of
-     * scans can be maxScanRetries + 1).
+     * Start a scan and return a test AP which supports IEEE 802.11mc and which has the highest
+     * RSSI. Will perform N (parameterized) scans and get the best AP across both scans.
      *
      * Returns null if test AP is not found in the specified number of scans.
      *
-     * @param ssid The SSID of the test AP
-     * @param maxScanRetries Maximum number of scans retries (in addition to first scan).
+     * @param numScanRetries Maximum number of scans retries (in addition to first scan).
      */
-    protected ScanResult scanForTestAp(String ssid, int maxScanRetries)
+    protected ScanResult scanForTestAp(int numScanRetries)
             throws InterruptedException {
         int scanCount = 0;
-        while (scanCount <= maxScanRetries) {
+        ScanResult bestTestAp = null;
+        while (scanCount <= numScanRetries) {
             for (ScanResult scanResult : scanAps()) {
                 if (!scanResult.is80211mcResponder()) {
                     continue;
                 }
-                if (!ssid.equals(scanResult.SSID)) {
-                    continue;
+                if (bestTestAp == null || scanResult.level > bestTestAp.level) {
+                    bestTestAp = scanResult;
                 }
-
-                return scanResult;
             }
 
             scanCount++;
         }
 
-        return null;
+        return bestTestAp;
     }
 }

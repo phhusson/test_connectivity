@@ -34,8 +34,8 @@ import java.util.List;
  * Wi-Fi RTT CTS test: range to all available Access Points which support IEEE 802.11mc.
  */
 public class WifiRttTest extends TestBase {
-    // Max number of scan retries to do while searching for APs supporting IEEE 802.11mc
-    private static final int MAX_NUM_SCAN_RETRIES_SEARCHING_FOR_IEEE80211MC_AP = 2;
+    // Number of scans to do while searching for APs supporting IEEE 802.11mc
+    private static final int NUM_SCANS_SEARCHING_FOR_IEEE80211MC_AP = 2;
 
     // Number of RTT measurements per AP
     private static final int NUM_OF_RTT_ITERATIONS = 10;
@@ -63,8 +63,7 @@ public class WifiRttTest extends TestBase {
         }
 
         // Scan for IEEE 802.11mc supporting APs
-        ScanResult testAp = scanForTestAp(SSID_OF_TEST_AP,
-                MAX_NUM_SCAN_RETRIES_SEARCHING_FOR_IEEE80211MC_AP);
+        ScanResult testAp = scanForTestAp(NUM_SCANS_SEARCHING_FOR_IEEE80211MC_AP);
         assertTrue("Cannot find test AP", testAp != null);
 
         // Perform RTT operations
