@@ -16,9 +16,11 @@
 
 package android.net.wifi.rtt.cts;
 
+import android.content.IntentFilter;
 import android.net.wifi.ScanResult;
 import android.net.wifi.rtt.RangingRequest;
 import android.net.wifi.rtt.RangingResult;
+import android.net.wifi.rtt.WifiRttManager;
 
 import com.android.compatibility.common.util.DeviceReportLog;
 import com.android.compatibility.common.util.ResultType;
@@ -32,8 +34,8 @@ import java.util.List;
  * Wi-Fi RTT CTS test: range to all available Access Points which support IEEE 802.11mc.
  */
 public class WifiRttTest extends TestBase {
-    // Max number of scan retries to do while searching for APs supporting IEEE 802.11mc
-    private static final int MAX_NUM_SCAN_RETRIES_SEARCHING_FOR_IEEE80211MC_AP = 2;
+    // Number of scans to do while searching for APs supporting IEEE 802.11mc
+    private static final int NUM_SCANS_SEARCHING_FOR_IEEE80211MC_AP = 2;
 
     // Number of RTT measurements per AP
     private static final int NUM_OF_RTT_ITERATIONS = 10;
@@ -60,18 +62,9 @@ public class WifiRttTest extends TestBase {
             return;
         }
 
-        // Find the associated AP: get BSSID and disable Wi-Fi
-        String bssid = mWifiManager.getConnectionInfo().getBSSID();
-        assertNotNull("Null BSSID - must be associated!", bssid);
-        assertTrue("Cannot disable Wi-Fi (to disassociate)", mWifiManager.setWifiEnabled(false));
-        WifiEnableBroadcastReceiver receiver = new WifiEnableBroadcastReceiver(false);
-        mContext.registerReceiver(receiver, mWifiStateIntent);
-        receiver.waitForDesiredState();
-        mContext.unregisterReceiver(receiver);
-
         // Scan for IEEE 802.11mc supporting APs
-        ScanResult testAp = scanForTestAp(bssid, MAX_NUM_SCAN_RETRIES_SEARCHING_FOR_IEEE80211MC_AP);
-        assertTrue("Cannot find test AP: bssid=" + bssid, testAp != null);
+        ScanResult testAp = scanForTestAp(NUM_SCANS_SEARCHING_FOR_IEEE80211MC_AP);
+        assertTrue("Cannot find test AP", testAp != null);
 
         // Perform RTT operations
         RangingRequest request = new RangingRequest.Builder().addAccessPoint(testAp).build();
