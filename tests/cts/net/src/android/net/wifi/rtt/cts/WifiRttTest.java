@@ -165,6 +165,10 @@ public class WifiRttTest extends TestBase {
                     (distanceMax - distanceAvg) <= MAX_VARIATION_FROM_AVERAGE_DISTANCE_MM);
             assertTrue("Wi-Fi RTT: Variation (min direction) exceeds threshold",
                     (distanceAvg - distanceMin) <= MAX_VARIATION_FROM_AVERAGE_DISTANCE_MM);
+            for (int i = 0; i < numGoodResults; ++i) {
+                assertNotSame("Number of attempted measurements is 0", 0, numAttempted[i]);
+                assertNotSame("Number of successful measurements is 0", 0, numSuccessful[i]);
+            }
         }
     }
 
