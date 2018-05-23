@@ -57,17 +57,21 @@ public class MixedModesTest extends AbstractRestrictBackgroundNetworkTestCase {
         }
     }
 
+    @Override
+    public boolean isSupported() throws Exception {
+        if (!isDozeModeEnabled()) {
+            Log.i(TAG, "Skipping " + getClass() + "." + getName()
+                    + "() because device does not support Doze Mode");
+            return false;
+        }
+        return true;
+    }
+
     /**
      * Tests all DS ON and BS ON scenarios from network-policy-restrictions.md on metered networks.
      */
     public void testDataAndBatterySaverModes_meteredNetwork() throws Exception {
         if (!isSupported()) return;
-
-        if (!isDozeModeEnabled()) {
-            Log.w(TAG, "testDataAndBatterySaverModes_meteredNetwork() skipped because "
-                    + "device does not support Doze Mode");
-            return;
-        }
 
         Log.i(TAG, "testDataAndBatterySaverModes_meteredNetwork() tests");
         if (!setMeteredNetwork()) {
@@ -139,12 +143,6 @@ public class MixedModesTest extends AbstractRestrictBackgroundNetworkTestCase {
     public void testDataAndBatterySaverModes_nonMeteredNetwork() throws Exception {
         if (!isSupported()) return;
 
-        if (!isDozeModeEnabled()) {
-            Log.w(TAG, "testDataAndBatterySaverModes_nonMeteredNetwork() skipped because "
-                    + "device does not support Doze Mode");
-            return;
-        }
-
         if (!setUnmeteredNetwork()) {
             Log.w(TAG, "testDataAndBatterySaverModes_nonMeteredNetwork() skipped because network"
                     + " is metered");
@@ -211,11 +209,6 @@ public class MixedModesTest extends AbstractRestrictBackgroundNetworkTestCase {
         if (!isSupported()) {
             return;
         }
-        if (!isDozeModeEnabled()) {
-            Log.i(TAG, "Skipping " + getClass() + "." + getName()
-                    + "() because device does not support Doze Mode");
-            return;
-        }
 
         setBatterySaverMode(true);
         setDozeMode(true);
@@ -246,11 +239,6 @@ public class MixedModesTest extends AbstractRestrictBackgroundNetworkTestCase {
         if (!isSupported()) {
             return;
         }
-        if (!isDozeModeEnabled()) {
-            Log.i(TAG, "Skipping " + getClass() + "." + getName()
-                    + "() because device does not support Doze Mode");
-            return;
-        }
 
         setDozeMode(true);
         setAppIdle(true);
@@ -275,11 +263,6 @@ public class MixedModesTest extends AbstractRestrictBackgroundNetworkTestCase {
 
     public void testAppIdleAndDoze_tempPowerSaveWhitelists() throws Exception {
         if (!isSupported()) {
-            return;
-        }
-        if (!isDozeModeEnabled()) {
-            Log.i(TAG, "Skipping " + getClass() + "." + getName()
-                    + "() because device does not support Doze Mode");
             return;
         }
 
