@@ -20,6 +20,10 @@ import static android.net.ConnectivityManager.ACTION_RESTRICT_BACKGROUND_CHANGED
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_DISABLED;
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED;
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_WHITELISTED;
+import static android.os.BatteryManager.BATTERY_PLUGGED_AC;
+import static android.os.BatteryManager.BATTERY_PLUGGED_USB;
+import static android.os.BatteryManager.BATTERY_PLUGGED_WIRELESS;
+
 import static com.android.compatibility.common.util.SystemUtil.runShellCommand;
 
 import java.util.concurrent.CountDownLatch;
@@ -81,6 +85,9 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     protected static final String NOTIFICATION_TYPE_ACTION_BUNDLE = "ACTION_BUNDLE";
     protected static final String NOTIFICATION_TYPE_ACTION_REMOTE_INPUT = "ACTION_REMOTE_INPUT";
 
+    // TODO: Update BatteryManager.BATTERY_PLUGGED_ANY as @TestApi
+    public static final int BATTERY_PLUGGED_ANY =
+            BATTERY_PLUGGED_AC | BATTERY_PLUGGED_USB | BATTERY_PLUGGED_WIRELESS;
 
     private static final String NETWORK_STATUS_SEPARATOR = "\\|";
     private static final int SECOND_IN_MS = 1000;
@@ -817,11 +824,15 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
 
     protected void turnBatteryOn() throws Exception {
         executeSilentShellCommand("cmd battery unplug");
+        executeSilentShellCommand("cmd battery set status "
+                + BatteryManager.BATTERY_STATUS_DISCHARGING);
         assertBatteryState(false);
     }
 
     protected void turnBatteryOff() throws Exception {
-        executeSilentShellCommand("cmd battery reset");
+        executeSilentShellCommand("cmd battery set ac " + BATTERY_PLUGGED_ANY);
+        executeSilentShellCommand("cmd battery set status "
+                + BatteryManager.BATTERY_STATUS_CHARGING);
         assertBatteryState(true);
     }
 
