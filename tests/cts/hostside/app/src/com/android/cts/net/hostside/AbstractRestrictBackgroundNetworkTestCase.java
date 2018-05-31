@@ -831,6 +831,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
 
     protected void turnBatteryOff() throws Exception {
         executeSilentShellCommand("cmd battery set ac " + BATTERY_PLUGGED_ANY);
+        executeSilentShellCommand("cmd battery set level 100");
         executeSilentShellCommand("cmd battery set status "
                 + BatteryManager.BATTERY_STATUS_CHARGING);
         assertBatteryState(true);
