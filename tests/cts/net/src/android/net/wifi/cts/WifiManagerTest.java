@@ -21,7 +21,10 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
+import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
@@ -32,9 +35,11 @@ import android.net.wifi.WifiManager.WifiLock;
 import android.net.wifi.hotspot2.PasspointConfiguration;
 import android.net.wifi.hotspot2.pps.Credential;
 import android.net.wifi.hotspot2.pps.HomeSp;
+import android.os.Process;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.test.AndroidTestCase;
+import android.util.ArraySet;
 import android.util.Log;
 
 import com.android.compatibility.common.util.WifiConfigCreator;
@@ -45,6 +50,7 @@ import java.security.MessageDigest;
 import java.security.cert.X509Certificate;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -950,5 +956,120 @@ public class WifiManagerTest extends AndroidTestCase {
         assertTrue(caughtException);
 
         stopLocalOnlyHotspot(callback, wifiEnabled);
+    }
+
+    /**
+     * Verify that the {@link android.Manifest.permission#NETWORK_STACK} permission is never held by
+     * any package.
+     * <p>
+     * No apps should <em>ever</em> attempt to acquire this permission, since it would give those
+     * apps extremely broad access to connectivity functionality.
+     */
+    public void testNetworkStackPermission() {
+        final PackageManager pm = getContext().getPackageManager();
+
+        final List<PackageInfo> holding = pm.getPackagesHoldingPermissions(new String[] {
+                android.Manifest.permission.NETWORK_STACK
+        }, PackageManager.MATCH_UNINSTALLED_PACKAGES);
+        for (PackageInfo pi : holding) {
+            fail("The NETWORK_STACK permission must not be held by " + pi.packageName
+                    + " and must be revoked for security reasons");
+        }
+    }
+
+    /**
+     * Verify that the {@link android.Manifest.permission#NETWORK_SETTINGS} permission is
+     * never held by any package.
+     * <p>
+     * Only Settings, SysUi and shell apps should <em>ever</em> attempt to acquire this
+     * permission, since it would give those apps extremely broad access to connectivity
+     * functionality.  The permission is intended to be granted to only those apps with direct user
+     * access and no others.
+     */
+    public void testNetworkSettingsPermission() {
+        final PackageManager pm = getContext().getPackageManager();
+
+        final ArraySet<String> allowedPackages = new ArraySet();
+        final ArraySet<Integer> allowedUIDs = new ArraySet();
+        // explicitly add allowed UIDs
+        allowedUIDs.add(Process.SYSTEM_UID);
+        allowedUIDs.add(Process.SHELL_UID);
+        allowedUIDs.add(Process.PHONE_UID);
+
+        // only quick settings is allowed to bind to the BIND_QUICK_SETTINGS_TILE permission, using
+        // this fact to determined allowed package name for sysui
+        String validPkg = "";
+        final List<PackageInfo> sysuiPackage = pm.getPackagesHoldingPermissions(new String[] {
+                android.Manifest.permission.BIND_QUICK_SETTINGS_TILE
+        }, PackageManager.MATCH_UNINSTALLED_PACKAGES);
+
+        if (sysuiPackage.size() > 1) {
+            fail("The BIND_QUICK_SETTINGS_TILE permission must only be held by one package");
+        }
+
+        if (sysuiPackage.size() == 1) {
+            validPkg = sysuiPackage.get(0).packageName;
+            allowedPackages.add(validPkg);
+        }
+
+        // the captive portal flow also currently holds the NETWORK_SETTINGS permission
+        final Intent intent = new Intent(ConnectivityManager.ACTION_CAPTIVE_PORTAL_SIGN_IN);
+        final ResolveInfo ri = pm.resolveActivity(intent, PackageManager.MATCH_DISABLED_COMPONENTS);
+        if (ri != null) {
+            allowedPackages.add(ri.activityInfo.packageName);
+        }
+
+        final List<PackageInfo> holding = pm.getPackagesHoldingPermissions(new String[] {
+                android.Manifest.permission.NETWORK_SETTINGS
+        }, PackageManager.MATCH_UNINSTALLED_PACKAGES);
+        for (PackageInfo pi : holding) {
+            String packageName = pi.packageName;
+            if (allowedPackages.contains(packageName)) {
+                // this is an explicitly allowed package
+            } else {
+                // now check if the packages are from allowed UIDs
+                boolean allowed = false;
+                try {
+                    if (allowedUIDs.contains(pm.getPackageUid(packageName, 0))) {
+                        allowed = true;
+                        Log.d(TAG, packageName + " is on an allowed UID");
+                    }
+                } catch (PackageManager.NameNotFoundException e) { }
+                if (!allowed) {
+                    fail("The NETWORK_SETTINGS permission must not be held by "
+                            + packageName + " and must be revoked for security reasons");
+                }
+            }
+        }
+    }
+
+    /**
+     * Verify that the {@link android.Manifest.permission#NETWORK_SETUP_WIZARD} permission is
+     * only held by the device setup wizard application.
+     * <p>
+     * Only the SetupWizard app should <em>ever</em> attempt to acquire this
+     * permission, since it would give those apps extremely broad access to connectivity
+     * functionality.  The permission is intended to be granted to only the device setup wizard.
+     */
+    public void testNetworkSetupWizardPermission() {
+        final PackageManager pm = getContext().getPackageManager();
+
+        final Intent intent = new Intent(Intent.ACTION_MAIN);
+        intent.addCategory(Intent.CATEGORY_SETUP_WIZARD);
+        final ResolveInfo ri = pm.resolveActivity(intent, PackageManager.MATCH_DISABLED_COMPONENTS);
+        String validPkg = "";
+        if (ri != null) {
+            validPkg = ri.activityInfo.packageName;
+        }
+
+        final List<PackageInfo> holding = pm.getPackagesHoldingPermissions(new String[] {
+                android.Manifest.permission.NETWORK_SETUP_WIZARD
+        }, PackageManager.MATCH_UNINSTALLED_PACKAGES);
+        for (PackageInfo pi : holding) {
+            if (!Objects.equals(pi.packageName, validPkg)) {
+                fail("The NETWORK_SETUP_WIZARD permission must not be held by " + pi.packageName
+                    + " and must be revoked for security reasons [" + validPkg +"]");
+            }
+        }
     }
 }
