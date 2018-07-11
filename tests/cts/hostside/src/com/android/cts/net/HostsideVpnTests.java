@@ -44,4 +44,8 @@ public class HostsideVpnTests extends HostsideNetworkTestCase {
     public void testAppDisallowed() throws Exception {
         runDeviceTests(TEST_PKG, TEST_PKG + ".VpnTest", "testAppDisallowed");
     }
+
+    public void testGetConnectionOwnerUidSecurity() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".VpnTest", "testGetConnectionOwnerUidSecurity");
+    }
 }
