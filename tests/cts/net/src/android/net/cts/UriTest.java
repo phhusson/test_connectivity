@@ -158,20 +158,59 @@ public class UriTest extends AndroidTestCase {
         String encoded = Uri.encode("Bob:/", "/");
         assertEquals(-1, encoded.indexOf(':'));
         assertTrue(encoded.indexOf('/') > -1);
-        assertDecode(null);
-        assertDecode("");
-        assertDecode("Bob");
-        assertDecode(":Bob");
-        assertDecode("::Bob");
-        assertDecode("Bob::Lee");
-        assertDecode("Bob:Lee");
-        assertDecode("Bob::");
-        assertDecode("Bob:");
-        assertDecode("::Bob::");
+        assertEncodeDecodeRoundtripExact(null);
+        assertEncodeDecodeRoundtripExact("");
+        assertEncodeDecodeRoundtripExact("Bob");
+        assertEncodeDecodeRoundtripExact(":Bob");
+        assertEncodeDecodeRoundtripExact("::Bob");
+        assertEncodeDecodeRoundtripExact("Bob::Lee");
+        assertEncodeDecodeRoundtripExact("Bob:Lee");
+        assertEncodeDecodeRoundtripExact("Bob::");
+        assertEncodeDecodeRoundtripExact("Bob:");
+        assertEncodeDecodeRoundtripExact("::Bob::");
     }
 
-    private void assertDecode(String s) {
+    private static void assertEncodeDecodeRoundtripExact(String s) {
         assertEquals(s, Uri.decode(Uri.encode(s, null)));
+    }
+
+    public void testDecode_emptyString_returnsEmptyString() {
+        assertEquals("", Uri.decode(""));
+    }
+
+    public void testDecode_null_returnsNull() {
+        assertNull(Uri.decode(null));
+    }
+
+    public void testDecode_wrongHexDigit() {
+        // %p in the end.
+        assertEquals("ab/$\u0102%\u0840\uFFFD\u0000", Uri.decode("ab%2f$%C4%82%25%e0%a1%80%p"));
+    }
+
+    public void testDecode_secondHexDigitWrong() {
+        // %1p in the end.
+        assertEquals("ab/$\u0102%\u0840\uFFFD\u0001", Uri.decode("ab%2f$%c4%82%25%e0%a1%80%1p"));
+    }
+
+    public void testDecode_endsWithPercent_appendsUnknownCharacter() {
+        // % in the end.
+        assertEquals("ab/$\u0102%\u0840\uFFFD", Uri.decode("ab%2f$%c4%82%25%e0%a1%80%"));
+    }
+
+    public void testDecode_plusNotConverted() {
+        assertEquals("ab/$\u0102%+\u0840", Uri.decode("ab%2f$%c4%82%25+%e0%a1%80"));
+    }
+
+    // Last character needs decoding (make sure we are flushing the buffer with chars to decode).
+    public void testDecode_lastCharacter() {
+        assertEquals("ab/$\u0102%\u0840", Uri.decode("ab%2f$%c4%82%25%e0%a1%80"));
+    }
+
+    // Check that a second row of encoded characters is decoded properly (internal buffers are
+    // reset properly).
+    public void testDecode_secondRowOfEncoded() {
+        assertEquals("ab/$\u0102%\u0840aa\u0840",
+                Uri.decode("ab%2f$%c4%82%25%e0%a1%80aa%e0%a1%80"));
     }
 
     public void testFromFile() {
