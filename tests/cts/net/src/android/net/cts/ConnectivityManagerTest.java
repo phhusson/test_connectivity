@@ -16,9 +16,12 @@
 
 package android.net.cts;
 
+import static android.content.pm.PackageManager.FEATURE_TELEPHONY;
+import static android.content.pm.PackageManager.FEATURE_WIFI;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_IMS;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED;
+import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
 import static android.provider.Settings.Global.NETWORK_METERED_MULTIPATH_PREFERENCE;
 import static com.android.compatibility.common.util.SystemUtil.runShellCommand;
@@ -34,6 +37,7 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.NetworkCallback;
+import android.net.LinkProperties;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkConfig;
@@ -60,10 +64,18 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.lang.NumberFormatException;
+import java.net.HttpURLConnection;
+import java.net.Inet6Address;
+import java.net.InetAddress;
 import java.net.Socket;
 import java.net.InetSocketAddress;
+import java.net.URL;
+import java.net.UnknownHostException;
+import java.nio.charset.StandardCharsets;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Scanner;
 import java.util.concurrent.CountDownLatch;
@@ -71,6 +83,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import libcore.io.Streams;
 
 public class ConnectivityManagerTest extends AndroidTestCase {
 
@@ -124,6 +137,8 @@ public class ConnectivityManagerTest extends AndroidTestCase {
     private final HashMap<Integer, NetworkConfig> mNetworks =
             new HashMap<Integer, NetworkConfig>();
     boolean mWifiConnectAttempted;
+    private TestNetworkCallback mCellNetworkCallback;
+
 
     @Override
     protected void setUp() throws Exception {
@@ -158,6 +173,10 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         if (mWifiConnectAttempted) {
             disconnectFromWifi(null);
         }
+        if (cellConnectAttempted()) {
+            disconnectFromCell();
+        }
+        super.tearDown();
     }
 
     /**
@@ -264,6 +283,95 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         }
     }
 
+    /**
+     * Tests that connections can be opened on WiFi and cellphone networks,
+     * and that they are made from different IP addresses.
+     */
+    public void testOpenConnection() throws Exception {
+        boolean canRunTest = mPackageManager.hasSystemFeature(FEATURE_WIFI)
+                && mPackageManager.hasSystemFeature(FEATURE_TELEPHONY);
+        if (!canRunTest) {
+            Log.i(TAG,"testOpenConnection cannot execute unless device supports both WiFi "
+                    + "and a cellular connection");
+            return;
+        }
+
+        Network wifiNetwork = connectToWifi();
+        Network cellNetwork = connectToCell();
+        // This server returns the requestor's IP address as the response body.
+        URL url = new URL("http://google-ipv6test.appspot.com/ip.js?fmt=text");
+        String wifiAddressString = httpGet(wifiNetwork, url);
+        String cellAddressString = httpGet(cellNetwork, url);
+
+        assertFalse(String.format("Same address '%s' on two different networks (%s, %s)",
+                wifiAddressString, wifiNetwork, cellNetwork),
+                wifiAddressString.equals(cellAddressString));
+
+        // Sanity check that the IP addresses that the requests appeared to come from
+        // are actually on the respective networks.
+        assertOnNetwork(wifiAddressString, wifiNetwork);
+        assertOnNetwork(cellAddressString, cellNetwork);
+
+        assertFalse("Unexpectedly equal: " + wifiNetwork, wifiNetwork.equals(cellNetwork));
+    }
+
+    private Network connectToCell() throws InterruptedException {
+        if (cellConnectAttempted()) {
+            throw new IllegalStateException("Already connected");
+        }
+        NetworkRequest cellRequest = new NetworkRequest.Builder()
+                .addTransportType(TRANSPORT_CELLULAR)
+                .addCapability(NET_CAPABILITY_INTERNET)
+                .build();
+        mCellNetworkCallback = new TestNetworkCallback();
+        mCm.requestNetwork(cellRequest, mCellNetworkCallback);
+        final Network cellNetwork = mCellNetworkCallback.waitForAvailable();
+        assertNotNull("Cell network not available within timeout", cellNetwork);
+        return cellNetwork;
+    }
+
+    private boolean cellConnectAttempted() {
+        return mCellNetworkCallback != null;
+    }
+
+    private void disconnectFromCell() {
+        if (!cellConnectAttempted()) {
+            throw new IllegalStateException("Cell connection not attempted");
+        }
+        mCm.unregisterNetworkCallback(mCellNetworkCallback);
+        mCellNetworkCallback = null;
+    }
+
+    /**
+     * Performs a HTTP GET to the specified URL on the specified Network, and returns
+     * the response body decoded as UTF-8.
+     */
+    private static String httpGet(Network network, URL httpUrl) throws IOException {
+        HttpURLConnection connection = (HttpURLConnection) network.openConnection(httpUrl);
+        try {
+            InputStream inputStream = connection.getInputStream();
+            return Streams.readFully(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    private void assertOnNetwork(String adressString, Network network) throws UnknownHostException {
+        InetAddress address = InetAddress.getByName(adressString);
+        LinkProperties linkProperties = mCm.getLinkProperties(network);
+        // To make sure that the request went out on the right network, check that
+        // the IP address seen by the server is assigned to the expected network.
+        // We can only do this for IPv6 addresses, because in IPv4 we will likely
+        // have a private IPv4 address, and that won't match what the server sees.
+        if (address instanceof Inet6Address) {
+            assertContains(linkProperties.getAddresses(), address);
+        }
+    }
+
+    private static<T> void assertContains(Collection<T> collection, T element) {
+        assertTrue(element + " not found in " + collection, collection.contains(element));
+    }
+
     private void assertStartUsingNetworkFeatureUnsupported(int networkType, String feature) {
         try {
             mCm.startUsingNetworkFeature(networkType, feature);
@@ -342,7 +450,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
      * that it would increase test coverage by much (how many devices have 3G radio but not Wifi?).
      */
     public void testRegisterNetworkCallback() {
-        if (!mPackageManager.hasSystemFeature(PackageManager.FEATURE_WIFI)) {
+        if (!mPackageManager.hasSystemFeature(FEATURE_WIFI)) {
             Log.i(TAG, "testRegisterNetworkCallback cannot execute unless device supports WiFi");
             return;
         }
@@ -382,7 +490,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
      * of a {@code NetworkCallback}.
      */
     public void testRegisterNetworkCallback_withPendingIntent() {
-        if (!mPackageManager.hasSystemFeature(PackageManager.FEATURE_WIFI)) {
+        if (!mPackageManager.hasSystemFeature(FEATURE_WIFI)) {
             Log.i(TAG, "testRegisterNetworkCallback cannot execute unless device supports WiFi");
             return;
         }
@@ -476,7 +584,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
      * Tests reporting of connectivity changed.
      */
     public void testConnectivityChanged_manifestRequestOnly_shouldNotReceiveIntent() {
-        if (!mPackageManager.hasSystemFeature(PackageManager.FEATURE_WIFI)) {
+        if (!mPackageManager.hasSystemFeature(FEATURE_WIFI)) {
             Log.i(TAG, "testConnectivityChanged_manifestRequestOnly_shouldNotReceiveIntent cannot execute unless device supports WiFi");
             return;
         }
@@ -493,7 +601,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
     }
 
     public void testConnectivityChanged_whenRegistered_shouldReceiveIntent() {
-        if (!mPackageManager.hasSystemFeature(PackageManager.FEATURE_WIFI)) {
+        if (!mPackageManager.hasSystemFeature(FEATURE_WIFI)) {
             Log.i(TAG, "testConnectivityChanged_whenRegistered_shouldReceiveIntent cannot execute unless device supports WiFi");
             return;
         }
@@ -513,14 +621,14 @@ public class ConnectivityManagerTest extends AndroidTestCase {
 
     public void testConnectivityChanged_manifestRequestOnlyPreN_shouldReceiveIntent()
             throws InterruptedException {
-        if (!mPackageManager.hasSystemFeature(PackageManager.FEATURE_WIFI)) {
+        if (!mPackageManager.hasSystemFeature(FEATURE_WIFI)) {
             Log.i(TAG, "testConnectivityChanged_manifestRequestOnlyPreN_shouldReceiveIntent cannot execute unless device supports WiFi");
             return;
         }
-        Intent startIntent = new Intent();
-        startIntent.setComponent(new ComponentName("android.net.cts.appForApi23",
-                "android.net.cts.appForApi23.ConnectivityListeningActivity"));
-        mContext.startActivity(startIntent);
+        mContext.startActivity(new Intent()
+                .setComponent(new ComponentName("android.net.cts.appForApi23",
+                        "android.net.cts.appForApi23.ConnectivityListeningActivity"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         Thread.sleep(200);
 
         toggleWifi();
