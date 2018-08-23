@@ -23,6 +23,9 @@ import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
 import android.test.AndroidTestCase;
 
+import com.android.compatibility.common.util.CddTest;
+
+@CddTest(requirement="7.4.2/C-1-1")
 public class WifiConfigurationTest extends AndroidTestCase {
     private  WifiManager mWifiManager;
     @Override

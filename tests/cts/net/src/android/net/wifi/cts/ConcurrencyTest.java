@@ -31,9 +31,12 @@ import static android.net.wifi.p2p.WifiP2pManager.WIFI_P2P_STATE_DISABLED;
 import static android.net.wifi.p2p.WifiP2pManager.WIFI_P2P_STATE_ENABLED;
 import android.test.AndroidTestCase;
 
+import com.android.compatibility.common.util.CddTest;
+
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+@CddTest(requirement="7.4.2.1/C-1-1,C-1-3")
 public class ConcurrencyTest extends AndroidTestCase {
     private class MySync {
         int expectedWifiState;

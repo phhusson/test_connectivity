@@ -21,6 +21,9 @@ import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.WifiLock;
 import android.test.AndroidTestCase;
 
+import com.android.compatibility.common.util.CddTest;
+
+@CddTest(requirement="7.4.2/C-1-1")
 public class WifiManager_WifiLockTest extends AndroidTestCase {
 
     private static final String WIFI_TAG = "WifiManager_WifiLockTest";

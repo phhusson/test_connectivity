@@ -29,9 +29,11 @@ import android.net.wifi.WifiSsid;
 import android.test.AndroidTestCase;
 
 import com.android.compatibility.common.util.PollingCheck;
+import com.android.compatibility.common.util.CddTest;
 
 import java.util.concurrent.Callable;
 
+@CddTest(requirement="7.4.2/C-1-1")
 public class WifiInfoTest extends AndroidTestCase {
     private static class MySync {
         int expectedState = STATE_NULL;

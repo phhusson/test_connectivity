@@ -41,6 +41,8 @@ import android.provider.Settings;
 import android.test.AndroidTestCase;
 import android.util.Log;
 
+import com.android.compatibility.common.util.CddTest;
+
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -54,6 +56,7 @@ import java.util.concurrent.TimeUnit;
  * Wi-Fi Aware CTS test suite: single device testing. Performs tests on a single
  * device to validate Wi-Fi Aware.
  */
+@CddTest(requirement="7.4.2.3/C-1-1")
 public class SingleDeviceTest extends AndroidTestCase {
     private static final String TAG = "WifiAwareCtsTests";
 
@@ -485,6 +488,7 @@ public class SingleDeviceTest extends AndroidTestCase {
      * then the attach/destroy will not correspond to enable/disable and will not result in a new
      * MAC address being generated.
      */
+    @CddTest(requirement="7.4.2.3/C-1-4")
     public void testAttachDiscoveryAddressChanges() {
         if (!TestUtils.shouldTestWifiAware(getContext())) {
             return;

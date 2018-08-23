@@ -37,6 +37,7 @@ import android.provider.Settings;
 import android.test.AndroidTestCase;
 import android.util.Log;
 
+import com.android.compatibility.common.util.CddTest;
 import com.android.compatibility.common.util.WifiConfigCreator;
 
 import java.net.HttpURLConnection;
@@ -49,6 +50,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+@CddTest(requirement="7.4.2/C-1-1")
 public class WifiManagerTest extends AndroidTestCase {
     private static class MySync {
         int expectedState = STATE_NULL;
@@ -586,6 +588,7 @@ public class WifiManagerTest extends AndroidTestCase {
      *
      * @throws Exception
      */
+    @CddTest(requirement="7.4.2.4/C-1-1,C-1-2,C-2-1")
     public void testAddPasspointConfigWithUserCredential() throws Exception {
         if (!WifiFeature.isWifiSupported(getContext())) {
             // skip the test if WiFi is not supported
@@ -600,6 +603,7 @@ public class WifiManagerTest extends AndroidTestCase {
      *
      * @throws Exception
      */
+    @CddTest(requirement="7.4.2.4/C-1-1,C-1-2,C-2-1")
     public void testAddPasspointConfigWithCertCredential() throws Exception {
         if (!WifiFeature.isWifiSupported(getContext())) {
             // skip the test if WiFi is not supported
@@ -614,6 +618,7 @@ public class WifiManagerTest extends AndroidTestCase {
      *
      * @throws Exception
      */
+    @CddTest(requirement="7.4.2.4/C-1-1,C-1-2,C-2-1")
     public void testAddPasspointConfigWithSimCredential() throws Exception {
         if (!WifiFeature.isWifiSupported(getContext())) {
             // skip the test if WiFi is not supported
