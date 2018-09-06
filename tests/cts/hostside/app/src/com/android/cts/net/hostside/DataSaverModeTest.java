@@ -22,6 +22,9 @@ import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_WHITELI
 
 import android.util.Log;
 
+import com.android.compatibility.common.util.CddTest;
+
+@CddTest(requirement="7.4.7/C-1-1,H-1-1")
 public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase {
 
     private static final String[] REQUIRED_WHITELISTED_PACKAGES = {
