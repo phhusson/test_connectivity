@@ -19,6 +19,7 @@ package android.net.cts;
 import static org.junit.Assert.assertArrayEquals;
 
 import android.content.Context;
+import android.net.ConnectivityManager;
 import android.net.IpSecAlgorithm;
 import android.net.IpSecManager;
 import android.net.IpSecTransform;
@@ -66,11 +67,13 @@ public class IpSecBaseTest extends AndroidTestCase {
     protected static final byte[] AUTH_KEY = getKey(256);
     protected static final byte[] CRYPT_KEY = getKey(256);
 
+    protected ConnectivityManager mCM;
     protected IpSecManager mISM;
 
     protected void setUp() throws Exception {
         super.setUp();
         mISM = (IpSecManager) getContext().getSystemService(Context.IPSEC_SERVICE);
+        mCM = (ConnectivityManager) getContext().getSystemService(Context.CONNECTIVITY_SERVICE);
     }
 
     protected static byte[] getKey(int bitLength) {
