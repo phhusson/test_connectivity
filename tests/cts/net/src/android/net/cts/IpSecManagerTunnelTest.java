@@ -50,7 +50,6 @@ public class IpSecManagerTunnelTest extends IpSecBaseTest {
 
     protected void setUp() throws Exception {
         super.setUp();
-        setAppop(true);
     }
 
     protected void tearDown() {
@@ -69,8 +68,36 @@ public class IpSecManagerTunnelTest extends IpSecBaseTest {
         SystemUtil.runShellCommand(cmd);
     }
 
+    public void testSecurityExceptionsCreateTunnelInterface() throws Exception {
+        // Ensure we don't have the appop. Permission is not requested in the Manifest
+        setAppop(false);
+
+        // Security exceptions are thrown regardless of IPv4/IPv6. Just test one
+        try {
+            mISM.createIpSecTunnelInterface(OUTER_ADDR6, OUTER_ADDR6, mUnderlyingNetwork);
+            fail("Did not throw SecurityException for Tunnel creation without appop");
+        } catch (SecurityException expected) {
+        }
+    }
+
+    public void testSecurityExceptionsBuildTunnelTransform() throws Exception {
+        // Ensure we don't have the appop. Permission is not requested in the Manifest
+        setAppop(false);
+
+        // Security exceptions are thrown regardless of IPv4/IPv6. Just test one
+        try (IpSecManager.SecurityParameterIndex spi =
+                mISM.allocateSecurityParameterIndex(OUTER_ADDR4);
+                IpSecTransform transform =
+                        new IpSecTransform.Builder(mContext)
+                                .buildTunnelModeTransform(OUTER_ADDR4, spi)) {
+            fail("Did not throw SecurityException for Transform creation without appop");
+        } catch (SecurityException expected) {
+        }
+    }
+
     private void checkTunnel(InetAddress inner, InetAddress outer, boolean useEncap)
             throws Exception {
+        setAppop(true);
         int innerPrefixLen = inner instanceof Inet6Address ? IP6_PREFIX_LEN : IP4_PREFIX_LEN;
 
         try (IpSecManager.SecurityParameterIndex spi = mISM.allocateSecurityParameterIndex(outer);
