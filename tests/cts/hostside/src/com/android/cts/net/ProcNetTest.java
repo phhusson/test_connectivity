@@ -22,16 +22,11 @@ import com.android.tradefed.testtype.DeviceTestCase;
 import com.android.tradefed.testtype.IBuildReceiver;
 import com.android.tradefed.testtype.IDeviceTest;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.InputStreamReader;
 import java.lang.Integer;
 import java.lang.String;
-import java.util.stream.Collectors;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.zip.GZIPInputStream;
+import java.util.Arrays;
+import java.util.List;
+import java.util.ArrayList;
 
 /**
  * Host-side tests for values in /proc/net.
@@ -62,6 +57,7 @@ public class ProcNetTest extends DeviceTestCase implements IBuildReceiver, IDevi
     private static final int IPV6_WIFI_ROUTER_SOLICITATIONS = -1;
     private ITestDevice mDevice;
     private IBuildInfo mBuild;
+    private String[] mSysctlDirs;
 
     /**
      * {@inheritDoc}
@@ -83,7 +79,18 @@ public class ProcNetTest extends DeviceTestCase implements IBuildReceiver, IDevi
     @Override
     protected void setUp() throws Exception {
         super.setUp();
+        mSysctlDirs = getSysctlDirs();
     }
+
+    private String[] getSysctlDirs() throws Exception {
+        String interfaceDirs[] = mDevice.executeAdbCommand("shell", "ls", "-1",
+                IPV6_SYSCTL_DIR).split("\n");
+        List<String> interfaceDirsList = new ArrayList<String>(Arrays.asList(interfaceDirs));
+        interfaceDirsList.remove("all");
+        interfaceDirsList.remove("lo");
+        return interfaceDirsList.toArray(new String[interfaceDirsList.size()]);
+    }
+
 
     protected void assertLess(String sysctl, int a, int b) {
         assertTrue("value of " + sysctl + ": expected < " + b + " but was: " + a, a < b);
@@ -113,15 +120,7 @@ public class ProcNetTest extends DeviceTestCase implements IBuildReceiver, IDevi
 
     /**
      * Checks that the sysctls for multinetwork kernel features are present and
-     * enabled. The necessary kernel commits are:
-     *
-     * Mainline Linux:
-     *   e110861 net: add a sysctl to reflect the fwmark on replies
-     *   1b3c61d net: Use fwmark reflection in PMTU discovery.
-     *   84f39b0 net: support marking accepting TCP sockets
-     *
-     * Common Android tree (e.g., 3.10):
-     *   a03f539 net: ipv6: autoconf routes into per-device tables
+     * enabled.
      */
     public void testProcSysctls() throws Exception {
         for (String sysctl : GLOBAL_SYSCTLS) {
@@ -129,26 +128,18 @@ public class ProcNetTest extends DeviceTestCase implements IBuildReceiver, IDevi
             assertEquals(sysctl, 1, value);
         }
 
-        String interfaceDirs[] = mDevice.executeAdbCommand("shell", "ls", "-1",
-                IPV6_SYSCTL_DIR).split("\n");
-        for (String interfaceDir : interfaceDirs) {
-            if (interfaceDir.equals("all") || interfaceDir.equals("lo")) {
-                continue;
-            }
+        for (String interfaceDir : mSysctlDirs) {
             String path = IPV6_SYSCTL_DIR + "/" + interfaceDir + "/" + AUTOCONF_SYSCTL;
             int value = readIntFromPath(path);
             assertLess(path, value, 0);
         }
     }
 
-    /** Verify that accept_ra_rt_info_{min,max}_plen exists and is set to the expected value */
+    /**
+     * Verify that accept_ra_rt_info_{min,max}_plen exists and is set to the expected value
+     */
     public void testAcceptRaRtInfoMinMaxPlen() throws Exception {
-        String interfaceDirs[] = mDevice.executeAdbCommand("shell", "ls", "-1",
-                IPV6_SYSCTL_DIR).split("\n");
-        for (String interfaceDir : interfaceDirs) {
-            if (interfaceDir.equals("all") || interfaceDir.equals("lo")) {
-                continue;
-            }
+        for (String interfaceDir : mSysctlDirs) {
             String path = IPV6_SYSCTL_DIR + "/" + interfaceDir + "/" + "accept_ra_rt_info_min_plen";
             int value = readIntFromPath(path);
             assertEquals(path, value, ACCEPT_RA_RT_INFO_MIN_PLEN_VALUE);
@@ -163,12 +154,7 @@ public class ProcNetTest extends DeviceTestCase implements IBuildReceiver, IDevi
      * and verify that router_solicitation_max_interval exists and is in an acceptable interval.
      */
     public void testRouterSolicitations() throws Exception {
-        String interfaceDirs[] = mDevice.executeAdbCommand("shell", "ls", "-1",
-                IPV6_SYSCTL_DIR).split("\n");
-        for (String interfaceDir : interfaceDirs) {
-            if (interfaceDir.equals("all") || interfaceDir.equals("lo")) {
-                continue;
-            }
+        for (String interfaceDir : mSysctlDirs) {
             String path = IPV6_SYSCTL_DIR + "/" + interfaceDir + "/" + "router_solicitations";
             int value = readIntFromPath(path);
             assertEquals(IPV6_WIFI_ROUTER_SOLICITATIONS, value);
