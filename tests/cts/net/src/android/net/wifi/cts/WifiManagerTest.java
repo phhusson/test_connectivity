@@ -38,6 +38,8 @@ import android.net.wifi.hotspot2.pps.HomeSp;
 import android.os.Process;
 import android.os.SystemClock;
 import android.provider.Settings;
+import android.support.test.InstrumentationRegistry;
+import android.support.test.uiautomator.UiDevice;
 import android.test.AndroidTestCase;
 import android.util.ArraySet;
 import android.util.Log;
@@ -66,6 +68,7 @@ public class WifiManagerTest extends AndroidTestCase {
     private List<ScanResult> mScanResults = null;
     private NetworkInfo mNetworkInfo;
     private Object mLOHSLock = new Object();
+    private UiDevice mUiDevice;
 
     // Please refer to WifiManager
     private static final int MIN_RSSI = -100;
@@ -90,6 +93,7 @@ public class WifiManagerTest extends AndroidTestCase {
     private static final int TIMEOUT_MSEC = 6000;
     private static final int WAIT_MSEC = 60;
     private static final int DURATION = 10000;
+    private static final int DURATION_SCREEN_TOGGLE = 2000;
     private static final int WIFI_SCAN_TEST_INTERVAL_MILLIS = 60 * 1000;
     private static final int WIFI_SCAN_TEST_CACHE_DELAY_MILLIS = 3 * 60 * 1000;
     private static final int WIFI_SCAN_TEST_ITERATIONS = 5;
@@ -162,6 +166,8 @@ public class WifiManagerTest extends AndroidTestCase {
         mWifiLock.acquire();
         if (!mWifiManager.isWifiEnabled())
             setWifiEnabled(true);
+        mUiDevice = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        turnScreenOnNoDelay();
         Thread.sleep(DURATION);
         assertTrue(mWifiManager.isWifiEnabled());
         synchronized (mMySync) {
@@ -1070,6 +1076,90 @@ public class WifiManagerTest extends AndroidTestCase {
                 fail("The NETWORK_SETUP_WIZARD permission must not be held by " + pi.packageName
                     + " and must be revoked for security reasons [" + validPkg +"]");
             }
+        }
+    }
+
+    private void turnScreenOnNoDelay() throws Exception {
+        mUiDevice.executeShellCommand("input keyevent KEYCODE_WAKEUP");
+        mUiDevice.executeShellCommand("wm dismiss-keyguard");
+    }
+
+    private void turnScreenOn() throws Exception {
+        turnScreenOnNoDelay();
+        // Since the screen on/off intent is ordered, they will not be sent right now.
+        Thread.sleep(DURATION_SCREEN_TOGGLE);
+    }
+
+    private void turnScreenOff() throws Exception {
+        mUiDevice.executeShellCommand("input keyevent KEYCODE_SLEEP");
+        // Since the screen on/off intent is ordered, they will not be sent right now.
+        Thread.sleep(DURATION_SCREEN_TOGGLE);
+    }
+
+    /**
+     * Verify that Wi-Fi scanning is not turned off when the screen turns off while wifi is disabled
+     * but location is on.
+     * @throws Exception
+     */
+    public void testScreenOffDoesNotTurnOffWifiScanningWhenWifiDisabled() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        if (!hasLocationFeature()) {
+            // skip the test if location is not supported
+            return;
+        }
+        if (!isLocationEnabled()) {
+            fail("Please enable location for this test - since Marshmallow WiFi scan results are"
+                    + " empty when location is disabled!");
+        }
+        if(!mWifiManager.isScanAlwaysAvailable()) {
+            fail("Please enable Wi-Fi scanning for this test!");
+        }
+        setWifiEnabled(false);
+        turnScreenOn();
+        assertWifiScanningIsOn();
+        // Toggle screen and verify Wi-Fi scanning is still on.
+        turnScreenOff();
+        assertWifiScanningIsOn();
+        turnScreenOn();
+        assertWifiScanningIsOn();
+    }
+
+    /**
+     * Verify that Wi-Fi scanning is not turned off when the screen turns off while wifi is enabled.
+     * @throws Exception
+     */
+    public void testScreenOffDoesNotTurnOffWifiScanningWhenWifiEnabled() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        if (!hasLocationFeature()) {
+            // skip the test if location is not supported
+            return;
+        }
+        if (!isLocationEnabled()) {
+            fail("Please enable location for this test - since Marshmallow WiFi scan results are"
+                    + " empty when location is disabled!");
+        }
+        if(!mWifiManager.isScanAlwaysAvailable()) {
+            fail("Please enable Wi-Fi scanning for this test!");
+        }
+        setWifiEnabled(true);
+        turnScreenOn();
+        assertWifiScanningIsOn();
+        // Toggle screen and verify Wi-Fi scanning is still on.
+        turnScreenOff();
+        assertWifiScanningIsOn();
+        turnScreenOn();
+        assertWifiScanningIsOn();
+    }
+
+    private void assertWifiScanningIsOn() {
+        if(!mWifiManager.isScanAlwaysAvailable()) {
+            fail("Wi-Fi scanning should be on.");
         }
     }
 }
