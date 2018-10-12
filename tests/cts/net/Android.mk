@@ -26,7 +26,6 @@ LOCAL_MULTILIB := both
 
 LOCAL_JAVA_LIBRARIES := \
     voip-common \
-    conscrypt \
     org.apache.http.legacy \
     android.test.base.stubs \
 
