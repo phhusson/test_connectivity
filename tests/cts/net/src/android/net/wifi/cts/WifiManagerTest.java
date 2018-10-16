@@ -408,6 +408,10 @@ public class WifiManagerTest extends AndroidTestCase {
         return getContext().getPackageManager().hasSystemFeature(PackageManager.FEATURE_LOCATION);
     }
 
+    private boolean hasAutomotiveFeature() {
+        return getContext().getPackageManager().hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE);
+    }
+
     /**
      * test point of wifiManager NetWork:
      * 1.add NetWork
@@ -847,6 +851,11 @@ public class WifiManagerTest extends AndroidTestCase {
             // check if we got the callback
             assertTrue(callback.onStartedCalled);
             assertNotNull(callback.reservation.getWifiConfiguration());
+            if (!hasAutomotiveFeature()) {
+                assertEquals(
+                        WifiConfiguration.AP_BAND_2GHZ,
+                        callback.reservation.getWifiConfiguration().apBand);
+            }
             assertFalse(callback.onFailedCalled);
             assertFalse(callback.onStoppedCalled);
         }
