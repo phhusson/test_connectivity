@@ -22,6 +22,7 @@ import android.os.Parcel;
 import android.test.AndroidTestCase;
 import java.io.File;
 import java.util.Arrays;
+import java.util.ArrayList;
 
 public class UriTest extends AndroidTestCase {
     public void testParcelling() {
@@ -73,6 +74,12 @@ public class UriTest extends AndroidTestCase {
         assertEquals("new", b.getFragment());
         assertEquals("bar", b.getSchemeSpecificPart());
         assertEquals("foo", b.getScheme());
+
+        a = Uri.fromParts("scheme", "[2001:db8::dead:e1f]/foo", "bar");
+        b = a.buildUpon().fragment("qux").build();
+        assertEquals("qux", b.getFragment());
+        assertEquals("[2001:db8::dead:e1f]/foo", b.getSchemeSpecificPart());
+        assertEquals("scheme", b.getScheme());
     }
 
     public void testStringUri() {
@@ -120,6 +127,38 @@ public class UriTest extends AndroidTestCase {
         assertEquals("a.foo.com", uri.getHost());
         assertEquals(-1, uri.getPort());
         assertEquals("\\.example.com/path", uri.getPath());
+
+        uri = Uri.parse("https://[2001:db8::dead:e1f]/foo");
+        assertEquals("[2001:db8::dead:e1f]", uri.getAuthority());
+        assertNull(uri.getUserInfo());
+        assertEquals("[2001:db8::dead:e1f]", uri.getHost());
+        assertEquals(-1, uri.getPort());
+        assertEquals("/foo", uri.getPath());
+        assertEquals(null, uri.getFragment());
+        assertEquals("//[2001:db8::dead:e1f]/foo", uri.getSchemeSpecificPart());
+
+        uri = Uri.parse("https://[2001:db8::dead:e1f]/#foo");
+        assertEquals("[2001:db8::dead:e1f]", uri.getAuthority());
+        assertNull(uri.getUserInfo());
+        assertEquals("[2001:db8::dead:e1f]", uri.getHost());
+        assertEquals(-1, uri.getPort());
+        assertEquals("/", uri.getPath());
+        assertEquals("foo", uri.getFragment());
+        assertEquals("//[2001:db8::dead:e1f]/", uri.getSchemeSpecificPart());
+
+        uri = Uri.parse(
+                "https://some:user@[2001:db8::dead:e1f]:1234/foo?corge=thud&corge=garp#bar");
+        assertEquals("some:user@[2001:db8::dead:e1f]:1234", uri.getAuthority());
+        assertEquals("some:user", uri.getUserInfo());
+        assertEquals("[2001:db8::dead:e1f]", uri.getHost());
+        assertEquals(1234, uri.getPort());
+        assertEquals("/foo", uri.getPath());
+        assertEquals("bar", uri.getFragment());
+        assertEquals("//some:user@[2001:db8::dead:e1f]:1234/foo?corge=thud&corge=garp",
+                uri.getSchemeSpecificPart());
+        assertEquals("corge=thud&corge=garp", uri.getQuery());
+        assertEquals("thud", uri.getQueryParameter("corge"));
+        assertEquals(Arrays.asList("thud", "garp"), uri.getQueryParameters("corge"));
     }
 
     public void testCompareTo() {
@@ -174,6 +213,7 @@ public class UriTest extends AndroidTestCase {
         assertEncodeDecodeRoundtripExact("Bob::");
         assertEncodeDecodeRoundtripExact("Bob:");
         assertEncodeDecodeRoundtripExact("::Bob::");
+        assertEncodeDecodeRoundtripExact("https:/some:user@[2001:db8::dead:e1f]:1234/foo#bar");
     }
 
     private static void assertEncodeDecodeRoundtripExact(String s) {
