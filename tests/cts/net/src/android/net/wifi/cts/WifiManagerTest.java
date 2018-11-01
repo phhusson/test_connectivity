@@ -41,9 +41,11 @@ import android.provider.Settings;
 import android.support.test.InstrumentationRegistry;
 import android.support.test.uiautomator.UiDevice;
 import android.test.AndroidTestCase;
+import android.text.TextUtils;
 import android.util.ArraySet;
 import android.util.Log;
 
+import com.android.compatibility.common.util.SystemUtil;
 import com.android.compatibility.common.util.WifiConfigCreator;
 
 import java.net.HttpURLConnection;
@@ -83,9 +85,6 @@ public class WifiManagerTest extends AndroidTestCase {
 
     private static final String TAG = "WifiManagerTest";
     private static final String SSID1 = "\"WifiManagerTest\"";
-    private static final String SSID2 = "\"WifiManagerTestModified\"";
-    private static final String PROXY_TEST_SSID = "SomeProxyAp";
-    private static final String ADD_NETWORK_EXCEPTION_SUBSTR = "addNetwork";
     // A full single scan duration is about 6-7 seconds if country code is set
     // to US. If country code is set to world mode (00), we would expect a scan
     // duration of roughly 8 seconds. So we set scan timeout as 9 seconds here.
@@ -198,8 +197,8 @@ public class WifiManagerTest extends AndroidTestCase {
             } else {
                 mMySync.expectedState = (enable ? STATE_WIFI_ENABLED : STATE_WIFI_DISABLED);
             }
-            // now trigger the change
-            assertTrue(mWifiManager.setWifiEnabled(enable));
+            // now trigger the change using shell commands.
+            SystemUtil.runShellCommand("svc wifi " + (enable ? "enable" : "disable"));
             waitForExpectedWifiState(enable);
         }
     }
@@ -274,20 +273,13 @@ public class WifiManagerTest extends AndroidTestCase {
     }
 
     /**
-     * test point of wifiManager actions:
-     * 1.reconnect
-     * 2.reassociate
-     * 3.disconnect
-     * 4.createWifiLock
+     * Test creation of WifiManager Lock.
      */
-    public void testWifiManagerActions() throws Exception {
+    public void testWifiManagerLock() throws Exception {
         if (!WifiFeature.isWifiSupported(getContext())) {
             // skip the test if WiFi is not supported
             return;
         }
-        assertTrue(mWifiManager.reconnect());
-        assertTrue(mWifiManager.reassociate());
-        assertTrue(mWifiManager.disconnect());
         final String TAG = "Test";
         assertNotNull(mWifiManager.createWifiLock(TAG));
         assertNotNull(mWifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL, TAG));
@@ -410,125 +402,6 @@ public class WifiManagerTest extends AndroidTestCase {
 
     private boolean hasAutomotiveFeature() {
         return getContext().getPackageManager().hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE);
-    }
-
-    /**
-     * test point of wifiManager NetWork:
-     * 1.add NetWork
-     * 2.update NetWork
-     * 3.remove NetWork
-     * 4.enable NetWork
-     * 5.disable NetWork
-     * 6.configured Networks
-     * 7.save configure;
-     */
-    public void testWifiManagerNetWork() throws Exception {
-        if (!WifiFeature.isWifiSupported(getContext())) {
-            // skip the test if WiFi is not supported
-            return;
-        }
-
-        // store the list of enabled networks, so they can be re-enabled after test completes
-        Set<String> enabledSsids = getEnabledNetworks(mWifiManager.getConfiguredNetworks());
-        try {
-            WifiConfiguration wifiConfiguration;
-            // add a WifiConfig
-            final int notExist = -1;
-            List<WifiConfiguration> wifiConfiguredNetworks = mWifiManager.getConfiguredNetworks();
-            int pos = findConfiguredNetworks(SSID1, wifiConfiguredNetworks);
-            if (notExist != pos) {
-                wifiConfiguration = wifiConfiguredNetworks.get(pos);
-                mWifiManager.removeNetwork(wifiConfiguration.networkId);
-            }
-            pos = findConfiguredNetworks(SSID1, wifiConfiguredNetworks);
-            assertEquals(notExist, pos);
-            final int size = wifiConfiguredNetworks.size();
-
-            wifiConfiguration = new WifiConfiguration();
-            wifiConfiguration.SSID = SSID1;
-            wifiConfiguration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
-            int netId = mWifiManager.addNetwork(wifiConfiguration);
-            assertTrue(existSSID(SSID1));
-
-            wifiConfiguredNetworks = mWifiManager.getConfiguredNetworks();
-            assertEquals(size + 1, wifiConfiguredNetworks.size());
-            pos = findConfiguredNetworks(SSID1, wifiConfiguredNetworks);
-            assertTrue(notExist != pos);
-
-            // Enable & disable network
-            boolean disableOthers = true;
-            assertTrue(mWifiManager.enableNetwork(netId, disableOthers));
-            wifiConfiguration = mWifiManager.getConfiguredNetworks().get(pos);
-            assertEquals(Status.ENABLED, wifiConfiguration.status);
-
-            assertTrue(mWifiManager.disableNetwork(netId));
-            wifiConfiguration = mWifiManager.getConfiguredNetworks().get(pos);
-            assertEquals(Status.DISABLED, wifiConfiguration.status);
-
-            // Update a WifiConfig
-            wifiConfiguration = wifiConfiguredNetworks.get(pos);
-            wifiConfiguration.SSID = SSID2;
-            netId = mWifiManager.updateNetwork(wifiConfiguration);
-            assertFalse(existSSID(SSID1));
-            assertTrue(existSSID(SSID2));
-
-            // Remove a WifiConfig
-            assertTrue(mWifiManager.removeNetwork(netId));
-            assertFalse(mWifiManager.removeNetwork(notExist));
-            assertFalse(existSSID(SSID1));
-            assertFalse(existSSID(SSID2));
-
-            assertTrue(mWifiManager.saveConfiguration());
-        } finally {
-            reEnableNetworks(enabledSsids, mWifiManager.getConfiguredNetworks());
-            mWifiManager.saveConfiguration();
-        }
-    }
-
-    /**
-     * Verifies that addNetwork() fails for WifiConfigurations containing a non-null http proxy when
-     * the caller doesn't have OVERRIDE_WIFI_CONFIG permission, DeviceOwner or ProfileOwner device
-     * management policies
-     */
-    public void testSetHttpProxy_PermissionFail() throws Exception {
-        if (!WifiFeature.isWifiSupported(getContext())) {
-            // skip the test if WiFi is not supported
-            return;
-        }
-        WifiConfigCreator configCreator = new WifiConfigCreator(getContext());
-        boolean exceptionThrown = false;
-        try {
-            configCreator.addHttpProxyNetworkVerifyAndRemove(
-                    PROXY_TEST_SSID, TEST_PAC_URL);
-        } catch (IllegalStateException e) {
-            // addHttpProxyNetworkVerifyAndRemove throws three IllegalStateException,
-            // expect it to throw for the addNetwork operation
-            if (e.getMessage().contains(ADD_NETWORK_EXCEPTION_SUBSTR)) {
-                exceptionThrown = true;
-            }
-        }
-        assertTrue(exceptionThrown);
-    }
-
-    private Set<String> getEnabledNetworks(List<WifiConfiguration> configuredNetworks) {
-        Set<String> ssids = new HashSet<String>();
-        for (WifiConfiguration wifiConfig : configuredNetworks) {
-            if (Status.ENABLED == wifiConfig.status || Status.CURRENT == wifiConfig.status) {
-                ssids.add(wifiConfig.SSID);
-                Log.i(TAG, String.format("remembering enabled network %s", wifiConfig.SSID));
-            }
-        }
-        return ssids;
-    }
-
-    private void reEnableNetworks(Set<String> enabledSsids,
-            List<WifiConfiguration> configuredNetworks) {
-        for (WifiConfiguration wifiConfig : configuredNetworks) {
-            if (enabledSsids.contains(wifiConfig.SSID)) {
-                mWifiManager.enableNetwork(wifiConfig.networkId, false);
-                Log.i(TAG, String.format("re-enabling network %s", wifiConfig.SSID));
-            }
-        }
     }
 
     public void testSignal() {
@@ -902,37 +775,37 @@ public class WifiManagerTest extends AndroidTestCase {
     }
 
     /**
-     * Verify calls to setWifiEnabled from a non-settings app while softap mode is active do not
-     * exit softap mode.
-     *
-     * This test uses the LocalOnlyHotspot API to enter softap mode.  This should also be true when
-     * tethering is started.
-     * Note: Location mode must be enabled for this test.
+     * Verify calls to deprecated API's all fail for non-settings apps targeting >= Q SDK.
      */
-    public void testSetWifiEnabledByAppDoesNotStopHotspot() throws Exception {
+    public void testDeprecatedApis() throws Exception {
         if (!WifiFeature.isWifiSupported(getContext())) {
             // skip the test if WiFi is not supported
             return;
         }
-        // check that softap mode is supported by the device
-        if (!mWifiManager.isPortableHotspotSupported()) {
-            return;
-        }
+        setWifiEnabled(true);
+        connectWifi(); // ensures that there is at-least 1 saved network on the device.
+
+        WifiConfiguration wifiConfiguration = new WifiConfiguration();
+        wifiConfiguration.SSID = SSID1;
+        wifiConfiguration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
+
+        assertEquals(WifiConfiguration.INVALID_NETWORK_ID,
+                mWifiManager.addNetwork(wifiConfiguration));
+        assertEquals(WifiConfiguration.INVALID_NETWORK_ID,
+                mWifiManager.updateNetwork(wifiConfiguration));
+        assertFalse(mWifiManager.enableNetwork(0, true));
+        assertFalse(mWifiManager.disableNetwork(0));
+        assertFalse(mWifiManager.removeNetwork(0));
+        assertFalse(mWifiManager.disconnect());
+        assertFalse(mWifiManager.reconnect());
+        assertFalse(mWifiManager.reassociate());
+        assertTrue(mWifiManager.getConfiguredNetworks().isEmpty());
 
         boolean wifiEnabled = mWifiManager.isWifiEnabled();
-
-        if (wifiEnabled) {
-            // disable wifi so we have something to turn on (some devices may be able to run
-            // simultaneous modes)
-            setWifiEnabled(false);
-        }
-
-        TestLocalOnlyHotspotCallback callback = startLocalOnlyHotspot();
-
-        // now we should fail to turn on wifi
-        assertFalse(mWifiManager.setWifiEnabled(true));
-
-        stopLocalOnlyHotspot(callback, wifiEnabled);
+        // now we should fail to toggle wifi state.
+        assertFalse(mWifiManager.setWifiEnabled(!wifiEnabled));
+        Thread.sleep(DURATION);
+        assertEquals(wifiEnabled, mWifiManager.isWifiEnabled());
     }
 
     /**
