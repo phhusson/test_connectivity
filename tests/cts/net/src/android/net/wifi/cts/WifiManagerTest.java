@@ -99,6 +99,8 @@ public class WifiManagerTest extends AndroidTestCase {
     private static final int WIFI_SCAN_TEST_ITERATIONS = 5;
 
     private static final String TEST_PAC_URL = "http://www.example.com/proxy.pac";
+    private static final String MANAGED_PROVISIONING_PACKAGE_NAME
+            = "com.android.managedprovisioning";
 
     private IntentFilter mIntentFilter;
     private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
@@ -1084,6 +1086,41 @@ public class WifiManagerTest extends AndroidTestCase {
             if (!Objects.equals(pi.packageName, validPkg)) {
                 fail("The NETWORK_SETUP_WIZARD permission must not be held by " + pi.packageName
                     + " and must be revoked for security reasons [" + validPkg +"]");
+            }
+        }
+    }
+
+    /**
+     * Verify that the {@link android.Manifest.permission#NETWORK_MANAGED_PROVISIONING} permission
+     * is only held by the device managed provisioning application.
+     * <p>
+     * Only the ManagedProvisioning app should <em>ever</em> attempt to acquire this
+     * permission, since it would give those apps extremely broad access to connectivity
+     * functionality.  The permission is intended to be granted to only the device managed
+     * provisioning.
+     */
+    public void testNetworkManagedProvisioningPermission() {
+        final PackageManager pm = getContext().getPackageManager();
+
+        // TODO(b/115980767): Using hardcoded package name. Need a better mechanism to find the
+        // managed provisioning app.
+        // Ensure that the package exists.
+        final Intent intent = new Intent(Intent.ACTION_MAIN);
+        intent.setPackage(MANAGED_PROVISIONING_PACKAGE_NAME);
+        final ResolveInfo ri = pm.resolveActivity(intent, PackageManager.MATCH_DISABLED_COMPONENTS);
+        String validPkg = "";
+        if (ri != null) {
+            validPkg = ri.activityInfo.packageName;
+        }
+
+        final List<PackageInfo> holding = pm.getPackagesHoldingPermissions(new String[] {
+                android.Manifest.permission.NETWORK_MANAGED_PROVISIONING
+        }, PackageManager.MATCH_UNINSTALLED_PACKAGES);
+        for (PackageInfo pi : holding) {
+            if (!Objects.equals(pi.packageName, validPkg)) {
+                fail("The NETWORK_MANAGED_PROVISIONING permission must not be held by "
+                        + pi.packageName + " and must be revoked for security reasons ["
+                        + validPkg +"]");
             }
         }
     }
