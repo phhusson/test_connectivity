@@ -156,6 +156,11 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
                 "testBackgroundNetworkAccess_enabled");
     }
 
+    public void testAppIdleMetered_idleWhitelisted() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".AppIdleMeteredTest",
+                "testAppIdleNetworkAccess_idleWhitelisted");
+    }
+
     // TODO: currently power-save mode and idle uses the same whitelist, so this test would be
     // redundant (as it would be testing the same as testBatterySaverMode_reinstall())
     //    public void testAppIdle_reinstall() throws Exception {
@@ -179,6 +184,11 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
     public void testAppIdleNonMetered_enabled() throws Exception {
         runDeviceTests(TEST_PKG, TEST_PKG + ".AppIdleNonMeteredTest",
                 "testBackgroundNetworkAccess_enabled");
+    }
+
+    public void testAppIdleNonMetered_idleWhitelisted() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".AppIdleNonMeteredTest",
+                "testAppIdleNetworkAccess_idleWhitelisted");
     }
 
     public void testAppIdleNonMetered_whenCharging() throws Exception {
@@ -279,6 +289,21 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
     public void testAppIdleAndBatterySaver_tempPowerSaveWhitelists() throws Exception {
         runDeviceTests(TEST_PKG, TEST_PKG + ".MixedModesTest",
                 "testAppIdleAndBatterySaver_tempPowerSaveWhitelists");
+    }
+
+    public void testDozeAndAppIdle_appIdleWhitelist() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".MixedModesTest",
+                "testDozeAndAppIdle_appIdleWhitelist");
+    }
+
+    public void testAppIdleAndDoze_tempPowerSaveAndAppIdleWhitelists() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".MixedModesTest",
+                "testAppIdleAndDoze_tempPowerSaveAndAppIdleWhitelists");
+    }
+
+    public void testAppIdleAndBatterySaver_tempPowerSaveAndAppIdleWhitelists() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".MixedModesTest",
+                "testAppIdleAndBatterySaver_tempPowerSaveAndAppIdleWhitelists");
     }
 
     /*******************

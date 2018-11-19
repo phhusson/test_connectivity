@@ -26,10 +26,6 @@ import static android.os.BatteryManager.BATTERY_PLUGGED_WIRELESS;
 
 import static com.android.compatibility.common.util.SystemUtil.runShellCommand;
 
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
-
 import android.app.ActivityManager;
 import android.app.Instrumentation;
 import android.app.NotificationManager;
@@ -52,6 +48,10 @@ import android.service.notification.NotificationListenerService;
 import android.test.InstrumentationTestCase;
 import android.text.TextUtils;
 import android.util.Log;
+
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Superclass for tests related to background network restrictions.
@@ -742,6 +742,20 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
 
     protected void assertRestrictBackgroundBlacklist(int uid, boolean expected) throws Exception {
         assertRestrictBackground("restrict-background-blacklist", uid, expected);
+    }
+
+    protected void addAppIdleWhitelist(int uid) throws Exception {
+        executeShellCommand("cmd netpolicy add app-idle-whitelist " + uid);
+        assertAppIdleWhitelist(uid, true);
+    }
+
+    protected void removeAppIdleWhitelist(int uid) throws Exception {
+        executeShellCommand("cmd netpolicy remove app-idle-whitelist " + uid);
+        assertAppIdleWhitelist(uid, false);
+    }
+
+    protected void assertAppIdleWhitelist(int uid, boolean expected) throws Exception {
+        assertRestrictBackground("app-idle-whitelist", uid, expected);
     }
 
     private void assertRestrictBackground(String list, int uid, boolean expected) throws Exception {
