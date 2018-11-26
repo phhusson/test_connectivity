@@ -30,6 +30,7 @@ import android.net.NetworkRequest;
 import android.net.VpnService;
 import android.os.ParcelFileDescriptor;
 import android.os.Process;
+import android.os.SystemProperties;
 import android.support.test.uiautomator.UiDevice;
 import android.support.test.uiautomator.UiObject;
 import android.support.test.uiautomator.UiObjectNotFoundException;
@@ -559,6 +560,14 @@ public class VpnTest extends InstrumentationTestCase {
 
     public void testDefault() throws Exception {
         if (!supportedHardware()) return;
+        // If adb TCP port opened, this test may running by adb over network.
+        // All of socket would be destroyed in this test. So this test don't
+        // support adb over network, see b/119382723.
+        if (SystemProperties.getInt("persist.adb.tcp.port", -1) > -1
+                || SystemProperties.getInt("service.adb.tcp.port", -1) > -1) {
+            Log.i(TAG, "adb is running over the network, so skip this test");
+            return;
+        }
 
         FileDescriptor fd = openSocketFdInOtherApp(TEST_HOST, 80, TIMEOUT_MS);
 
@@ -576,6 +585,7 @@ public class VpnTest extends InstrumentationTestCase {
 
         FileDescriptor fd = openSocketFdInOtherApp(TEST_HOST, 80, TIMEOUT_MS);
 
+        // Shell app must not be put in here or it would kill the ADB-over-network use case
         String allowedApps = mRemoteSocketFactoryClient.getPackageName() + "," + mPackageName;
         startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
                  new String[] {"192.0.2.0/24", "2001:db8::/32"},
@@ -593,6 +603,12 @@ public class VpnTest extends InstrumentationTestCase {
         FileDescriptor remoteFd = openSocketFdInOtherApp(TEST_HOST, 80, TIMEOUT_MS);
 
         String disallowedApps = mRemoteSocketFactoryClient.getPackageName() + "," + mPackageName;
+        // If adb TCP port opened, this test may running by adb over TCP.
+        // Add com.android.shell appllication into blacklist to exclude adb socket for VPN test,
+        // see b/119382723.
+        // Note: The test don't support running adb over network for root device
+        disallowedApps = disallowedApps + ",com.android.shell";
+        Log.i(TAG, "Append shell app to disallowedApps: " + disallowedApps);
         startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
                  new String[] {"192.0.2.0/24", "2001:db8::/32"},
                  "", disallowedApps);
