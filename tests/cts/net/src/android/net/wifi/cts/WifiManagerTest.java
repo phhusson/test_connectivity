@@ -58,6 +58,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 public class WifiManagerTest extends AndroidTestCase {
     private static class MySync {
@@ -995,6 +996,30 @@ public class WifiManagerTest extends AndroidTestCase {
                         + pi.packageName + " and must be revoked for security reasons ["
                         + validPkg +"]");
             }
+        }
+    }
+
+    /**
+     * Verify that the {@link android.Manifest.permission#WIFI_SET_DEVICE_MOBILITY_STATE} permission
+     * is held by at most one application.
+     */
+    public void testWifiSetDeviceMobilityStatePermission() {
+        final PackageManager pm = getContext().getPackageManager();
+
+        final List<PackageInfo> holding = pm.getPackagesHoldingPermissions(new String[] {
+                android.Manifest.permission.WIFI_SET_DEVICE_MOBILITY_STATE
+        }, PackageManager.MATCH_UNINSTALLED_PACKAGES);
+
+        List<String> uniquePackageNames = holding
+                .stream()
+                .map(pi -> pi.packageName)
+                .distinct()
+                .collect(Collectors.toList());
+
+        if (uniquePackageNames.size() > 1) {
+            fail("The WIFI_SET_DEVICE_MOBILITY_STATE permission must not be held by more than one "
+                    + "application, but is held by " + uniquePackageNames.size() + " applications: "
+                    + String.join(", ", uniquePackageNames));
         }
     }
 
