@@ -33,6 +33,10 @@ public class MyVpnService extends VpnService {
     private static String TAG = "MyVpnService";
     private static int MTU = 1799;
 
+    public static final String ACTION_ESTABLISHED = "com.android.cts.net.hostside.ESTABNLISHED";
+    public static final String EXTRA_ALWAYS_ON = "is-always-on";
+    public static final String EXTRA_LOCKDOWN_ENABLED = "is-lockdown-enabled";
+
     private ParcelFileDescriptor mFd = null;
     private PacketReflector mPacketReflector = null;
 
@@ -129,8 +133,17 @@ public class MyVpnService extends VpnService {
         mFd = builder.establish();
         Log.i(TAG, "Established, fd=" + (mFd == null ? "null" : mFd.getFd()));
 
+        broadcastEstablished();
+
         mPacketReflector = new PacketReflector(mFd.getFileDescriptor(), MTU);
         mPacketReflector.start();
+    }
+
+    private void broadcastEstablished() {
+        final Intent bcIntent = new Intent(ACTION_ESTABLISHED);
+        bcIntent.putExtra(EXTRA_ALWAYS_ON, isAlwaysOn());
+        bcIntent.putExtra(EXTRA_LOCKDOWN_ENABLED, isLockdownEnabled());
+        sendBroadcast(bcIntent);
     }
 
     private void stop() {
