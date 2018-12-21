@@ -7,15 +7,18 @@ cc_defaults {
         "-Wall",
         "-Wextra",
         "-Werror",
-        "-fno-builtin",
+        "-Wnullable-to-nonnull-conversion",
+        "-Wsign-compare",
+        "-Wthread-safety",
+        "-Wunused-parameter",
     ],
     srcs: [
-        "src/NativeDnsAsyncTest.cpp",
+        "NativeDnsAsyncTest.cpp",
     ],
     shared_libs: [
+        "libandroid",
         "liblog",
         "libutils",
-        "libandroid",
     ],
 }
 

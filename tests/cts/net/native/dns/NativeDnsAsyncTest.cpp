@@ -92,12 +92,12 @@ void expectAnswersValid(int fd, int ipType, int expectedRcode) {
 
 TEST (NativeDnsAsyncTest, Async_Query) {
     // V4
-    int fd = android_res_nquery(NETWORK_UNSPECIFIED ,"www.google.com", ns_c_in, ns_t_a);
+    int fd = android_res_nquery(NETWORK_UNSPECIFIED ,"www.google.com", ns_c_in, ns_t_a, 0);
     EXPECT_GT(fd, 0);
     expectAnswersValid(fd, AF_INET, NOERROR);
 
     // V6
-    fd = android_res_nquery(NETWORK_UNSPECIFIED ,"www.google.com", ns_c_in, ns_t_aaaa);
+    fd = android_res_nquery(NETWORK_UNSPECIFIED ,"www.google.com", ns_c_in, ns_t_aaaa, 0);
     EXPECT_GT(fd, 0);
     expectAnswersValid(fd, AF_INET6, NOERROR);
 }
@@ -108,7 +108,7 @@ TEST (NativeDnsAsyncTest, Async_Send) {
     int len = res_mkquery(QUERY, "www.youtube.com",
             ns_c_in, ns_t_a, nullptr, 0, nullptr, buf, sizeof(buf));
     EXPECT_GT(len, 0);
-    int fd = android_res_nsend(NETWORK_UNSPECIFIED , buf, len);
+    int fd = android_res_nsend(NETWORK_UNSPECIFIED , buf, len, 0);
     EXPECT_GT(fd, 0);
     expectAnswersValid(fd, AF_INET, NOERROR);
 
@@ -117,7 +117,7 @@ TEST (NativeDnsAsyncTest, Async_Send) {
     len = res_mkquery(QUERY, "www.youtube.com",
             ns_c_in, ns_t_aaaa, nullptr, 0, nullptr, buf, sizeof(buf));
     EXPECT_GT(len, 0);
-    fd = android_res_nsend(NETWORK_UNSPECIFIED , buf, len);
+    fd = android_res_nsend(NETWORK_UNSPECIFIED , buf, len, 0);
     EXPECT_GT(fd, 0);
     expectAnswersValid(fd, AF_INET6, NOERROR);
 }
@@ -127,13 +127,13 @@ TEST (NativeDnsAsyncTest, Async_NXDOMAIN) {
     int len = res_mkquery(QUERY, "test-nx.metric.gstatic.com",
             ns_c_in, ns_t_a, nullptr, 0, nullptr, buf, sizeof(buf));
     EXPECT_GT(len, 0);
-    int fd = android_res_nsend(NETWORK_UNSPECIFIED , buf, len);
+    int fd = android_res_nsend(NETWORK_UNSPECIFIED , buf, len, 0);
     EXPECT_GT(fd, 0);
     expectAnswersValid(fd, AF_INET, NXDOMAIN);
 }
 
 TEST (NativeDnsAsyncTest, Async_Cancel) {
-    int fd = android_res_nquery(NETWORK_UNSPECIFIED ,"www.google.com", ns_c_in, ns_t_a);
+    int fd = android_res_nquery(NETWORK_UNSPECIFIED ,"www.google.com", ns_c_in, ns_t_a, 0);
     int rcode = -1;
     u_char buf[MAXPACKET] = {};
     android_res_cancel(fd);
