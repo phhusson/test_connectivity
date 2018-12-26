@@ -53,17 +53,6 @@ public class IpSecManagerTest extends IpSecBaseTest {
 
     private static final byte[] AEAD_KEY = getKey(288);
 
-    private static final int TCP_HDRLEN_WITH_OPTIONS = 32;
-    private static final int UDP_HDRLEN = 8;
-    private static final int IP4_HDRLEN = 20;
-    private static final int IP6_HDRLEN = 40;
-
-    // Encryption parameters
-    private static final int AES_GCM_IV_LEN = 8;
-    private static final int AES_CBC_IV_LEN = 16;
-    private static final int AES_GCM_BLK_SIZE = 4;
-    private static final int AES_CBC_BLK_SIZE = 16;
-
     protected void setUp() throws Exception {
         super.setUp();
     }
