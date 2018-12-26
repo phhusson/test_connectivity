@@ -29,6 +29,7 @@ import android.net.wifi.WifiSsid;
 import android.test.AndroidTestCase;
 
 import com.android.compatibility.common.util.PollingCheck;
+import com.android.compatibility.common.util.SystemUtil;
 
 import java.util.concurrent.Callable;
 
@@ -104,7 +105,11 @@ public class WifiInfoTest extends AndroidTestCase {
     private void setWifiEnabled(boolean enable) throws Exception {
         synchronized (mMySync) {
             mMySync.expectedState = STATE_WIFI_CHANGING;
-            assertTrue(mWifiManager.setWifiEnabled(enable));
+            if (enable) {
+                SystemUtil.runShellCommand("svc wifi enable");
+            } else {
+                SystemUtil.runShellCommand("svc wifi disable");
+            }
             long timeout = System.currentTimeMillis() + TIMEOUT_MSEC;
             while (System.currentTimeMillis() < timeout
                     && mMySync.expectedState == STATE_WIFI_CHANGING)

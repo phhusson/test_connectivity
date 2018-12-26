@@ -41,6 +41,8 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.test.AndroidTestCase;
 
+import com.android.compatibility.common.util.SystemUtil;
+
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -363,7 +365,7 @@ public class SingleDeviceTest extends AndroidTestCase {
         mWifiLock = mWifiManager.createWifiLock(TAG);
         mWifiLock.acquire();
         if (!mWifiManager.isWifiEnabled()) {
-            mWifiManager.setWifiEnabled(true);
+            SystemUtil.runShellCommand("svc wifi enable");
         }
 
         mConnectivityManager = (ConnectivityManager) getContext().getSystemService(
@@ -433,7 +435,7 @@ public class SingleDeviceTest extends AndroidTestCase {
         // 1. Disable Wi-Fi
         WifiAwareBroadcastReceiver receiver1 = new WifiAwareBroadcastReceiver();
         mContext.registerReceiver(receiver1, intentFilter);
-        mWifiManager.setWifiEnabled(false);
+        SystemUtil.runShellCommand("svc wifi disable");
 
         assertTrue("Timeout waiting for Wi-Fi Aware to change status",
                 receiver1.waitForStateChange());
@@ -442,7 +444,7 @@ public class SingleDeviceTest extends AndroidTestCase {
         // 2. Enable Wi-Fi
         WifiAwareBroadcastReceiver receiver2 = new WifiAwareBroadcastReceiver();
         mContext.registerReceiver(receiver2, intentFilter);
-        mWifiManager.setWifiEnabled(true);
+        SystemUtil.runShellCommand("svc wifi enable");
 
         assertTrue("Timeout waiting for Wi-Fi Aware to change status",
                 receiver2.waitForStateChange());

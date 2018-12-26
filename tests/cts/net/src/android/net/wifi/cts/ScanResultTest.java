@@ -28,6 +28,8 @@ import android.net.wifi.WifiManager.WifiLock;
 import android.test.AndroidTestCase;
 import android.util.Log;
 
+import com.android.compatibility.common.util.SystemUtil;
+
 public class ScanResultTest extends AndroidTestCase {
     private static class MySync {
         int expectedState = STATE_NULL;
@@ -121,7 +123,11 @@ public class ScanResultTest extends AndroidTestCase {
     private void setWifiEnabled(boolean enable) throws Exception {
         synchronized (mMySync) {
             mMySync.expectedState = STATE_WIFI_CHANGING;
-            assertTrue(mWifiManager.setWifiEnabled(enable));
+            if (enable) {
+                SystemUtil.runShellCommand("svc wifi enable");
+            } else {
+                SystemUtil.runShellCommand("svc wifi disable");
+            }
             waitForBroadcast(TIMEOUT_MSEC, STATE_WIFI_CHANGED);
        }
     }

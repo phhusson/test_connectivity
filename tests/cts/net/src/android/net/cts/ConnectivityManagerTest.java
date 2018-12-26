@@ -57,6 +57,7 @@ import android.test.AndroidTestCase;
 import android.text.TextUtils;
 import android.util.Log;
 
+import com.android.compatibility.common.util.SystemUtil;
 import com.android.internal.R;
 import com.android.internal.telephony.PhoneConstants;
 
@@ -670,7 +671,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
 
         boolean connected = false;
         try {
-            assertTrue(mWifiManager.setWifiEnabled(true));
+            SystemUtil.runShellCommand("svc wifi enable");
             // Ensure we get both an onAvailable callback and a CONNECTIVITY_ACTION.
             wifiNetwork = callback.waitForAvailable();
             assertNotNull(wifiNetwork);
@@ -736,7 +737,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
 
         boolean disconnected = false;
         try {
-            assertTrue(mWifiManager.setWifiEnabled(false));
+            SystemUtil.runShellCommand("svc wifi disable");
             // Ensure we get both an onLost callback and a CONNECTIVITY_ACTION.
             lostWifiNetwork = callback.waitForLost();
             assertNotNull(lostWifiNetwork);

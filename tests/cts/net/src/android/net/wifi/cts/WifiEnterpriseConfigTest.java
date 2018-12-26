@@ -25,6 +25,8 @@ import android.net.wifi.WifiEnterpriseConfig.Phase2;
 import android.net.wifi.WifiManager;
 import android.test.AndroidTestCase;
 
+import com.android.compatibility.common.util.SystemUtil;
+
 import java.io.ByteArrayInputStream;
 import java.security.KeyFactory;
 import java.security.PrivateKey;
@@ -687,7 +689,7 @@ public class WifiEnterpriseConfigTest extends AndroidTestCase {
         mWifiManager = (WifiManager) mContext
                 .getSystemService(Context.WIFI_SERVICE);
         assertNotNull(mWifiManager);
-        mWifiManager.setWifiEnabled(true);
+        SystemUtil.runShellCommand("svc wifi enable");
         Thread.sleep(ENABLE_DELAY);
         if (hasWifi()) {
             assertTrue(mWifiManager.isWifiEnabled());

@@ -31,6 +31,8 @@ import static android.net.wifi.p2p.WifiP2pManager.WIFI_P2P_STATE_DISABLED;
 import static android.net.wifi.p2p.WifiP2pManager.WIFI_P2P_STATE_ENABLED;
 import android.test.AndroidTestCase;
 
+import com.android.compatibility.common.util.SystemUtil;
+
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -84,7 +86,7 @@ public class ConcurrencyTest extends AndroidTestCase {
         mWifiManager = (WifiManager) getContext().getSystemService(Context.WIFI_SERVICE);
         assertNotNull(mWifiManager);
         if (mWifiManager.isWifiEnabled()) {
-            assertTrue(mWifiManager.setWifiEnabled(false));
+            SystemUtil.runShellCommand("svc wifi disable");
             Thread.sleep(DURATION);
         }
         assertTrue(!mWifiManager.isWifiEnabled());
@@ -124,7 +126,7 @@ public class ConcurrencyTest extends AndroidTestCase {
      */
     private void enableWifi() throws InterruptedException {
         if (!mWifiManager.isWifiEnabled()) {
-            assertTrue(mWifiManager.setWifiEnabled(true));
+            SystemUtil.runShellCommand("svc wifi enable");
         }
 
         ConnectivityManager cm =
@@ -159,7 +161,7 @@ public class ConcurrencyTest extends AndroidTestCase {
         }
 
         // Enable wifi
-        assertTrue(mWifiManager.setWifiEnabled(true));
+        SystemUtil.runShellCommand("svc wifi enable");
 
         waitForBroadcasts();
 
