@@ -21,8 +21,6 @@ import static android.system.OsConstants.IPPROTO_UDP;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertTrue;
 
-import android.content.Context;
-import android.net.ConnectivityManager;
 import android.net.IpSecAlgorithm;
 import android.net.IpSecManager;
 import android.net.IpSecTransform;
@@ -37,25 +35,15 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.Inet6Address;
 import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.util.Arrays;
 
 public class IpSecManagerTest extends IpSecBaseTest {
 
     private static final String TAG = IpSecManagerTest.class.getSimpleName();
 
-    private ConnectivityManager mCM;
-
-    private static InetAddress IpAddress(String addrString) {
-        try {
-            return InetAddress.getByName(addrString);
-        } catch (UnknownHostException e) {
-            throw new IllegalArgumentException("Invalid IP address: " + e);
-        }
-    }
-
-    private static final InetAddress GOOGLE_DNS_4 = IpAddress("8.8.8.8");
-    private static final InetAddress GOOGLE_DNS_6 = IpAddress("2001:4860:4860::8888");
+    private static final InetAddress GOOGLE_DNS_4 = InetAddress.parseNumericAddress("8.8.8.8");
+    private static final InetAddress GOOGLE_DNS_6 =
+            InetAddress.parseNumericAddress("2001:4860:4860::8888");
 
     private static final InetAddress[] GOOGLE_DNS_LIST =
             new InetAddress[] {GOOGLE_DNS_4, GOOGLE_DNS_6};
@@ -78,7 +66,6 @@ public class IpSecManagerTest extends IpSecBaseTest {
 
     protected void setUp() throws Exception {
         super.setUp();
-        mCM = (ConnectivityManager) getContext().getSystemService(Context.CONNECTIVITY_SERVICE);
     }
 
     /*
