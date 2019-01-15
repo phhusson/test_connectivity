@@ -139,6 +139,8 @@ public class WifiInfoTest extends AndroidTestCase {
         wifiInfo.getBSSID();
         wifiInfo.getIpAddress();
         wifiInfo.getLinkSpeed();
+        wifiInfo.getTxLinkSpeedMbps();
+        wifiInfo.getRxLinkSpeedMbps();
         wifiInfo.getRssi();
         wifiInfo.getHiddenSSID();
         wifiInfo.getMacAddress();
