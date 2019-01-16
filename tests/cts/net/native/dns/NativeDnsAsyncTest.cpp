@@ -44,6 +44,10 @@ int getAsyncResponse(int fd, int timeoutMs, int* rcode, uint8_t* buf, size_t buf
     revents = wait_fd[0].revents;
     if (revents & POLLIN) {
         int n = android_res_nresult(fd, rcode, buf, bufLen);
+        // Verify that android_res_nresult() closed the fd
+        char dummy;
+        EXPECT_EQ(-1, read(fd, &dummy, sizeof dummy));
+        EXPECT_EQ(EBADF, errno);
         return n;
     }
 
@@ -78,7 +82,6 @@ void expectAnswersValid(int fd, int ipType, int expectedRcode) {
     EXPECT_GE(res, 0);
     EXPECT_EQ(rcode, expectedRcode);
 
-
     if (expectedRcode == ns_r_noerror) {
         auto answers = extractIpAddressAnswers(buf, res, ipType);
         EXPECT_GE(answers.size(), 0U);
@@ -101,20 +104,20 @@ void expectAnswersNotValid(int fd, int expectedErrno) {
 TEST (NativeDnsAsyncTest, Async_Query) {
     // V4
     int fd1 = android_res_nquery(
-            NETWORK_UNSPECIFIED, "www.google.com", ns_c_in, ns_t_a, ResNsendFlags(0));
+            NETWORK_UNSPECIFIED, "www.google.com", ns_c_in, ns_t_a, 0);
     EXPECT_GE(fd1, 0);
     int fd2 = android_res_nquery(
-            NETWORK_UNSPECIFIED, "www.youtube.com", ns_c_in, ns_t_a, ResNsendFlags(0));
+            NETWORK_UNSPECIFIED, "www.youtube.com", ns_c_in, ns_t_a, 0);
     EXPECT_GE(fd2, 0);
     expectAnswersValid(fd2, AF_INET, ns_r_noerror);
     expectAnswersValid(fd1, AF_INET, ns_r_noerror);
 
     // V6
     fd1 = android_res_nquery(
-            NETWORK_UNSPECIFIED, "www.google.com", ns_c_in, ns_t_aaaa, ResNsendFlags(0));
+            NETWORK_UNSPECIFIED, "www.google.com", ns_c_in, ns_t_aaaa, 0);
     EXPECT_GE(fd1, 0);
     fd2 = android_res_nquery(
-            NETWORK_UNSPECIFIED, "www.youtube.com", ns_c_in, ns_t_aaaa, ResNsendFlags(0));
+            NETWORK_UNSPECIFIED, "www.youtube.com", ns_c_in, ns_t_aaaa, 0);
     EXPECT_GE(fd2, 0);
     expectAnswersValid(fd2, AF_INET6, ns_r_noerror);
     expectAnswersValid(fd1, AF_INET6, ns_r_noerror);
@@ -132,9 +135,9 @@ TEST (NativeDnsAsyncTest, Async_Send) {
             ns_c_in, ns_t_a, nullptr, 0, nullptr, buf2, sizeof(buf2));
     EXPECT_GT(len2, 0);
 
-    int fd1 = android_res_nsend(NETWORK_UNSPECIFIED, buf1, len1, ResNsendFlags(0));
+    int fd1 = android_res_nsend(NETWORK_UNSPECIFIED, buf1, len1, 0);
     EXPECT_GE(fd1, 0);
-    int fd2 = android_res_nsend(NETWORK_UNSPECIFIED, buf2, len2, ResNsendFlags(0));
+    int fd2 = android_res_nsend(NETWORK_UNSPECIFIED, buf2, len2, 0);
     EXPECT_GE(fd2, 0);
 
     expectAnswersValid(fd2, AF_INET, ns_r_noerror);
@@ -150,9 +153,9 @@ TEST (NativeDnsAsyncTest, Async_Send) {
             ns_c_in, ns_t_aaaa, nullptr, 0, nullptr, buf2, sizeof(buf2));
     EXPECT_GT(len2, 0);
 
-    fd1 = android_res_nsend(NETWORK_UNSPECIFIED, buf1, len1, ResNsendFlags(0));
+    fd1 = android_res_nsend(NETWORK_UNSPECIFIED, buf1, len1, 0);
     EXPECT_GE(fd1, 0);
-    fd2 = android_res_nsend(NETWORK_UNSPECIFIED, buf2, len2, ResNsendFlags(0));
+    fd2 = android_res_nsend(NETWORK_UNSPECIFIED, buf2, len2, 0);
     EXPECT_GE(fd2, 0);
 
     expectAnswersValid(fd2, AF_INET6, ns_r_noerror);
@@ -190,7 +193,7 @@ TEST (NativeDnsAsyncTest, Async_NXDOMAIN) {
 
 TEST (NativeDnsAsyncTest, Async_Cancel) {
     int fd = android_res_nquery(
-            NETWORK_UNSPECIFIED, "www.google.com", ns_c_in, ns_t_a, ResNsendFlags(0));
+            NETWORK_UNSPECIFIED, "www.google.com", ns_c_in, ns_t_a, 0);
     int rcode = -1;
     uint8_t buf[MAXPACKET] = {};
     android_res_cancel(fd);
@@ -204,7 +207,7 @@ TEST (NativeDnsAsyncTest, Async_Query_MALFORMED) {
     // Empty string to create BLOB and query, we will get empty result and rcode = 0
     // on DNSTLS.
     int fd = android_res_nquery(
-            NETWORK_UNSPECIFIED, "", ns_c_in, ns_t_a, ResNsendFlags(0));
+            NETWORK_UNSPECIFIED, "", ns_c_in, ns_t_a, 0);
     EXPECT_GE(fd, 0);
     expectAnswersValid(fd, AF_INET, ns_r_noerror);
 
@@ -212,44 +215,44 @@ TEST (NativeDnsAsyncTest, Async_Query_MALFORMED) {
     std::string exceedingDomainQuery = "www." + std::string(255, 'g') + ".com";
 
     fd = android_res_nquery(NETWORK_UNSPECIFIED,
-            exceedingLabelQuery.c_str(), ns_c_in, ns_t_a, ResNsendFlags(0));
+            exceedingLabelQuery.c_str(), ns_c_in, ns_t_a, 0);
     EXPECT_EQ(-EMSGSIZE, fd);
     fd = android_res_nquery(NETWORK_UNSPECIFIED,
-            exceedingDomainQuery.c_str(), ns_c_in, ns_t_a, ResNsendFlags(0));
+            exceedingDomainQuery.c_str(), ns_c_in, ns_t_a, 0);
     EXPECT_EQ(-EMSGSIZE, fd);
 }
 
 TEST (NativeDnsAsyncTest, Async_Send_MALFORMED) {
     uint8_t buf[10] = {};
     // empty BLOB
-    int fd = android_res_nsend(NETWORK_UNSPECIFIED, buf, 10, ResNsendFlags(0));
+    int fd = android_res_nsend(NETWORK_UNSPECIFIED, buf, 10, 0);
     EXPECT_GE(fd, 0);
     expectAnswersNotValid(fd, -EINVAL);
 
     std::vector<uint8_t> largeBuf(2 * MAXPACKET, 0);
     // A buffer larger than 8KB
     fd = android_res_nsend(
-            NETWORK_UNSPECIFIED, largeBuf.data(), largeBuf.size(), ResNsendFlags(0));
+            NETWORK_UNSPECIFIED, largeBuf.data(), largeBuf.size(), 0);
     EXPECT_EQ(-EMSGSIZE, fd);
 
     // 1000 bytes filled with 0. This returns EMSGSIZE because FrameworkListener limits the size of
     // commands to 1024 bytes. TODO: fix this.
-    fd = android_res_nsend(NETWORK_UNSPECIFIED, largeBuf.data(), 1000, ResNsendFlags(0));
+    fd = android_res_nsend(NETWORK_UNSPECIFIED, largeBuf.data(), 1000, 0);
     EXPECT_EQ(-EMSGSIZE, fd);
 
     // 500 bytes filled with 0
-    fd = android_res_nsend(NETWORK_UNSPECIFIED, largeBuf.data(), 500, ResNsendFlags(0));
+    fd = android_res_nsend(NETWORK_UNSPECIFIED, largeBuf.data(), 500, 0);
     EXPECT_GE(fd, 0);
     expectAnswersNotValid(fd, -EINVAL);
 
     // 1000 bytes filled with 0xFF
-    std::vector<uint8_t> ffBuf(1000, 255);
+    std::vector<uint8_t> ffBuf(1000, 0xFF);
     fd = android_res_nsend(
-            NETWORK_UNSPECIFIED, ffBuf.data(), ffBuf.size(), ResNsendFlags(0));
+            NETWORK_UNSPECIFIED, ffBuf.data(), ffBuf.size(), 0);
     EXPECT_EQ(-EMSGSIZE, fd);
 
     // 500 bytes filled with 0xFF
-    fd = android_res_nsend(NETWORK_UNSPECIFIED, ffBuf.data(), 500, ResNsendFlags(0));
+    fd = android_res_nsend(NETWORK_UNSPECIFIED, ffBuf.data(), 500, 0);
     EXPECT_GE(fd, 0);
     expectAnswersNotValid(fd, -EINVAL);
 }
