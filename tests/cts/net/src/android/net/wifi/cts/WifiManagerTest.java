@@ -874,6 +874,15 @@ public class WifiManagerTest extends AndroidTestCase {
 
         TestLocalOnlyHotspotCallback callback = startLocalOnlyHotspot();
 
+        // add sleep to avoid calling stopLocalOnlyHotspot before TetherController initialization.
+        // TODO: remove this sleep as soon as b/124330089 is fixed.
+        try {
+            Log.d(TAG, "Sleep for 2 seconds");
+            Thread.sleep(2000);
+        } catch (InterruptedException e) {
+            Log.d(TAG, "Thread InterruptedException!");
+        }
+
         stopLocalOnlyHotspot(callback, wifiEnabled);
 
         // wifi should either stay on, or come back on
@@ -948,6 +957,15 @@ public class WifiManagerTest extends AndroidTestCase {
             stopLocalOnlyHotspot(callback2, wifiEnabled);
         }
         assertTrue(caughtException);
+
+        // add sleep to avoid calling stopLocalOnlyHotspot before TetherController initialization.
+        // TODO: remove this sleep as soon as b/124330089 is fixed.
+        try {
+            Log.d(TAG, "Sleep for 2 seconds");
+            Thread.sleep(2000);
+        } catch (InterruptedException e) {
+            Log.d(TAG, "Thread InterruptedException!");
+        }
 
         stopLocalOnlyHotspot(callback, wifiEnabled);
     }
