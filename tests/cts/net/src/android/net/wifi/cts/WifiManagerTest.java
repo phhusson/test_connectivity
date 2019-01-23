@@ -1023,6 +1023,30 @@ public class WifiManagerTest extends AndroidTestCase {
         }
     }
 
+    /**
+     * Verify that the {@link android.Manifest.permission#WIFI_UPDATE_USABILITY_STATS_SCORE}
+     * permission is held by at most one application.
+     */
+    public void testUpdateWifiUsabilityStatsScorePermission() {
+        final PackageManager pm = getContext().getPackageManager();
+
+        final List<PackageInfo> holding = pm.getPackagesHoldingPermissions(new String[] {
+                android.Manifest.permission.WIFI_UPDATE_USABILITY_STATS_SCORE
+        }, PackageManager.MATCH_UNINSTALLED_PACKAGES);
+
+        List<String> uniquePackageNames = holding
+                .stream()
+                .map(pi -> pi.packageName)
+                .distinct()
+                .collect(Collectors.toList());
+
+        if (uniquePackageNames.size() > 1) {
+            fail("The WIFI_UPDATE_USABILITY_STATS_SCORE permission must not be held by more than "
+                + "one application, but is held by " + uniquePackageNames.size() + " applications: "
+                + String.join(", ", uniquePackageNames));
+        }
+    }
+
     private void turnScreenOnNoDelay() throws Exception {
         mUiDevice.executeShellCommand("input keyevent KEYCODE_WAKEUP");
         mUiDevice.executeShellCommand("wm dismiss-keyguard");
