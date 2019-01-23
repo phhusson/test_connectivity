@@ -16,6 +16,7 @@
 
 package android.net.cts;
 
+import android.net.NetworkStats;
 import android.net.TrafficStats;
 import android.os.Process;
 import android.test.AndroidTestCase;
@@ -99,6 +100,7 @@ public class TrafficStatsTest extends AndroidTestCase {
         final int byteCount = 1024;
         final int packetCount = 1024;
 
+        TrafficStats.startDataProfiling(null);
         final ServerSocket server = new ServerSocket(0);
         new Thread("TrafficStatsTest.testTrafficStatsForLocalhost") {
             @Override
@@ -153,6 +155,7 @@ public class TrafficStatsTest extends AndroidTestCase {
             Thread.sleep(1000);
         } catch (InterruptedException e) {
         }
+        NetworkStats testStats = TrafficStats.stopDataProfiling(null);
 
         long mobileTxPacketsAfter = TrafficStats.getMobileTxPackets();
         long mobileRxPacketsAfter = TrafficStats.getMobileRxPackets();
@@ -193,6 +196,24 @@ public class TrafficStatsTest extends AndroidTestCase {
         if (deltaTxOtherPackets > 0 || deltaRxOtherPackets > 0) {
             Log.i(LOG_TAG, "lingering traffic data: " + deltaTxOtherPackets + "/" + deltaRxOtherPackets);
         }
+
+        // Check the per uid stats read from data profiling have the stats expected. The data
+        // profiling snapshot is generated from readNetworkStatsDetail() method in
+        // networkStatsService and in this way we can verify the detail networkStats of a given uid
+        // is correct.
+        NetworkStats.Entry entry = testStats.getTotal(null, Process.myUid());
+        assertTrue("txPackets detail: " + entry.txPackets + " uidTxPackets: " + uidTxDeltaPackets,
+            entry.txPackets >= packetCount + minExpectedExtraPackets
+            && entry.txPackets <= uidTxDeltaPackets);
+        assertTrue("rxPackets detail: " + entry.rxPackets + " uidRxPackets: " + uidRxDeltaPackets,
+            entry.rxPackets >= packetCount + minExpectedExtraPackets
+            && entry.rxPackets <= uidRxDeltaPackets);
+        assertTrue("txBytes detail: " + entry.txBytes + " uidTxDeltaBytes: " + uidTxDeltaBytes,
+            entry.txBytes >= tcpPacketToIpBytes(packetCount, byteCount)
+            + tcpPacketToIpBytes(minExpectedExtraPackets, 0) && entry.txBytes <= uidTxDeltaBytes);
+        assertTrue("rxBytes detail: " + entry.rxBytes + " uidRxDeltaBytes: " + uidRxDeltaBytes,
+            entry.rxBytes >= tcpPacketToIpBytes(packetCount, byteCount)
+            + tcpPacketToIpBytes(minExpectedExtraPackets, 0) && entry.rxBytes <= uidRxDeltaBytes);
 
         assertTrue("uidtxp: " + uidTxPacketsBefore + " -> " + uidTxPacketsAfter + " delta=" + uidTxDeltaPackets +
             " Wanted: " + uidTxDeltaPackets + ">=" + packetCount + "+" + minExpectedExtraPackets + " && " +
