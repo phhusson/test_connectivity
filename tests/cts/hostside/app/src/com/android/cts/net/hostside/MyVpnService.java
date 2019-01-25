@@ -17,6 +17,7 @@
 package com.android.cts.net.hostside;
 
 import android.content.Intent;
+import android.net.ProxyInfo;
 import android.net.VpnService;
 import android.os.ParcelFileDescriptor;
 import android.content.pm.PackageManager.NameNotFoundException;
@@ -113,6 +114,8 @@ public class MyVpnService extends VpnService {
             }
         }
 
+        ProxyInfo vpnProxy = intent.getParcelableExtra(packageName + ".httpProxy");
+        builder.setHttpProxy(vpnProxy);
         builder.setMtu(MTU);
         builder.setBlocking(true);
         builder.setSession("MyVpnService");
