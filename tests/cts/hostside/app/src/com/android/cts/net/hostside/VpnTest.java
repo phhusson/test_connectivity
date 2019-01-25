@@ -19,6 +19,7 @@ package com.android.cts.net.hostside;
 import static android.os.Process.INVALID_UID;
 import static android.system.OsConstants.*;
 
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
@@ -27,6 +28,8 @@ import android.net.LinkProperties;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
+import android.net.Proxy;
+import android.net.ProxyInfo;
 import android.net.VpnService;
 import android.os.ParcelFileDescriptor;
 import android.os.Process;
@@ -45,6 +48,7 @@ import android.test.MoreAsserts;
 import android.text.TextUtils;
 import android.util.Log;
 
+import com.android.compatibility.common.util.BlockingBroadcastReceiver;
 import com.android.cts.net.hostside.IRemoteSocketFactory;
 
 import java.io.BufferedReader;
@@ -197,9 +201,8 @@ public class VpnTest extends InstrumentationTestCase {
     }
 
     private void startVpn(
-            String[] addresses, String[] routes,
-            String allowedApplications, String disallowedApplications) throws Exception {
-
+        String[] addresses, String[] routes, String allowedApplications,
+        String disallowedApplications, ProxyInfo proxyInfo) throws Exception {
         prepareVpn();
 
         // Register a callback so we will be notified when our VPN comes up.
@@ -225,7 +228,8 @@ public class VpnTest extends InstrumentationTestCase {
                 .putExtra(mPackageName + ".addresses", TextUtils.join(",", addresses))
                 .putExtra(mPackageName + ".routes", TextUtils.join(",", routes))
                 .putExtra(mPackageName + ".allowedapplications", allowedApplications)
-                .putExtra(mPackageName + ".disallowedapplications", disallowedApplications);
+                .putExtra(mPackageName + ".disallowedapplications", disallowedApplications)
+                .putExtra(mPackageName + ".httpProxy", proxyInfo);
         mActivity.startService(intent);
         synchronized (mLock) {
             if (mNetwork == null) {
@@ -573,7 +577,7 @@ public class VpnTest extends InstrumentationTestCase {
 
         startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
                  new String[] {"0.0.0.0/0", "::/0"},
-                 "", "");
+                 "", "", null);
 
         assertSocketClosed(fd, TEST_HOST);
 
@@ -589,7 +593,7 @@ public class VpnTest extends InstrumentationTestCase {
         String allowedApps = mRemoteSocketFactoryClient.getPackageName() + "," + mPackageName;
         startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
                  new String[] {"192.0.2.0/24", "2001:db8::/32"},
-                 allowedApps, "");
+                 allowedApps, "", null);
 
         assertSocketClosed(fd, TEST_HOST);
 
@@ -611,7 +615,7 @@ public class VpnTest extends InstrumentationTestCase {
         Log.i(TAG, "Append shell app to disallowedApps: " + disallowedApps);
         startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
                  new String[] {"192.0.2.0/24", "2001:db8::/32"},
-                 "", disallowedApps);
+                 "", disallowedApps, null);
 
         assertSocketStillOpen(localFd, TEST_HOST);
         assertSocketStillOpen(remoteFd, TEST_HOST);
@@ -620,7 +624,6 @@ public class VpnTest extends InstrumentationTestCase {
     }
 
     public void testGetConnectionOwnerUidSecurity() throws Exception {
-
         if (!supportedHardware()) return;
 
         DatagramSocket s;
@@ -635,6 +638,157 @@ public class VpnTest extends InstrumentationTestCase {
             fail("Only an active VPN app may call this API.");
         } catch (SecurityException expected) {
             return;
+        }
+    }
+
+    public void testSetProxy() throws  Exception {
+        if (!supportedHardware()) return;
+        ProxyInfo initialProxy = mCM.getDefaultProxy();
+        // Receiver for the proxy change broadcast.
+        BlockingBroadcastReceiver proxyBroadcastReceiver = new ProxyChangeBroadcastReceiver();
+        proxyBroadcastReceiver.register();
+
+        String allowedApps = mPackageName;
+        ProxyInfo testProxyInfo = ProxyInfo.buildDirectProxy("10.0.0.1", 8888);
+        startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
+                new String[] {"0.0.0.0/0", "::/0"}, allowedApps, "",
+                testProxyInfo);
+
+        // Check that the proxy change broadcast is received
+        try {
+            assertNotNull("No proxy change was broadcast when VPN is connected.",
+                    proxyBroadcastReceiver.awaitForBroadcast());
+        } finally {
+            proxyBroadcastReceiver.unregisterQuietly();
+        }
+
+        // Proxy is set correctly in network and in link properties.
+        assertNetworkHasExpectedProxy(testProxyInfo, mNetwork);
+        assertDefaultProxy(testProxyInfo);
+
+        proxyBroadcastReceiver = new ProxyChangeBroadcastReceiver();
+        proxyBroadcastReceiver.register();
+        stopVpn();
+        try {
+            assertNotNull("No proxy change was broadcast when VPN was disconnected.",
+                    proxyBroadcastReceiver.awaitForBroadcast());
+        } finally {
+            proxyBroadcastReceiver.unregisterQuietly();
+        }
+
+        // After disconnecting from VPN, the proxy settings are the ones of the initial network.
+        assertDefaultProxy(initialProxy);
+    }
+
+    public void testSetProxyDisallowedApps() throws Exception {
+        if (!supportedHardware()) return;
+        ProxyInfo initialProxy = mCM.getDefaultProxy();
+
+        // If adb TCP port opened, this test may running by adb over TCP.
+        // Add com.android.shell appllication into blacklist to exclude adb socket for VPN test,
+        // see b/119382723.
+        // Note: The test don't support running adb over network for root device
+        String disallowedApps = mPackageName + ",com.android.shell";
+        ProxyInfo testProxyInfo = ProxyInfo.buildDirectProxy("10.0.0.1", 8888);
+        startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
+                new String[] {"0.0.0.0/0", "::/0"}, "", disallowedApps,
+                testProxyInfo);
+
+        // The disallowed app does has the proxy configs of the default network.
+        assertNetworkHasExpectedProxy(initialProxy, mCM.getActiveNetwork());
+        assertDefaultProxy(initialProxy);
+    }
+
+    public void testNoProxy() throws Exception {
+        if (!supportedHardware()) return;
+        ProxyInfo initialProxy = mCM.getDefaultProxy();
+        BlockingBroadcastReceiver proxyBroadcastReceiver = new ProxyChangeBroadcastReceiver();
+        proxyBroadcastReceiver.register();
+        String allowedApps = mPackageName;
+        startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
+                new String[] {"0.0.0.0/0", "::/0"}, allowedApps, "", null);
+
+        try {
+            assertNotNull("No proxy change was broadcast.",
+                    proxyBroadcastReceiver.awaitForBroadcast());
+        } finally {
+            proxyBroadcastReceiver.unregisterQuietly();
+        }
+
+        // The VPN network has no proxy set.
+        assertNetworkHasExpectedProxy(null, mNetwork);
+
+        proxyBroadcastReceiver = new ProxyChangeBroadcastReceiver();
+        proxyBroadcastReceiver.register();
+        stopVpn();
+        try {
+            assertNotNull("No proxy change was broadcast.",
+                    proxyBroadcastReceiver.awaitForBroadcast());
+        } finally {
+            proxyBroadcastReceiver.unregisterQuietly();
+        }
+        // After disconnecting from VPN, the proxy settings are the ones of the initial network.
+        assertDefaultProxy(initialProxy);
+        assertNetworkHasExpectedProxy(initialProxy, mCM.getActiveNetwork());
+    }
+
+    public void testBindToNetworkWithProxy() throws Exception {
+        if (!supportedHardware()) return;
+        String allowedApps = mPackageName;
+        Network initialNetwork = mCM.getActiveNetwork();
+        ProxyInfo initialProxy = mCM.getDefaultProxy();
+        ProxyInfo testProxyInfo = ProxyInfo.buildDirectProxy("10.0.0.1", 8888);
+        // Receiver for the proxy change broadcast.
+        BlockingBroadcastReceiver proxyBroadcastReceiver = new ProxyChangeBroadcastReceiver();
+        proxyBroadcastReceiver.register();
+        startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
+                new String[] {"0.0.0.0/0", "::/0"}, allowedApps, "",
+                testProxyInfo);
+
+        assertDefaultProxy(testProxyInfo);
+        mCM.bindProcessToNetwork(initialNetwork);
+        try {
+            assertNotNull("No proxy change was broadcast.",
+                proxyBroadcastReceiver.awaitForBroadcast());
+        } finally {
+            proxyBroadcastReceiver.unregisterQuietly();
+        }
+        assertDefaultProxy(initialProxy);
+    }
+
+    private void assertDefaultProxy(ProxyInfo expected) {
+        assertEquals("Incorrect proxy config.", expected, mCM.getDefaultProxy());
+        String expectedHost = expected == null ? null : expected.getHost();
+        String expectedPort = expected == null ? null : String.valueOf(expected.getPort());
+        assertEquals("Incorrect proxy host system property.", expectedHost,
+            System.getProperty("http.proxyHost"));
+        assertEquals("Incorrect proxy port system property.", expectedPort,
+            System.getProperty("http.proxyPort"));
+    }
+
+    private void assertNetworkHasExpectedProxy(ProxyInfo expected, Network network) {
+        LinkProperties lp = mCM.getLinkProperties(network);
+        assertNotNull("The network link properties object is null.", lp);
+        assertEquals("Incorrect proxy config.", expected, lp.getHttpProxy());
+
+        assertEquals(expected, mCM.getProxyForNetwork(network));
+    }
+
+    class ProxyChangeBroadcastReceiver extends BlockingBroadcastReceiver {
+        private boolean received;
+
+        public ProxyChangeBroadcastReceiver() {
+            super(VpnTest.this.getInstrumentation().getContext(), Proxy.PROXY_CHANGE_ACTION);
+            received = false;
+        }
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (!received) {
+                // Do not call onReceive() more than once.
+                super.onReceive(context, intent);
+            }
+            received = true;
         }
     }
 }
