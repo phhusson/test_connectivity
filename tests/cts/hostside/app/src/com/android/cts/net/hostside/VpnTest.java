@@ -36,8 +36,6 @@ import android.os.Process;
 import android.os.SystemProperties;
 import android.support.test.uiautomator.UiDevice;
 import android.support.test.uiautomator.UiObject;
-import android.support.test.uiautomator.UiObjectNotFoundException;
-import android.support.test.uiautomator.UiScrollable;
 import android.support.test.uiautomator.UiSelector;
 import android.system.ErrnoException;
 import android.system.Os;
@@ -49,18 +47,12 @@ import android.text.TextUtils;
 import android.util.Log;
 
 import com.android.compatibility.common.util.BlockingBroadcastReceiver;
-import com.android.cts.net.hostside.IRemoteSocketFactory;
 
-import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.FileDescriptor;
-import java.io.FileOutputStream;
-import java.io.FileInputStream;
-import java.io.InputStreamReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.PrintWriter;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.Inet6Address;
@@ -68,9 +60,9 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.util.Random;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Tests for the VpnService API.
@@ -230,6 +222,7 @@ public class VpnTest extends InstrumentationTestCase {
                 .putExtra(mPackageName + ".allowedapplications", allowedApplications)
                 .putExtra(mPackageName + ".disallowedapplications", disallowedApplications)
                 .putExtra(mPackageName + ".httpProxy", proxyInfo);
+
         mActivity.startService(intent);
         synchronized (mLock) {
             if (mNetwork == null) {
@@ -573,15 +566,27 @@ public class VpnTest extends InstrumentationTestCase {
             return;
         }
 
+        final BlockingBroadcastReceiver receiver = new BlockingBroadcastReceiver(
+                getInstrumentation().getTargetContext(), MyVpnService.ACTION_ESTABLISHED);
+        receiver.register();
+
         FileDescriptor fd = openSocketFdInOtherApp(TEST_HOST, 80, TIMEOUT_MS);
 
         startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
                  new String[] {"0.0.0.0/0", "::/0"},
                  "", "", null);
 
+        final Intent intent = receiver.awaitForBroadcast(TimeUnit.MINUTES.toMillis(1));
+        assertNotNull("Failed to receive broadcast from VPN service", intent);
+        assertFalse("Wrong VpnService#isAlwaysOn",
+                intent.getBooleanExtra(MyVpnService.EXTRA_ALWAYS_ON, true));
+        assertFalse("Wrong VpnService#isLockdownEnabled",
+                intent.getBooleanExtra(MyVpnService.EXTRA_LOCKDOWN_ENABLED, true));
+
         assertSocketClosed(fd, TEST_HOST);
 
         checkTrafficOnVpn();
+        receiver.unregisterQuietly();
     }
 
     public void testAppAllowed() throws Exception {
@@ -773,6 +778,17 @@ public class VpnTest extends InstrumentationTestCase {
 
         assertEquals(expected, mCM.getProxyForNetwork(network));
     }
+
+//    public void testIsAlwaysOnIsLockdownNotAlwaysOn() throws Exception {
+//        if (!supportedHardware()) return;
+//
+//        // This package is the VPN app, so we can call the APIs directly.
+//
+//        startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
+//                new String[] {"0.0.0.0/0", "::/0"},
+//                mPackageName /* allowedApps */, "",
+//                null /* proxyInfo */);
+//    }
 
     class ProxyChangeBroadcastReceiver extends BlockingBroadcastReceiver {
         private boolean received;
