@@ -779,17 +779,6 @@ public class VpnTest extends InstrumentationTestCase {
         assertEquals(expected, mCM.getProxyForNetwork(network));
     }
 
-//    public void testIsAlwaysOnIsLockdownNotAlwaysOn() throws Exception {
-//        if (!supportedHardware()) return;
-//
-//        // This package is the VPN app, so we can call the APIs directly.
-//
-//        startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
-//                new String[] {"0.0.0.0/0", "::/0"},
-//                mPackageName /* allowedApps */, "",
-//                null /* proxyInfo */);
-//    }
-
     class ProxyChangeBroadcastReceiver extends BlockingBroadcastReceiver {
         private boolean received;
 
