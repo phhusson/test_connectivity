@@ -872,8 +872,8 @@ public class WifiManagerTest extends AndroidTestCase {
      * Verify that the {@link android.Manifest.permission#NETWORK_SETTINGS} permission is
      * never held by any package.
      * <p>
-     * Only Settings, SysUi and shell apps should <em>ever</em> attempt to acquire this
-     * permission, since it would give those apps extremely broad access to connectivity
+     * Only Settings, SysUi, NetworkStack and shell apps should <em>ever</em> attempt to acquire
+     * this permission, since it would give those apps extremely broad access to connectivity
      * functionality.  The permission is intended to be granted to only those apps with direct user
      * access and no others.
      */
@@ -886,6 +886,7 @@ public class WifiManagerTest extends AndroidTestCase {
         allowedUIDs.add(Process.SYSTEM_UID);
         allowedUIDs.add(Process.SHELL_UID);
         allowedUIDs.add(Process.PHONE_UID);
+        allowedUIDs.add(Process.NETWORK_STACK_UID);
 
         // only quick settings is allowed to bind to the BIND_QUICK_SETTINGS_TILE permission, using
         // this fact to determined allowed package name for sysui
