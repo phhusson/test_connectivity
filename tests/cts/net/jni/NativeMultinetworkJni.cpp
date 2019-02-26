@@ -30,15 +30,11 @@
 #include <sys/time.h>
 #include <android/multinetwork.h>
 
-#define UNUSED(X) ((void) (X))
-
 static const char kHostname[] = "connectivitycheck.android.com";
 
-
+extern "C"
 JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runGetaddrinfoCheck(
-        JNIEnv* env, jclass class, jlong nethandle) {
-    UNUSED(env);
-    UNUSED(class);
+        JNIEnv*, jclass, jlong nethandle) {
     net_handle_t handle = (net_handle_t) nethandle;
     struct addrinfo *res = NULL;
 
@@ -52,10 +48,9 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runGetaddrinfoCheck(
     return rval == 0 ? 0 : -saved_errno;
 }
 
+extern "C"
 JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runSetprocnetwork(
-        JNIEnv* env, jclass class, jlong nethandle) {
-    UNUSED(env);
-    UNUSED(class);
+        JNIEnv*, jclass, jlong nethandle) {
     net_handle_t handle = (net_handle_t) nethandle;
 
     errno = 0;
@@ -66,10 +61,9 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runSetprocnetwork(
     return rval == 0 ? 0 : -saved_errno;
 }
 
+extern "C"
 JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runSetsocknetwork(
-        JNIEnv* env, jclass class, jlong nethandle) {
-    UNUSED(env);
-    UNUSED(class);
+        JNIEnv*, jclass, jlong nethandle) {
     net_handle_t handle = (net_handle_t) nethandle;
 
     errno = 0;
@@ -112,10 +106,9 @@ void sockaddr_ntop(const struct sockaddr *sa, socklen_t salen, char *dst, const 
     strlcpy(dst, buf, size);
 }
 
+extern "C"
 JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runDatagramCheck(
-        JNIEnv* env, jclass class, jlong nethandle) {
-    UNUSED(env);
-    UNUSED(class);
+        JNIEnv*, jclass, jlong nethandle) {
     const struct addrinfo kHints = {
         .ai_flags = AI_ADDRCONFIG,
         .ai_family = AF_UNSPEC,
