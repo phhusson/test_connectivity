@@ -36,7 +36,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := libnativemultinetwork_jni
 # Don't include this package in any configuration by default.
 LOCAL_MODULE_TAGS := optional
-LOCAL_SRC_FILES := NativeMultinetworkJni.c
+LOCAL_SRC_FILES := NativeMultinetworkJni.cpp
 LOCAL_CFLAGS := -Wall -Werror -Wno-format
 LOCAL_C_INCLUDES := $(JNI_H_INCLUDE)
 LOCAL_SHARED_LIBRARIES := libandroid libnativehelper_compat_libc++ liblog
