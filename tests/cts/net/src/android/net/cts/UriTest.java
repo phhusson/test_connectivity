@@ -568,6 +568,15 @@ public class UriTest extends AndroidTestCase {
                 "ftp://root:love@ftp.android.com:2121/");
     }
 
+    public void testToSafeString_rtsp() {
+        checkToSafeString("rtsp://rtsp.android.com/...", "rtsp://rtsp.android.com/");
+        checkToSafeString("rtsp://rtsp.android.com/...", "rtsp://rtsp.android.com/video.mov");
+        checkToSafeString("rtsp://rtsp.android.com/...", "rtsp://rtsp.android.com/video.mov?param");
+        checkToSafeString("RtsP://rtsp.android.com/...", "RtsP://anonymous@rtsp.android.com/");
+        checkToSafeString("rtsp://rtsp.android.com:2121/...",
+                "rtsp://username:password@rtsp.android.com:2121/");
+    }
+
     public void testToSafeString_notSupport() {
         checkToSafeString("unsupported://ajkakjah/askdha/secret?secret",
                 "unsupported://ajkakjah/askdha/secret?secret");
