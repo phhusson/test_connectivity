@@ -28,7 +28,6 @@ import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
-import android.net.wifi.WifiConfiguration.Status;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.TxPacketCountListener;
 import android.net.wifi.WifiManager.WifiLock;
@@ -38,24 +37,21 @@ import android.net.wifi.hotspot2.pps.HomeSp;
 import android.os.Process;
 import android.os.SystemClock;
 import android.provider.Settings;
-import android.support.test.InstrumentationRegistry;
 import android.support.test.uiautomator.UiDevice;
 import android.test.AndroidTestCase;
-import android.text.TextUtils;
 import android.util.ArraySet;
 import android.util.Log;
 
+import androidx.test.InstrumentationRegistry;
+
 import com.android.compatibility.common.util.SystemUtil;
-import com.android.compatibility.common.util.WifiConfigCreator;
 
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.MessageDigest;
 import java.security.cert.X509Certificate;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
