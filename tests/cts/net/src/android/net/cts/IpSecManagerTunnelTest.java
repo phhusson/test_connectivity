@@ -127,7 +127,6 @@ public class IpSecManagerTunnelTest extends IpSecBaseTest {
 
             // Check interface was created
             NetworkInterface netIntf = NetworkInterface.getByName(tunnelIntf.getInterfaceName());
-            assertTrue(netIntf.isPointToPoint());
             assertNotNull(netIntf);
 
             // Add addresses and check
