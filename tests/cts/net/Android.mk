@@ -41,8 +41,8 @@ LOCAL_PACKAGE_NAME := CtsNetTestCases
 
 LOCAL_STATIC_JAVA_LIBRARIES := \
     core-tests-support \
-    compatibility-device-util \
-    ctstestrunner \
+    compatibility-device-util-axt \
+    ctstestrunner-axt \
     ctstestserver \
     mockwebserver \
     junit \

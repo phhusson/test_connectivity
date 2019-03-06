@@ -24,6 +24,7 @@ import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED;
 import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
 import static android.provider.Settings.Global.NETWORK_METERED_MULTIPATH_PREFERENCE;
+
 import static com.android.compatibility.common.util.SystemUtil.runShellCommand;
 
 import android.app.Instrumentation;
@@ -50,28 +51,30 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.os.SystemProperties;
 import android.provider.Settings;
-import android.support.test.InstrumentationRegistry;
 import android.system.Os;
 import android.system.OsConstants;
 import android.test.AndroidTestCase;
 import android.text.TextUtils;
 import android.util.Log;
 
+import androidx.test.InstrumentationRegistry;
+
 import com.android.internal.R;
 import com.android.internal.telephony.PhoneConstants;
 
+import libcore.io.Streams;
+
 import java.io.File;
 import java.io.FileNotFoundException;
-import java.io.InputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.lang.NumberFormatException;
 import java.net.HttpURLConnection;
 import java.net.Inet6Address;
 import java.net.InetAddress;
-import java.net.Socket;
 import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
@@ -83,7 +86,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import libcore.io.Streams;
 
 public class ConnectivityManagerTest extends AndroidTestCase {
 
