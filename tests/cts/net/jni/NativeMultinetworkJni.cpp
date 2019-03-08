@@ -42,7 +42,7 @@
         if (actual < expected) {                                     \
             jniThrowExceptionFmt(env, "java/lang/AssertionError",    \
                     "%s:%d: %s EXPECT_GE: expected %d, got %d",      \
-                    __FILE__, __LINE__, expected, actual);           \
+                    __FILE__, __LINE__, msg, expected, actual);      \
         }                                                            \
     } while (0)
 
@@ -65,7 +65,7 @@
     } while (0)
 
 static const int MAXPACKET = 8 * 1024;
-static const int TIMEOUT_MS = 2000;
+static const int TIMEOUT_MS = 15000;
 static const char kHostname[] = "connectivitycheck.android.com";
 static const char kNxDomainName[] = "test1-nx.metric.gstatic.com";
 static const char kGoogleName[] = "www.google.com";
@@ -82,23 +82,29 @@ int getAsyncResponse(JNIEnv* env, int fd, int timeoutMs, int* rcode, uint8_t* bu
         int n = android_res_nresult(fd, rcode, buf, bufLen);
         // Verify that android_res_nresult() closed the fd
         char dummy;
-        EXPECT_EQ(env, -1, read(fd, &dummy, sizeof dummy), "res_nresult check for closing fd");
+        EXPECT_EQ(env, -1, read(fd, &dummy, sizeof(dummy)), "res_nresult check for closing fd");
         EXPECT_EQ(env, EBADF, errno, "res_nresult check for errno");
         return n;
     }
 
-    return -EREMOTEIO;
+    return -ETIMEDOUT;
 }
 
 int extractIpAddressAnswers(uint8_t* buf, size_t bufLen, int family) {
     ns_msg handle;
     if (ns_initparse((const uint8_t*) buf, bufLen, &handle) < 0) {
-        return -EREMOTEIO;
+        return -errno;
     }
     const int ancount = ns_msg_count(handle, ns_s_an);
+    // Answer count = 0 is valid(e.g. response of query with root)
+    if (!ancount) {
+        return 0;
+    }
     ns_rr rr;
+    bool hasValidAns = false;
     for (int i = 0; i < ancount; i++) {
         if (ns_parserr(&handle, ns_s_an, i, &rr) < 0) {
+            // If there is no valid answer, test will fail.
             continue;
         }
         const uint8_t* rdata = ns_rr_rdata(rr);
@@ -106,8 +112,9 @@ int extractIpAddressAnswers(uint8_t* buf, size_t bufLen, int family) {
         if (inet_ntop(family, (const char*) rdata, buffer, sizeof(buffer)) == NULL) {
             return -errno;
         }
+        hasValidAns = true;
     }
-    return 0;
+    return hasValidAns ? 0 : -EBADMSG;
 }
 
 int expectAnswersValid(JNIEnv* env, int fd, int family, int expectedRcode) {
@@ -117,10 +124,8 @@ int expectAnswersValid(JNIEnv* env, int fd, int family, int expectedRcode) {
     if (res < 0) {
         return res;
     }
-    if(rcode != expectedRcode) {
-        ALOGD("rcode:%d, expectedRcode = %d", rcode, expectedRcode);
-        return -EREMOTEIO;
-    }
+
+    EXPECT_EQ(env, expectedRcode, rcode, "rcode is not expected");
 
     if (expectedRcode == ns_r_noerror && res > 0) {
         return extractIpAddressAnswers(buf, res, family);
@@ -151,8 +156,7 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runResNqueryCheck(
             "v4 res_nquery check answers");
 
     // V4 NXDOMAIN
-    fd = android_res_nquery(handle, kNxDomainName, ns_c_in, ns_t_a,
-            ANDROID_RESOLV_NO_CACHE_LOOKUP);
+    fd = android_res_nquery(handle, kNxDomainName, ns_c_in, ns_t_a, 0);
     EXPECT_GE(env, fd, 0, "v4 res_nquery NXDOMAIN");
     EXPECT_EQ(env, 0, expectAnswersValid(env, fd, AF_INET, ns_r_nxdomain),
             "v4 res_nquery NXDOMAIN check answers");
@@ -164,8 +168,7 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runResNqueryCheck(
             "v6 res_nquery check answers");
 
     // V6 NXDOMAIN
-    fd = android_res_nquery(handle, kNxDomainName, ns_c_in, ns_t_aaaa,
-            ANDROID_RESOLV_NO_CACHE_LOOKUP);
+    fd = android_res_nquery(handle, kNxDomainName, ns_c_in, ns_t_aaaa, 0);
     EXPECT_GE(env, fd, 0, "v6 res_nquery NXDOMAIN");
     EXPECT_EQ(env, 0, expectAnswersValid(env, fd, AF_INET, ns_r_nxdomain),
             "v6 res_nquery NXDOMAIN check answers");
@@ -201,7 +204,7 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runResNsendCheck(
     memset(buf1, 0, sizeof(buf1));
     len1 = makeQuery(kNxDomainName, ns_t_a, buf1, sizeof(buf1));
     EXPECT_GT(env, len1, 0, "v4 res_mkquery NXDOMAIN");
-    fd1 = android_res_nsend(handle, buf1, len1, ANDROID_RESOLV_NO_CACHE_LOOKUP);
+    fd1 = android_res_nsend(handle, buf1, len1, 0);
     EXPECT_GE(env, fd1, 0, "v4 res_nsend NXDOMAIN");
     EXPECT_EQ(env, 0, expectAnswersValid(env, fd1, AF_INET, ns_r_nxdomain),
             "v4 res_nsend NXDOMAIN check answers");
@@ -224,11 +227,11 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runResNsendCheck(
     EXPECT_EQ(env, 0, expectAnswersValid(env, fd1, AF_INET6, ns_r_noerror),
             "v6 res_nsend 1st check answers");
 
-    // // V6 NXDOMAIN
+    // V6 NXDOMAIN
     memset(buf1, 0, sizeof(buf1));
     len1 = makeQuery(kNxDomainName, ns_t_aaaa, buf1, sizeof(buf1));
     EXPECT_GT(env, len1, 0, "v6 res_mkquery NXDOMAIN");
-    fd1 = android_res_nsend(handle, buf1, len1, ANDROID_RESOLV_NO_CACHE_LOOKUP);
+    fd1 = android_res_nsend(handle, buf1, len1, 0);
     EXPECT_GE(env, fd1, 0, "v6 res_nsend NXDOMAIN");
     EXPECT_EQ(env, 0, expectAnswersValid(env, fd1, AF_INET6, ns_r_nxdomain),
             "v6 res_nsend NXDOMAIN check answers");
@@ -245,8 +248,9 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runResNcancelCheck(
     int rcode = -1;
     uint8_t buf[MAXPACKET] = {};
     android_res_cancel(fd);
-    android_res_cancel(fd);
+    EXPECT_EQ(env, -EBADF, android_res_nresult(fd, &rcode, buf, MAXPACKET), "res_cancel");
 
+    android_res_cancel(fd);
     EXPECT_EQ(env, -EBADF, android_res_nresult(fd, &rcode, buf, MAXPACKET), "res_cancel");
     return 0;
 }
@@ -269,7 +273,7 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runResNapiMalformedCheck
 
     fd = android_res_nquery(handle, exceedingLabelQuery.c_str(), ns_c_in, ns_t_a, 0);
     EXPECT_EQ(env, -EMSGSIZE, fd, "res_nquery exceedingLabelQuery");
-    fd = android_res_nquery(handle, exceedingDomainQuery.c_str(), ns_c_in, ns_t_a, 0);
+    fd = android_res_nquery(handle, exceedingDomainQuery.c_str(), ns_c_in, ns_t_aaaa, 0);
     EXPECT_EQ(env, -EMSGSIZE, fd, "res_nquery exceedingDomainQuery");
 
     uint8_t buf[10] = {};
