@@ -17,6 +17,7 @@
 package com.android.cts.net.hostside;
 
 import android.content.Intent;
+import android.net.Network;
 import android.net.ProxyInfo;
 import android.net.VpnService;
 import android.os.ParcelFileDescriptor;
@@ -27,6 +28,7 @@ import android.util.Log;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
 
 public class MyVpnService extends VpnService {
 
@@ -117,6 +119,18 @@ public class MyVpnService extends VpnService {
                 }
             }
         }
+
+        ArrayList<Network> underlyingNetworks =
+                intent.getParcelableArrayListExtra(packageName + ".underlyingNetworks");
+        if (underlyingNetworks == null) {
+            // VPN tracks default network
+            builder.setUnderlyingNetworks(null);
+        } else {
+            builder.setUnderlyingNetworks(underlyingNetworks.toArray(new Network[0]));
+        }
+
+        boolean isAlwaysMetered = intent.getBooleanExtra(packageName + ".isAlwaysMetered", false);
+        builder.setMetered(isAlwaysMetered);
 
         ProxyInfo vpnProxy = intent.getParcelableExtra(packageName + ".httpProxy");
         builder.setHttpProxy(vpnProxy);
