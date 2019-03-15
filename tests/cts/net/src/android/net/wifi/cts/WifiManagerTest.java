@@ -94,6 +94,8 @@ public class WifiManagerTest extends AndroidTestCase {
     private static final int WIFI_SCAN_TEST_CACHE_DELAY_MILLIS = 3 * 60 * 1000;
     private static final int WIFI_SCAN_TEST_ITERATIONS = 5;
 
+    private static final int ENFORCED_NUM_NETWORK_SUGGESTIONS_PER_APP = 50;
+
     private static final String TEST_PAC_URL = "http://www.example.com/proxy.pac";
     private static final String MANAGED_PROVISIONING_PACKAGE_NAME
             = "com.android.managedprovisioning";
@@ -246,7 +248,6 @@ public class WifiManagerTest extends AndroidTestCase {
     private void connectWifi() throws Exception {
         synchronized (mMySync) {
             if (mNetworkInfo.getState() == NetworkInfo.State.CONNECTED) return;
-            assertTrue(mWifiManager.reconnect());
             long timeout = System.currentTimeMillis() + TIMEOUT_MSEC;
             while (System.currentTimeMillis() < timeout
                     && mNetworkInfo.getState() != NetworkInfo.State.CONNECTED)
@@ -980,6 +981,19 @@ public class WifiManagerTest extends AndroidTestCase {
         assertWifiScanningIsOn();
         turnScreenOn();
         assertWifiScanningIsOn();
+    }
+
+    /**
+     * Verify that the platform supports a reasonable number of suggestions per app.
+     * @throws Exception
+     */
+    public void testMaxNumberOfNetworkSuggestionsPerApp() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        assertTrue(mWifiManager.getMaxNumberOfNetworkSuggestionsPerApp()
+                > ENFORCED_NUM_NETWORK_SUGGESTIONS_PER_APP);
     }
 
     private void assertWifiScanningIsOn() {
