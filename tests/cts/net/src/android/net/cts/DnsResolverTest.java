@@ -40,6 +40,7 @@ import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -51,14 +52,14 @@ public class DnsResolverTest extends AndroidTestCase {
     static final int TIMEOUT_MS = 12_000;
 
     private ConnectivityManager mCM;
-    private Handler mHandler;
+    private Executor mExecutor;
     private DnsResolver mDns;
 
     protected void setUp() throws Exception {
         super.setUp();
         mCM = (ConnectivityManager) getContext().getSystemService(Context.CONNECTIVITY_SERVICE);
-        mHandler = new Handler(Looper.getMainLooper());
         mDns = DnsResolver.getInstance();
+        mExecutor = new Handler(Looper.getMainLooper())::post;
     }
 
     private static String byteArrayToHexString(byte[] bytes) {
@@ -116,7 +117,8 @@ public class DnsResolverTest extends AndroidTestCase {
                     fail(msg + e.getMessage());
                 }
             };
-            mDns.query(network, dname, CLASS_IN, TYPE_A, FLAG_NO_CACHE_LOOKUP, mHandler, callback);
+            mDns.query(network, dname, CLASS_IN, TYPE_A, FLAG_NO_CACHE_LOOKUP,
+                    mExecutor, callback);
             try {
                 assertTrue(msg + " but no valid answer after " + TIMEOUT_MS + "ms.",
                         latch.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
@@ -208,7 +210,7 @@ public class DnsResolverTest extends AndroidTestCase {
         for (Network network : getTestableNetworks()) {
             final RawAnswerCallbackImpl callback = new RawAnswerCallbackImpl(msg);
             mDns.query(network, dname, CLASS_IN, TYPE_AAAA, FLAG_NO_CACHE_LOOKUP,
-                    mHandler, callback);
+                    mExecutor, callback);
             try {
                 assertTrue(msg + " but no answer after " + TIMEOUT_MS + "ms.",
                         callback.waitForAnswer());
@@ -236,7 +238,7 @@ public class DnsResolverTest extends AndroidTestCase {
         final String msg = "Query with RawAnswerCallback " + byteArrayToHexString(blob);
         for (Network network : getTestableNetworks()) {
             final RawAnswerCallbackImpl callback = new RawAnswerCallbackImpl(msg);
-            mDns.query(network, blob, FLAG_NO_CACHE_LOOKUP, mHandler, callback);
+            mDns.query(network, blob, FLAG_NO_CACHE_LOOKUP, mExecutor, callback);
             try {
                 assertTrue(msg + " but no answer after " + TIMEOUT_MS + "ms.",
                         callback.waitForAnswer());
@@ -274,7 +276,7 @@ public class DnsResolverTest extends AndroidTestCase {
                 }
             };
             mDns.query(network, dname, CLASS_IN, TYPE_AAAA, FLAG_NO_CACHE_LOOKUP,
-                    mHandler, callback);
+                    mExecutor, callback);
             try {
                 assertTrue(msg + "but no answer after " + TIMEOUT_MS + "ms.",
                         latch.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
@@ -311,7 +313,7 @@ public class DnsResolverTest extends AndroidTestCase {
                 }
             };
             mDns.query(network, dname, CLASS_IN, TYPE_AAAA, FLAG_NO_CACHE_LOOKUP,
-                    mHandler, callback);
+                    mExecutor, callback);
             try {
                 assertTrue(msg + " but no answer after " + TIMEOUT_MS + "ms.",
                         latch.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
