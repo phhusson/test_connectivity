@@ -962,6 +962,10 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         fail("app2 receiver is not ready");
     }
 
+    protected void registerNetworkCallback(INetworkCallback cb) throws Exception {
+        mServiceClient.registerNetworkCallback(cb);
+    }
+
     /**
      * Registers a {@link NotificationListenerService} implementation that will execute the
      * notification actions right after the notification is sent.
