@@ -17,9 +17,11 @@
 package android.net.cts;
 
 import static android.net.DnsResolver.CLASS_IN;
+import static android.net.DnsResolver.FLAG_EMPTY;
 import static android.net.DnsResolver.FLAG_NO_CACHE_LOOKUP;
 import static android.net.DnsResolver.TYPE_A;
 import static android.net.DnsResolver.TYPE_AAAA;
+import static android.system.OsConstants.EBADF;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
@@ -30,6 +32,7 @@ import android.net.DnsResolver;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.ParseException;
+import android.os.CancellationSignal;
 import android.os.Handler;
 import android.os.Looper;
 import android.system.ErrnoException;
@@ -50,6 +53,7 @@ public class DnsResolverTest extends AndroidTestCase {
             '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'
     };
     static final int TIMEOUT_MS = 12_000;
+    static final int CANCEL_RETRY_TIMES = 5;
 
     private ConnectivityManager mCM;
     private Executor mExecutor;
@@ -118,7 +122,7 @@ public class DnsResolverTest extends AndroidTestCase {
                 }
             };
             mDns.query(network, dname, CLASS_IN, TYPE_A, FLAG_NO_CACHE_LOOKUP,
-                    mExecutor, callback);
+                    mExecutor, null, callback);
             try {
                 assertTrue(msg + " but no valid answer after " + TIMEOUT_MS + "ms.",
                         latch.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
@@ -174,12 +178,19 @@ public class DnsResolverTest extends AndroidTestCase {
     class RawAnswerCallbackImpl extends DnsResolver.RawAnswerCallback {
         private final CountDownLatch mLatch = new CountDownLatch(1);
         private final String mMsg;
-        RawAnswerCallbackImpl(String msg) {
+        private final int mTimeout;
+
+        RawAnswerCallbackImpl(@NonNull String msg, int timeout) {
             this.mMsg = msg;
+            this.mTimeout = timeout;
+        }
+
+        RawAnswerCallbackImpl(@NonNull String msg) {
+            this(msg, TIMEOUT_MS);
         }
 
         public boolean waitForAnswer() throws InterruptedException {
-            return mLatch.await(TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            return mLatch.await(mTimeout, TimeUnit.MILLISECONDS);
         }
 
         @Override
@@ -210,7 +221,7 @@ public class DnsResolverTest extends AndroidTestCase {
         for (Network network : getTestableNetworks()) {
             final RawAnswerCallbackImpl callback = new RawAnswerCallbackImpl(msg);
             mDns.query(network, dname, CLASS_IN, TYPE_AAAA, FLAG_NO_CACHE_LOOKUP,
-                    mExecutor, callback);
+                    mExecutor, null, callback);
             try {
                 assertTrue(msg + " but no answer after " + TIMEOUT_MS + "ms.",
                         callback.waitForAnswer());
@@ -238,7 +249,7 @@ public class DnsResolverTest extends AndroidTestCase {
         final String msg = "Query with RawAnswerCallback " + byteArrayToHexString(blob);
         for (Network network : getTestableNetworks()) {
             final RawAnswerCallbackImpl callback = new RawAnswerCallbackImpl(msg);
-            mDns.query(network, blob, FLAG_NO_CACHE_LOOKUP, mExecutor, callback);
+            mDns.query(network, blob, FLAG_NO_CACHE_LOOKUP, mExecutor, null, callback);
             try {
                 assertTrue(msg + " but no answer after " + TIMEOUT_MS + "ms.",
                         callback.waitForAnswer());
@@ -276,7 +287,7 @@ public class DnsResolverTest extends AndroidTestCase {
                 }
             };
             mDns.query(network, dname, CLASS_IN, TYPE_AAAA, FLAG_NO_CACHE_LOOKUP,
-                    mExecutor, callback);
+                    mExecutor, null, callback);
             try {
                 assertTrue(msg + "but no answer after " + TIMEOUT_MS + "ms.",
                         latch.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
@@ -313,10 +324,147 @@ public class DnsResolverTest extends AndroidTestCase {
                 }
             };
             mDns.query(network, dname, CLASS_IN, TYPE_AAAA, FLAG_NO_CACHE_LOOKUP,
-                    mExecutor, callback);
+                    mExecutor, null, callback);
             try {
                 assertTrue(msg + " but no answer after " + TIMEOUT_MS + "ms.",
                         latch.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
+            } catch (InterruptedException e) {
+                fail(msg + " Waiting for DNS lookup was interrupted");
+            }
+        }
+    }
+
+    /**
+     * A query callback that ensures that the query is cancelled and that onAnswer is never
+     * called. If the query succeeds before it is cancelled, needRetry will return true so the
+     * test can retry.
+     */
+    class VerifyCancelCallback extends DnsResolver.RawAnswerCallback {
+        private static final int CANCEL_TIMEOUT = 3_000;
+
+        private final CountDownLatch mLatch = new CountDownLatch(1);
+        private final String mMsg;
+        private final CancellationSignal mCancelSignal;
+
+        VerifyCancelCallback(@NonNull String msg, @NonNull CancellationSignal cancelSignal) {
+            this.mMsg = msg;
+            this.mCancelSignal = cancelSignal;
+        }
+
+        public boolean needRetry() throws InterruptedException {
+            return mLatch.await(CANCEL_TIMEOUT, TimeUnit.MILLISECONDS);
+        }
+
+        @Override
+        public void onAnswer(@NonNull byte[] answer) {
+            if (mCancelSignal.isCanceled()) {
+                fail(mMsg + " should not have returned any answers");
+            }
+            mLatch.countDown();
+        }
+
+        @Override
+        public void onParseException(@NonNull ParseException e) {
+            fail(mMsg + e.getMessage());
+        }
+
+        @Override
+        public void onQueryException(@NonNull ErrnoException e) {
+            if (mCancelSignal.isCanceled() && e.errno == EBADF) return;
+            fail(mMsg + e.getMessage());
+        }
+    }
+
+    public void testQueryCancel() throws ErrnoException {
+        final String dname = "www.google.com";
+        final String msg = "Test cancel query " + dname;
+        // Start a DNS query and the cancel it immediately. Use VerifyCancelCallback to expect
+        // that the query is cancelled before it succeeds. If it is not cancelled before it
+        // succeeds, retry the until it is.
+        for (Network network : getTestableNetworks()) {
+            boolean retry = false;
+            int round = 0;
+            do {
+                if (++round > CANCEL_RETRY_TIMES) {
+                    fail(msg + " cancel failed " + CANCEL_RETRY_TIMES + " times");
+                }
+                final CountDownLatch latch = new CountDownLatch(1);
+                final CancellationSignal cancelSignal = new CancellationSignal();
+                final VerifyCancelCallback callback = new VerifyCancelCallback(msg, cancelSignal);
+                mDns.query(network, dname, CLASS_IN, TYPE_AAAA, FLAG_EMPTY,
+                        mExecutor, cancelSignal, callback);
+                mExecutor.execute(() -> {
+                    cancelSignal.cancel();
+                    latch.countDown();
+                });
+                try {
+                    retry = callback.needRetry();
+                    assertTrue(msg + " query was not cancelled",
+                        latch.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
+                } catch (InterruptedException e) {
+                    fail(msg + "Waiting for DNS lookup was interrupted");
+                }
+            } while (retry);
+        }
+    }
+
+    public void testQueryBlobCancel() throws ErrnoException {
+        final byte[] blob = new byte[]{
+            /* Header */
+            0x55, 0x66, /* Transaction ID */
+            0x01, 0x00, /* Flags */
+            0x00, 0x01, /* Questions */
+            0x00, 0x00, /* Answer RRs */
+            0x00, 0x00, /* Authority RRs */
+            0x00, 0x00, /* Additional RRs */
+            /* Queries */
+            0x03, 0x77, 0x77, 0x77, 0x06, 0x67, 0x6F, 0x6F, 0x67, 0x6c, 0x65,
+            0x03, 0x63, 0x6f, 0x6d, 0x00, /* Name */
+            0x00, 0x01, /* Type */
+            0x00, 0x01  /* Class */
+        };
+        final String msg = "Test cancel raw Query " + byteArrayToHexString(blob);
+        // Start a DNS query and the cancel it immediately. Use VerifyCancelCallback to expect
+        // that the query is cancelled before it succeeds. If it is not cancelled before it
+        // succeeds, retry the until it is.
+        for (Network network : getTestableNetworks()) {
+            boolean retry = false;
+            int round = 0;
+            do {
+                if (++round > CANCEL_RETRY_TIMES) {
+                    fail(msg + " cancel failed " + CANCEL_RETRY_TIMES + " times");
+                }
+                final CountDownLatch latch = new CountDownLatch(1);
+                final CancellationSignal cancelSignal = new CancellationSignal();
+                final VerifyCancelCallback callback = new VerifyCancelCallback(msg, cancelSignal);
+                mDns.query(network, blob, FLAG_EMPTY, mExecutor, cancelSignal, callback);
+                mExecutor.execute(() -> {
+                    cancelSignal.cancel();
+                    latch.countDown();
+                });
+                try {
+                    retry = callback.needRetry();
+                    assertTrue(msg + " cancel is not done",
+                        latch.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
+                } catch (InterruptedException e) {
+                    fail(msg + " Waiting for DNS lookup was interrupted");
+                }
+            } while (retry);
+        }
+    }
+
+    public void testCancelBeforeQuery() throws ErrnoException {
+        final String dname = "www.google.com";
+        final String msg = "Test cancelled query " + dname;
+        for (Network network : getTestableNetworks()) {
+            final RawAnswerCallbackImpl callback = new RawAnswerCallbackImpl(msg, 3_000);
+            final CancellationSignal cancelSignal = new CancellationSignal();
+            cancelSignal.cancel();
+            mDns.query(network, dname, CLASS_IN, TYPE_AAAA, FLAG_EMPTY,
+                    mExecutor, cancelSignal, callback);
+            try {
+                assertTrue(msg + " should not return any answers",
+                        !callback.waitForAnswer());
             } catch (InterruptedException e) {
                 fail(msg + " Waiting for DNS lookup was interrupted");
             }
