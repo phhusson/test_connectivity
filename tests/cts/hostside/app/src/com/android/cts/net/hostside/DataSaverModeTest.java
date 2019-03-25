@@ -73,23 +73,6 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
         return mIsDataSaverSupported && super.isSupported();
     }
 
-    /**
-     * As per CDD requirements, if the device doesn't support data saver mode then
-     * ConnectivityManager.getRestrictBackgroundStatus() will always return
-     * RESTRICT_BACKGROUND_STATUS_DISABLED. So, enable the data saver mode and check if
-     * ConnectivityManager.getRestrictBackgroundStatus() for an app in background returns
-     * RESTRICT_BACKGROUND_STATUS_DISABLED or not.
-     */
-    private boolean isDataSaverSupported() throws Exception {
-        assertMyRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
-        try {
-            setRestrictBackground(true);
-            return !isMyRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
-        } finally {
-            setRestrictBackground(false);
-        }
-    }
-
     public void testGetRestrictBackgroundStatus_disabled() throws Exception {
         if (!isSupported()) return;
 
