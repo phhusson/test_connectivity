@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,10 @@
 
 package com.android.cts.net.hostside;
 
-import com.android.cts.net.hostside.INetworkCallback;
+import android.net.Network;
 
-interface IMyService {
-    void registerBroadcastReceiver();
-    int getCounters(String receiverName, String action);
-    String checkNetworkStatus();
-    String getRestrictBackgroundStatus();
-    void sendNotification(int notificationId, String notificationType);
-    void registerNetworkCallback(in INetworkCallback cb);
+interface INetworkCallback {
+    void onBlockedStatusChanged(in Network network, boolean blocked);
+    void onAvailable(in Network network);
+    void onLost(in Network network);
 }
