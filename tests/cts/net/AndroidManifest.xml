@@ -42,7 +42,7 @@
         </receiver>
     </application>
 
-    <instrumentation android:name="android.support.test.runner.AndroidJUnitRunner"
+    <instrumentation android:name="androidx.test.runner.AndroidJUnitRunner"
                      android:targetPackage="android.net.cts"
                      android:label="CTS tests of android.net">
         <meta-data android:name="listener"
