@@ -194,13 +194,12 @@ TEST (NativeDnsAsyncTest, Async_NXDOMAIN) {
 TEST (NativeDnsAsyncTest, Async_Cancel) {
     int fd = android_res_nquery(
             NETWORK_UNSPECIFIED, "www.google.com", ns_c_in, ns_t_a, 0);
-    int rcode = -1;
-    uint8_t buf[MAXPACKET] = {};
+    errno = 0;
     android_res_cancel(fd);
-    android_res_cancel(fd);
-
-    int res = android_res_nresult(fd, &rcode, buf, MAXPACKET);
-    EXPECT_EQ(-EBADF, res);
+    int err = errno;
+    EXPECT_EQ(err, 0);
+    // DO NOT call cancel or result with the same fd more than once,
+    // otherwise it will hit fdsan double-close fd.
 }
 
 TEST (NativeDnsAsyncTest, Async_Query_MALFORMED) {
@@ -235,9 +234,9 @@ TEST (NativeDnsAsyncTest, Async_Send_MALFORMED) {
             NETWORK_UNSPECIFIED, largeBuf.data(), largeBuf.size(), 0);
     EXPECT_EQ(-EMSGSIZE, fd);
 
-    // 1000 bytes filled with 0. This returns EMSGSIZE because FrameworkListener limits the size of
-    // commands to 1024 bytes. TODO: fix this.
-    fd = android_res_nsend(NETWORK_UNSPECIFIED, largeBuf.data(), 1000, 0);
+    // 5000 bytes filled with 0. This returns EMSGSIZE because FrameworkListener limits the size of
+    // commands to 4096 bytes.
+    fd = android_res_nsend(NETWORK_UNSPECIFIED, largeBuf.data(), 5000, 0);
     EXPECT_EQ(-EMSGSIZE, fd);
 
     // 500 bytes filled with 0
@@ -245,8 +244,8 @@ TEST (NativeDnsAsyncTest, Async_Send_MALFORMED) {
     EXPECT_GE(fd, 0);
     expectAnswersNotValid(fd, -EINVAL);
 
-    // 1000 bytes filled with 0xFF
-    std::vector<uint8_t> ffBuf(1000, 0xFF);
+    // 5000 bytes filled with 0xFF
+    std::vector<uint8_t> ffBuf(5000, 0xFF);
     fd = android_res_nsend(
             NETWORK_UNSPECIFIED, ffBuf.data(), ffBuf.size(), 0);
     EXPECT_EQ(-EMSGSIZE, fd);
