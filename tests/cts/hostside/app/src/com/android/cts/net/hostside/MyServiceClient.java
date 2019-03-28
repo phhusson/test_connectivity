@@ -26,8 +26,6 @@ import android.os.RemoteException;
 
 import com.android.cts.net.hostside.IMyService;
 
-import java.io.FileDescriptor;
-
 public class MyServiceClient {
     private static final int TIMEOUT_MS = 5000;
     private static final String PACKAGE = MyServiceClient.class.getPackage().getName();
@@ -97,5 +95,9 @@ public class MyServiceClient {
 
     public void sendNotification(int notificationId, String notificationType) throws RemoteException {
         mService.sendNotification(notificationId, notificationType);
+    }
+
+    public void registerNetworkCallback(INetworkCallback cb) throws RemoteException {
+        mService.registerNetworkCallback(cb);
     }
 }

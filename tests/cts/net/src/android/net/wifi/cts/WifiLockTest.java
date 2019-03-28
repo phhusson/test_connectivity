@@ -21,9 +21,9 @@ import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.WifiLock;
 import android.test.AndroidTestCase;
 
-public class WifiManager_WifiLockTest extends AndroidTestCase {
+public class WifiLockTest extends AndroidTestCase {
 
-    private static final String WIFI_TAG = "WifiManager_WifiLockTest";
+    private static final String WIFI_TAG = "WifiLockTest";
 
     /**
      * Verify acquire and release of High Performance wifi locks
@@ -82,7 +82,7 @@ public class WifiManager_WifiLockTest extends AndroidTestCase {
         wl.release();
         assertFalse(wl.isHeld());
         assertNotNull(wl.toString());
-        // should be ignored
+        // releasing again after release: but ignored for non-referenced locks
         wl.release();
     }
 }
