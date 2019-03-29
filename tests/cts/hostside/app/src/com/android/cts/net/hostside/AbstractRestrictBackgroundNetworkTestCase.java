@@ -373,6 +373,23 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
     }
 
     /**
+     * As per CDD requirements, if the device doesn't support data saver mode then
+     * ConnectivityManager.getRestrictBackgroundStatus() will always return
+     * RESTRICT_BACKGROUND_STATUS_DISABLED. So, enable the data saver mode and check if
+     * ConnectivityManager.getRestrictBackgroundStatus() for an app in background returns
+     * RESTRICT_BACKGROUND_STATUS_DISABLED or not.
+     */
+    protected boolean isDataSaverSupported() throws Exception {
+        assertMyRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
+        try {
+            setRestrictBackground(true);
+            return !isMyRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
+        } finally {
+            setRestrictBackground(false);
+        }
+    }
+
+    /**
      * Returns whether an app state should be considered "background" for restriction purposes.
      */
     protected boolean isBackground(int state) {
@@ -977,6 +994,10 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
             SystemClock.sleep(SECOND_IN_MS);
         }
         fail("app2 receiver is not ready");
+    }
+
+    protected void registerNetworkCallback(INetworkCallback cb) throws Exception {
+        mServiceClient.registerNetworkCallback(cb);
     }
 
     /**
