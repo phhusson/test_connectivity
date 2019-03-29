@@ -370,7 +370,6 @@ public class DnsResolverTest extends AndroidTestCase {
 
         @Override
         public void onQueryException(@NonNull ErrnoException e) {
-            if (mCancelSignal.isCanceled() && e.errno == EBADF) return;
             fail(mMsg + e.getMessage());
         }
     }
