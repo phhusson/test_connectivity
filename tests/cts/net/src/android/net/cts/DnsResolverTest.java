@@ -379,7 +379,7 @@ public class DnsResolverTest extends AndroidTestCase {
         final String msg = "Test cancel query " + dname;
         // Start a DNS query and the cancel it immediately. Use VerifyCancelCallback to expect
         // that the query is cancelled before it succeeds. If it is not cancelled before it
-        // succeeds, retry the until it is.
+        // succeeds, retry the test until it is.
         for (Network network : getTestableNetworks()) {
             boolean retry = false;
             int round = 0;
@@ -425,7 +425,7 @@ public class DnsResolverTest extends AndroidTestCase {
         final String msg = "Test cancel raw Query " + byteArrayToHexString(blob);
         // Start a DNS query and the cancel it immediately. Use VerifyCancelCallback to expect
         // that the query is cancelled before it succeeds. If it is not cancelled before it
-        // succeeds, retry the until it is.
+        // succeeds, retry the test until it is.
         for (Network network : getTestableNetworks()) {
             boolean retry = false;
             int round = 0;
@@ -467,6 +467,110 @@ public class DnsResolverTest extends AndroidTestCase {
             } catch (InterruptedException e) {
                 fail(msg + " Waiting for DNS lookup was interrupted");
             }
+        }
+    }
+
+    /**
+     * A query callback for InetAddress that ensures that the query is
+     * cancelled and that onAnswer is never called. If the query succeeds
+     * before it is cancelled, needRetry will return true so the
+     * test can retry.
+     */
+    class VerifyCancelInetAddressCallback extends DnsResolver.InetAddressAnswerCallback {
+        private static final int CANCEL_TIMEOUT = 3_000;
+
+        private final CountDownLatch mLatch = new CountDownLatch(1);
+        private final String mMsg;
+        private final List<InetAddress> mAnswers;
+        private final CancellationSignal mCancelSignal;
+
+        VerifyCancelInetAddressCallback(@NonNull String msg, @Nullable CancellationSignal cancel) {
+            this.mMsg = msg;
+            this.mCancelSignal = cancel;
+            mAnswers = new ArrayList<>();
+        }
+
+        public boolean waitForAnswer() throws InterruptedException {
+            return mLatch.await(TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        }
+
+        public boolean needRetry() throws InterruptedException {
+            return mLatch.await(CANCEL_TIMEOUT, TimeUnit.MILLISECONDS);
+        }
+
+        public boolean isAnswerEmpty() {
+            return mAnswers.isEmpty();
+        }
+
+        @Override
+        public void onAnswer(@NonNull List<InetAddress> answerList) {
+            if (mCancelSignal != null && mCancelSignal.isCanceled()) {
+                fail(mMsg + " should not have returned any answers");
+            }
+            mAnswers.clear();
+            mAnswers.addAll(answerList);
+            mLatch.countDown();
+        }
+
+        @Override
+        public void onParseException(@NonNull ParseException e) {
+            fail(mMsg + e.getMessage());
+        }
+
+        @Override
+        public void onQueryException(@NonNull ErrnoException e) {
+            fail(mMsg + e.getMessage());
+        }
+    }
+
+    public void testQueryForInetAddress() {
+        final String dname = "www.google.com";
+        final String msg = "Test query for InetAddress " + dname;
+        for (Network network : getTestableNetworks()) {
+            final VerifyCancelInetAddressCallback callback =
+                    new VerifyCancelInetAddressCallback(msg, null);
+            mDns.query(network, dname, FLAG_NO_CACHE_LOOKUP,
+                    mExecutor, null, callback);
+            try {
+                assertTrue(msg + " but no answer after " + TIMEOUT_MS + "ms.",
+                        callback.waitForAnswer());
+                assertTrue(msg + " returned 0 results", !callback.isAnswerEmpty());
+            } catch (InterruptedException e) {
+                fail(msg + " Waiting for DNS lookup was interrupted");
+            }
+        }
+    }
+
+    public void testQueryCancelForInetAddress() throws ErrnoException {
+        final String dname = "www.google.com";
+        final String msg = "Test cancel query for InetAddress " + dname;
+        // Start a DNS query and the cancel it immediately. Use VerifyCancelCallback to expect
+        // that the query is cancelled before it succeeds. If it is not cancelled before it
+        // succeeds, retry the test until it is.
+        for (Network network : getTestableNetworks()) {
+            boolean retry = false;
+            int round = 0;
+            do {
+                if (++round > CANCEL_RETRY_TIMES) {
+                    fail(msg + " cancel failed " + CANCEL_RETRY_TIMES + " times");
+                }
+                final CountDownLatch latch = new CountDownLatch(1);
+                final CancellationSignal cancelSignal = new CancellationSignal();
+                final VerifyCancelInetAddressCallback callback =
+                        new VerifyCancelInetAddressCallback(msg, cancelSignal);
+                mDns.query(network, dname, FLAG_EMPTY, mExecutor, cancelSignal, callback);
+                mExecutor.execute(() -> {
+                    cancelSignal.cancel();
+                    latch.countDown();
+                });
+                try {
+                    retry = callback.needRetry();
+                    assertTrue(msg + " query was not cancelled",
+                        latch.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
+                } catch (InterruptedException e) {
+                    fail(msg + "Waiting for DNS lookup was interrupted");
+                }
+            } while (retry);
         }
     }
 }
