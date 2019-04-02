@@ -43,6 +43,8 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.NetworkCallback;
+import android.net.IpSecManager;
+import android.net.IpSecManager.UdpEncapsulationSocket;
 import android.net.LinkProperties;
 import android.net.Network;
 import android.net.NetworkCapabilities;
@@ -52,6 +54,7 @@ import android.net.NetworkInfo.DetailedState;
 import android.net.NetworkInfo.State;
 import android.net.NetworkRequest;
 import android.net.SocketKeepalive;
+import android.net.util.KeepaliveUtils;
 import android.net.wifi.WifiManager;
 import android.os.Looper;
 import android.os.MessageQueue;
@@ -85,6 +88,7 @@ import java.net.Socket;
 import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.concurrent.CountDownLatch;
@@ -704,6 +708,16 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         return wifiNetwork;
     }
 
+    private InetAddress getFirstV4Address(Network network) {
+        LinkProperties linkProperties = mCm.getLinkProperties(network);
+        for (InetAddress address : linkProperties.getAddresses()) {
+            if (address instanceof Inet4Address) {
+                return address;
+            }
+        }
+        return null;
+    }
+
     private Socket getBoundSocket(Network network, String host, int port) throws IOException {
         InetSocketAddress addr = new InetSocketAddress(host, port);
         Socket s = network.getSocketFactory().createSocket();
@@ -1276,5 +1290,126 @@ public class ConnectivityManagerTest extends AndroidTestCase {
             }
 
         }
+    }
+
+    private int createConcurrentSocketKeepalives(int nattCount, int tcpCount) throws Exception {
+        if (!isKeepaliveSupported()) return 0;
+
+        final Network network = ensureWifiConnected();
+
+        final ArrayList<SocketKeepalive> kalist = new ArrayList<>();
+        final TestSocketKeepaliveCallback callback = new TestSocketKeepaliveCallback();
+        final Executor executor = mContext.getMainExecutor();
+
+        // Create concurrent TCP keepalives.
+        for (int i = 0; i < tcpCount; i++) {
+            // Assert that TCP connections can be established on wifi. The file descriptor of tcp
+            // sockets will be duplicated and kept valid in service side if the keepalives are
+            // successfully started.
+            try (Socket tcpSocket = getConnectedSocket(network, TEST_HOST, HTTP_PORT,
+                        0 /* Unused */, AF_INET)) {
+                final SocketKeepalive ka = mCm.createSocketKeepalive(network, tcpSocket, executor,
+                        callback);
+                ka.start(MIN_KEEPALIVE_INTERVAL);
+                TestSocketKeepaliveCallback.CallbackValue cv = callback.pollCallback();
+                assertNotNull(cv);
+                if (cv.callbackType == TestSocketKeepaliveCallback.CallbackType.ON_ERROR
+                        && cv.error == SocketKeepalive.ERROR_INSUFFICIENT_RESOURCES) {
+                    // Limit reached.
+                    break;
+                }
+                if (cv.callbackType == TestSocketKeepaliveCallback.CallbackType.ON_STARTED) {
+                    kalist.add(ka);
+                } else {
+                    fail("Unexpected error when creating " + (i + 1) + " TCP keepalives: " + cv);
+                }
+            }
+        }
+
+        // Assert that a Nat-T socket can be created.
+        final IpSecManager mIpSec = (IpSecManager) mContext.getSystemService(Context.IPSEC_SERVICE);
+        final UdpEncapsulationSocket nattSocket = mIpSec.openUdpEncapsulationSocket();
+
+        final InetAddress srcAddr = getFirstV4Address(network);
+        final InetAddress dstAddr = getAddrByName(TEST_HOST, AF_INET);
+        assertNotNull(srcAddr);
+        assertNotNull(dstAddr);
+
+        // Test concurrent Nat-T keepalives.
+        for (int i = 0; i < nattCount; i++) {
+            final SocketKeepalive ka = mCm.createSocketKeepalive(network, nattSocket,
+                    srcAddr, dstAddr, executor, callback);
+            ka.start(MIN_KEEPALIVE_INTERVAL);
+            TestSocketKeepaliveCallback.CallbackValue cv = callback.pollCallback();
+            assertNotNull(cv);
+            if (cv.callbackType == TestSocketKeepaliveCallback.CallbackType.ON_ERROR
+                    && cv.error == SocketKeepalive.ERROR_INSUFFICIENT_RESOURCES) {
+                // Limit reached.
+                break;
+            }
+            if (cv.callbackType == TestSocketKeepaliveCallback.CallbackType.ON_STARTED) {
+                kalist.add(ka);
+            } else {
+                fail("Unexpected error when creating " + (i + 1) + " Nat-T keepalives: " + cv);
+            }
+        }
+
+        final int ret = kalist.size();
+
+        // Clean up.
+        for (final SocketKeepalive ka : kalist) {
+            ka.stop();
+            callback.expectStopped();
+        }
+        kalist.clear();
+        nattSocket.close();
+
+        return ret;
+    }
+
+    /**
+     * Verifies that the concurrent keepalive slots meet the minimum requirement, and don't
+     * get leaked after iterations.
+     */
+    public void testSocketKeepaliveLimit() throws Exception {
+        adoptShellPermissionIdentity();
+
+        final Network network = ensureWifiConnected();
+        final NetworkCapabilities nc = mCm.getNetworkCapabilities(network);
+
+        // Get number of supported concurrent keepalives for testing network.
+        final int[] keepalivesPerTransport = KeepaliveUtils.getSupportedKeepalives(mContext);
+        final int supported = KeepaliveUtils.getSupportedKeepalivesForNetworkCapabilities(
+                keepalivesPerTransport, nc);
+
+        // Sanity check.
+        if (!isKeepaliveSupported()) {
+            assertEquals(0, supported);
+            return;
+        }
+
+        // Verifies that the supported keepalive slots meet MIN_SUPPORTED_KEEPALIVE_COUNT.
+        assertGreaterOrEqual(supported, KeepaliveUtils.MIN_SUPPORTED_KEEPALIVE_COUNT);
+
+        // Verifies that different types of keepalives can be established.
+        assertEquals(supported, createConcurrentSocketKeepalives(supported + 1, 0));
+        assertEquals(supported, createConcurrentSocketKeepalives(0, supported + 1));
+
+        // Verifies that different types can be established at the same time.
+        assertEquals(supported, createConcurrentSocketKeepalives(
+                supported / 2, supported - supported / 2));
+
+        // Verifies that keepalives don't get leaked in second round.
+        assertEquals(supported, createConcurrentSocketKeepalives(supported + 1, 0));
+        assertEquals(supported, createConcurrentSocketKeepalives(0, supported + 1));
+        assertEquals(supported, createConcurrentSocketKeepalives(
+                supported / 2, supported - supported / 2));
+
+        dropShellPermissionIdentity();
+    }
+
+    private static void assertGreaterOrEqual(long greater, long lesser) {
+        assertTrue("" + greater + " expected to be greater than or equal to " + lesser,
+                greater >= lesser);
     }
 }
