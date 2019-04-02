@@ -245,13 +245,12 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runResNcancelCheck(
     net_handle_t handle = (net_handle_t) nethandle;
 
     int fd = android_res_nquery(handle, kGoogleName, ns_c_in, ns_t_a, 0);
-    int rcode = -1;
-    uint8_t buf[MAXPACKET] = {};
+    errno = 0;
     android_res_cancel(fd);
-    EXPECT_EQ(env, -EBADF, android_res_nresult(fd, &rcode, buf, MAXPACKET), "res_cancel");
-
-    android_res_cancel(fd);
-    EXPECT_EQ(env, -EBADF, android_res_nresult(fd, &rcode, buf, MAXPACKET), "res_cancel");
+    int err = errno;
+    EXPECT_EQ(env, 0, err, "res_cancel");
+    // DO NOT call cancel or result with the same fd more than once,
+    // otherwise it will hit fdsan double-close fd.
     return 0;
 }
 
@@ -288,10 +287,10 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runResNapiMalformedCheck
     fd = android_res_nsend(handle, largeBuf, sizeof(largeBuf), 0);
     EXPECT_EQ(env, -EMSGSIZE, fd, "res_nsend buffer larger than 8KB");
 
-    // 1000 bytes filled with 0. This returns EMSGSIZE because FrameworkListener limits the size of
-    // commands to 1024 bytes. TODO: b/126307309
-    fd = android_res_nsend(handle, largeBuf, 1000, 0);
-    EXPECT_EQ(env, -EMSGSIZE, fd, "res_nsend 1000 bytes filled with 0");
+    // 5000 bytes filled with 0. This returns EMSGSIZE because FrameworkListener limits the size of
+    // commands to 4096 bytes.
+    fd = android_res_nsend(handle, largeBuf, 5000, 0);
+    EXPECT_EQ(env, -EMSGSIZE, fd, "res_nsend 5000 bytes filled with 0");
 
     // 500 bytes filled with 0
     fd = android_res_nsend(handle, largeBuf, 500, 0);
@@ -299,16 +298,16 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runResNapiMalformedCheck
     EXPECT_EQ(env, 0, expectAnswersNotValid(env, fd, -EINVAL),
             "res_nsend 500 bytes filled with 0 check answers");
 
-    // 1000 bytes filled with 0xFF
-    uint8_t ffBuf[1001] = {};
+    // 5000 bytes filled with 0xFF
+    uint8_t ffBuf[5001] = {};
     memset(ffBuf, 0xFF, sizeof(ffBuf));
-    ffBuf[1000] = '\0';
+    ffBuf[5000] = '\0';
     fd = android_res_nsend(handle, ffBuf, sizeof(ffBuf), 0);
-    EXPECT_EQ(env, -EMSGSIZE, fd, "res_nsend 1000 bytes filled with 0xFF");
+    EXPECT_EQ(env, -EMSGSIZE, fd, "res_nsend 5000 bytes filled with 0xFF");
 
     // 500 bytes filled with 0xFF
-    ffBuf[501] = '\0';
-    fd = android_res_nsend(handle, ffBuf, 500, 0);
+    ffBuf[500] = '\0';
+    fd = android_res_nsend(handle, ffBuf, 501, 0);
     EXPECT_GE(env, fd, 0, "res_nsend 500 bytes filled with 0xFF");
     EXPECT_EQ(env, 0, expectAnswersNotValid(env, fd, -EINVAL),
             "res_nsend 500 bytes filled with 0xFF check answers");
