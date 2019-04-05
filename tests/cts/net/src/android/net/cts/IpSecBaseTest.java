@@ -52,17 +52,6 @@ public class IpSecBaseTest extends AndroidTestCase {
     protected static final int[] DIRECTIONS =
             new int[] {IpSecManager.DIRECTION_IN, IpSecManager.DIRECTION_OUT};
 
-    protected static final int TCP_HDRLEN_WITH_OPTIONS = 32;
-    protected static final int UDP_HDRLEN = 8;
-    protected static final int IP4_HDRLEN = 20;
-    protected static final int IP6_HDRLEN = 40;
-
-    // Encryption parameters
-    protected static final int AES_GCM_IV_LEN = 8;
-    protected static final int AES_CBC_IV_LEN = 16;
-    protected static final int AES_GCM_BLK_SIZE = 4;
-    protected static final int AES_CBC_BLK_SIZE = 16;
-
     protected static final byte[] TEST_DATA = "Best test data ever!".getBytes();
     protected static final int DATA_BUFFER_LEN = 4096;
     protected static final int SOCK_TIMEOUT = 500;

@@ -16,6 +16,10 @@
 
 package android.net.cts;
 
+import static android.net.cts.PacketUtils.IP4_HDRLEN;
+import static android.net.cts.PacketUtils.IP6_HDRLEN;
+import static android.net.cts.PacketUtils.IPPROTO_ESP;
+import static android.net.cts.PacketUtils.UDP_HDRLEN;
 import static android.system.OsConstants.IPPROTO_UDP;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -45,9 +49,6 @@ public class TunUtils {
     private static final int IP4_ADDR_LEN = 4;
     private static final int IP6_ADDR_OFFSET = 8;
     private static final int IP6_ADDR_LEN = 16;
-
-    // Not defined in OsConstants
-    private static final int IPPROTO_ESP = 50;
 
     private final ParcelFileDescriptor mTunFd;
     private final List<byte[]> mPackets = new ArrayList<>();
@@ -178,17 +179,14 @@ public class TunUtils {
     private static boolean isEsp(byte[] pkt, int spi, boolean encap) {
         if (isIpv6(pkt)) {
             // IPv6 UDP encap not supported by kernels; assume non-encap.
-            return pkt[IP6_PROTO_OFFSET] == IPPROTO_ESP
-                    && isSpiEqual(pkt, IpSecBaseTest.IP6_HDRLEN, spi);
+            return pkt[IP6_PROTO_OFFSET] == IPPROTO_ESP && isSpiEqual(pkt, IP6_HDRLEN, spi);
         } else {
             // Use default IPv4 header length (assuming no options)
             if (encap) {
                 return pkt[IP4_PROTO_OFFSET] == IPPROTO_UDP
-                        && isSpiEqual(
-                                pkt, IpSecBaseTest.IP4_HDRLEN + IpSecBaseTest.UDP_HDRLEN, spi);
+                        && isSpiEqual(pkt, IP4_HDRLEN + UDP_HDRLEN, spi);
             } else {
-                return pkt[IP4_PROTO_OFFSET] == IPPROTO_ESP
-                        && isSpiEqual(pkt, IpSecBaseTest.IP4_HDRLEN, spi);
+                return pkt[IP4_PROTO_OFFSET] == IPPROTO_ESP && isSpiEqual(pkt, IP4_HDRLEN, spi);
             }
         }
     }
