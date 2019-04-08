@@ -247,4 +247,11 @@ public class TunUtils {
         out.write(pkt);
         out.flush();
     }
+
+    /** Resets the intercepted packets. */
+    public void reset() throws IOException {
+        synchronized (mPackets) {
+            mPackets.clear();
+        }
+    }
 }
