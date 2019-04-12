@@ -144,9 +144,8 @@ public class DnsResolverTest extends AndroidTestCase {
         private DnsAnswer mDnsAnswer;
 
         VerifyCancelCallback(@NonNull String msg, @Nullable CancellationSignal cancel) {
-            this.mMsg = msg;
-            this.mCancelSignal = cancel;
-            this.mDnsAnswer = null;
+            mMsg = msg;
+            mCancelSignal = cancel;
         }
 
         VerifyCancelCallback(@NonNull String msg) {
@@ -187,15 +186,15 @@ public class DnsResolverTest extends AndroidTestCase {
         }
 
         private void assertValidAnswer() {
-            assertTrue(mMsg + "No valid answer", mDnsAnswer != null);
-            assertTrue(mMsg + " Unexpected error: reported rcode" + mRcode +
-                    " blob's rcode " + mDnsAnswer.getRcode(), mRcode == mDnsAnswer.getRcode());
+            assertNotNull(mMsg + " No valid answer", mDnsAnswer);
+            assertEquals(mMsg + " Unexpected error: reported rcode" + mRcode +
+                    " blob's rcode " + mDnsAnswer.getRcode(), mRcode, mDnsAnswer.getRcode());
         }
 
         public void assertHasAnswer() {
             assertValidAnswer();
             // Check rcode field.(0, No error condition).
-            assertTrue(mMsg + " Response error, rcode: " + mRcode, mRcode == 0);
+            assertEquals(mMsg + " Response error, rcode: " + mRcode, mRcode, 0);
             // Check answer counts.
             assertGreaterThan(mMsg + " No answer found", mDnsAnswer.getANCount(), 0);
             // Check question counts.
@@ -205,9 +204,9 @@ public class DnsResolverTest extends AndroidTestCase {
         public void assertNXDomain() {
             assertValidAnswer();
             // Check rcode field.(3, NXDomain).
-            assertTrue(mMsg + " Unexpected rcode: " + mRcode, mRcode == NXDOMAIN);
+            assertEquals(mMsg + " Unexpected rcode: " + mRcode, mRcode, NXDOMAIN);
             // Check answer counts. Expect 0 answer.
-            assertTrue(mMsg + " Not an empty answer", mDnsAnswer.getANCount() == 0);
+            assertEquals(mMsg + " Not an empty answer", mDnsAnswer.getANCount(), 0);
             // Check question counts.
             assertGreaterThan(mMsg + " No question found", mDnsAnswer.getQDCount(), 0);
         }
@@ -215,9 +214,9 @@ public class DnsResolverTest extends AndroidTestCase {
         public void assertEmptyAnswer() {
             assertValidAnswer();
             // Check rcode field.(0, No error condition).
-            assertTrue(mMsg + " Response error, rcode: " + mRcode, mRcode == 0);
+            assertEquals(mMsg + " Response error, rcode: " + mRcode, mRcode, 0);
             // Check answer counts. Expect 0 answer.
-            assertTrue(mMsg + " Not an empty answer", mDnsAnswer.getANCount() == 0);
+            assertEquals(mMsg + " Not an empty answer", mDnsAnswer.getANCount(), 0);
             // Check question counts.
             assertGreaterThan(mMsg + " No question found", mDnsAnswer.getQDCount(), 0);
         }
@@ -279,10 +278,10 @@ public class DnsResolverTest extends AndroidTestCase {
             try {
                 assertTrue(msg + " but no answer after " + TIMEOUT_MS + "ms.",
                         callback.waitForAnswer());
-                // Except no answer record because of querying with empty dname(ROOT)
+                // Except no answer record because the root does not have AAAA records.
                 callback.assertEmptyAnswer();
             } catch (InterruptedException e) {
-                fail(msg + "Waiting for DNS lookup was interrupted");
+                fail(msg + " Waiting for DNS lookup was interrupted");
             }
         }
     }
@@ -331,7 +330,7 @@ public class DnsResolverTest extends AndroidTestCase {
                     assertTrue(msg + " query was not cancelled",
                             latch.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
                 } catch (InterruptedException e) {
-                    fail(msg + "Waiting for DNS lookup was interrupted");
+                    fail(msg + " Waiting for DNS lookup was interrupted");
                 }
             } while (retry);
         }
@@ -508,7 +507,7 @@ public class DnsResolverTest extends AndroidTestCase {
                     assertTrue(msg + " query was not cancelled",
                             latch.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
                 } catch (InterruptedException e) {
-                    fail(msg + "Waiting for DNS lookup was interrupted");
+                    fail(msg + " Waiting for DNS lookup was interrupted");
                 }
             } while (retry);
         }
