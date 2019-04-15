@@ -19,6 +19,7 @@ package com.android.cts.net.hostside;
 import static android.os.Process.INVALID_UID;
 import static android.system.OsConstants.*;
 
+import android.annotation.Nullable;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -31,6 +32,7 @@ import android.net.NetworkRequest;
 import android.net.Proxy;
 import android.net.ProxyInfo;
 import android.net.VpnService;
+import android.net.wifi.WifiManager;
 import android.os.ParcelFileDescriptor;
 import android.os.Process;
 import android.os.SystemProperties;
@@ -61,7 +63,9 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Random;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -100,6 +104,7 @@ public class VpnTest extends InstrumentationTestCase {
     private MyActivity mActivity;
     private String mPackageName;
     private ConnectivityManager mCM;
+    private WifiManager mWifiManager;
     private RemoteSocketFactoryClient mRemoteSocketFactoryClient;
 
     Network mNetwork;
@@ -123,7 +128,8 @@ public class VpnTest extends InstrumentationTestCase {
         mActivity = launchActivity(getInstrumentation().getTargetContext().getPackageName(),
                 MyActivity.class, null);
         mPackageName = mActivity.getPackageName();
-        mCM = (ConnectivityManager) mActivity.getSystemService(mActivity.CONNECTIVITY_SERVICE);
+        mCM = (ConnectivityManager) mActivity.getSystemService(Context.CONNECTIVITY_SERVICE);
+        mWifiManager = (WifiManager) mActivity.getSystemService(Context.WIFI_SERVICE);
         mRemoteSocketFactoryClient = new RemoteSocketFactoryClient(mActivity);
         mRemoteSocketFactoryClient.bind();
         mDevice.waitForIdle();
@@ -192,9 +198,11 @@ public class VpnTest extends InstrumentationTestCase {
         }
     }
 
+    // TODO: Consider replacing arguments with a Builder.
     private void startVpn(
         String[] addresses, String[] routes, String allowedApplications,
-        String disallowedApplications, ProxyInfo proxyInfo) throws Exception {
+        String disallowedApplications, @Nullable ProxyInfo proxyInfo,
+        @Nullable ArrayList<Network> underlyingNetworks, boolean isAlwaysMetered) throws Exception {
         prepareVpn();
 
         // Register a callback so we will be notified when our VPN comes up.
@@ -221,7 +229,10 @@ public class VpnTest extends InstrumentationTestCase {
                 .putExtra(mPackageName + ".routes", TextUtils.join(",", routes))
                 .putExtra(mPackageName + ".allowedapplications", allowedApplications)
                 .putExtra(mPackageName + ".disallowedapplications", disallowedApplications)
-                .putExtra(mPackageName + ".httpProxy", proxyInfo);
+                .putExtra(mPackageName + ".httpProxy", proxyInfo)
+                .putParcelableArrayListExtra(
+                    mPackageName + ".underlyingNetworks", underlyingNetworks)
+                .putExtra(mPackageName + ".isAlwaysMetered", isAlwaysMetered);
 
         mActivity.startService(intent);
         synchronized (mLock) {
@@ -251,7 +262,8 @@ public class VpnTest extends InstrumentationTestCase {
         mCallback = new NetworkCallback() {
             public void onLost(Network network) {
                 synchronized (mLockShutdown) {
-                    Log.i(TAG, "Got lost callback for network=" + network + ",mNetwork = " + mNetwork);
+                    Log.i(TAG, "Got lost callback for network=" + network
+                            + ",mNetwork = " + mNetwork);
                     if( mNetwork == network){
                         mLockShutdown.notify();
                     }
@@ -574,7 +586,7 @@ public class VpnTest extends InstrumentationTestCase {
 
         startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
                  new String[] {"0.0.0.0/0", "::/0"},
-                 "", "", null);
+                 "", "", null, null /* underlyingNetworks */, false /* isAlwaysMetered */);
 
         final Intent intent = receiver.awaitForBroadcast(TimeUnit.MINUTES.toMillis(1));
         assertNotNull("Failed to receive broadcast from VPN service", intent);
@@ -598,7 +610,7 @@ public class VpnTest extends InstrumentationTestCase {
         String allowedApps = mRemoteSocketFactoryClient.getPackageName() + "," + mPackageName;
         startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
                  new String[] {"192.0.2.0/24", "2001:db8::/32"},
-                 allowedApps, "", null);
+                 allowedApps, "", null, null /* underlyingNetworks */, false /* isAlwaysMetered */);
 
         assertSocketClosed(fd, TEST_HOST);
 
@@ -620,7 +632,8 @@ public class VpnTest extends InstrumentationTestCase {
         Log.i(TAG, "Append shell app to disallowedApps: " + disallowedApps);
         startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
                  new String[] {"192.0.2.0/24", "2001:db8::/32"},
-                 "", disallowedApps, null);
+                 "", disallowedApps, null, null /* underlyingNetworks */,
+                 false /* isAlwaysMetered */);
 
         assertSocketStillOpen(localFd, TEST_HOST);
         assertSocketStillOpen(remoteFd, TEST_HOST);
@@ -657,7 +670,7 @@ public class VpnTest extends InstrumentationTestCase {
         ProxyInfo testProxyInfo = ProxyInfo.buildDirectProxy("10.0.0.1", 8888);
         startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
                 new String[] {"0.0.0.0/0", "::/0"}, allowedApps, "",
-                testProxyInfo);
+                testProxyInfo, null /* underlyingNetworks */, false /* isAlwaysMetered */);
 
         // Check that the proxy change broadcast is received
         try {
@@ -697,7 +710,7 @@ public class VpnTest extends InstrumentationTestCase {
         ProxyInfo testProxyInfo = ProxyInfo.buildDirectProxy("10.0.0.1", 8888);
         startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
                 new String[] {"0.0.0.0/0", "::/0"}, "", disallowedApps,
-                testProxyInfo);
+                testProxyInfo, null /* underlyingNetworks */, false /* isAlwaysMetered */);
 
         // The disallowed app does has the proxy configs of the default network.
         assertNetworkHasExpectedProxy(initialProxy, mCM.getActiveNetwork());
@@ -711,7 +724,8 @@ public class VpnTest extends InstrumentationTestCase {
         proxyBroadcastReceiver.register();
         String allowedApps = mPackageName;
         startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
-                new String[] {"0.0.0.0/0", "::/0"}, allowedApps, "", null);
+                new String[] {"0.0.0.0/0", "::/0"}, allowedApps, "", null,
+                null /* underlyingNetworks */, false /* isAlwaysMetered */);
 
         try {
             assertNotNull("No proxy change was broadcast.",
@@ -748,7 +762,7 @@ public class VpnTest extends InstrumentationTestCase {
         proxyBroadcastReceiver.register();
         startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
                 new String[] {"0.0.0.0/0", "::/0"}, allowedApps, "",
-                testProxyInfo);
+                testProxyInfo, null /* underlyingNetworks */, false /* isAlwaysMetered */);
 
         assertDefaultProxy(testProxyInfo);
         mCM.bindProcessToNetwork(initialNetwork);
@@ -759,6 +773,145 @@ public class VpnTest extends InstrumentationTestCase {
             proxyBroadcastReceiver.unregisterQuietly();
         }
         assertDefaultProxy(initialProxy);
+    }
+
+    public void testVpnMeterednessWithNoUnderlyingNetwork() throws Exception {
+        if (!supportedHardware()) {
+            return;
+        }
+        // VPN is not routing any traffic i.e. its underlying networks is an empty array.
+        ArrayList<Network> underlyingNetworks = new ArrayList<>();
+        String allowedApps = mPackageName;
+
+        startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
+                new String[] {"0.0.0.0/0", "::/0"}, allowedApps, "", null,
+                underlyingNetworks, false /* isAlwaysMetered */);
+
+        // VPN should now be the active network.
+        assertEquals(mNetwork, mCM.getActiveNetwork());
+        assertVpnTransportContains(NetworkCapabilities.TRANSPORT_VPN);
+        // VPN with no underlying networks should be metered by default.
+        assertTrue(isNetworkMetered(mNetwork));
+        assertTrue(mCM.isActiveNetworkMetered());
+    }
+
+    public void testVpnMeterednessWithNullUnderlyingNetwork() throws Exception {
+        if (!supportedHardware()) {
+            return;
+        }
+        Network underlyingNetwork = mCM.getActiveNetwork();
+        if (underlyingNetwork == null) {
+            Log.i(TAG, "testVpnMeterednessWithNullUnderlyingNetwork cannot execute"
+                    + " unless there is an active network");
+            return;
+        }
+        // VPN tracks platform default.
+        ArrayList<Network> underlyingNetworks = null;
+        String allowedApps = mPackageName;
+
+        startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
+                new String[] {"0.0.0.0/0", "::/0"}, allowedApps, "", null,
+                underlyingNetworks, false /*isAlwaysMetered */);
+
+        // Ensure VPN transports contains underlying network's transports.
+        assertVpnTransportContains(underlyingNetwork);
+        // Its meteredness should be same as that of underlying network.
+        assertEquals(isNetworkMetered(underlyingNetwork), isNetworkMetered(mNetwork));
+        // Meteredness based on VPN capabilities and CM#isActiveNetworkMetered should be in sync.
+        assertEquals(isNetworkMetered(mNetwork), mCM.isActiveNetworkMetered());
+    }
+
+    public void testVpnMeterednessWithNonNullUnderlyingNetwork() throws Exception {
+        if (!supportedHardware()) {
+            return;
+        }
+        Network underlyingNetwork = mCM.getActiveNetwork();
+        if (underlyingNetwork == null) {
+            Log.i(TAG, "testVpnMeterednessWithNonNullUnderlyingNetwork cannot execute"
+                    + " unless there is an active network");
+            return;
+        }
+        // VPN explicitly declares WiFi to be its underlying network.
+        ArrayList<Network> underlyingNetworks = new ArrayList<>(1);
+        underlyingNetworks.add(underlyingNetwork);
+        String allowedApps = mPackageName;
+
+        startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
+                new String[] {"0.0.0.0/0", "::/0"}, allowedApps, "", null,
+                underlyingNetworks, false /* isAlwaysMetered */);
+
+        // Ensure VPN transports contains underlying network's transports.
+        assertVpnTransportContains(underlyingNetwork);
+        // Its meteredness should be same as that of underlying network.
+        assertEquals(isNetworkMetered(underlyingNetwork), isNetworkMetered(mNetwork));
+        // Meteredness based on VPN capabilities and CM#isActiveNetworkMetered should be in sync.
+        assertEquals(isNetworkMetered(mNetwork), mCM.isActiveNetworkMetered());
+    }
+
+    public void testAlwaysMeteredVpnWithNullUnderlyingNetwork() throws Exception {
+        if (!supportedHardware()) {
+            return;
+        }
+        Network underlyingNetwork = mCM.getActiveNetwork();
+        if (underlyingNetwork == null) {
+            Log.i(TAG, "testAlwaysMeteredVpnWithNullUnderlyingNetwork cannot execute"
+                    + " unless there is an active network");
+            return;
+        }
+        // VPN tracks platform default.
+        ArrayList<Network> underlyingNetworks = null;
+        String allowedApps = mPackageName;
+        boolean isAlwaysMetered = true;
+
+        startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
+                new String[] {"0.0.0.0/0", "::/0"}, allowedApps, "", null,
+                underlyingNetworks, isAlwaysMetered);
+
+        // VPN's meteredness does not depend on underlying network since it is always metered.
+        assertTrue(isNetworkMetered(mNetwork));
+        assertTrue(mCM.isActiveNetworkMetered());
+    }
+
+    public void testAlwaysMeteredVpnWithNonNullUnderlyingNetwork() throws Exception {
+        if (!supportedHardware()) {
+            return;
+        }
+        Network underlyingNetwork = mCM.getActiveNetwork();
+        if (underlyingNetwork == null) {
+            Log.i(TAG, "testAlwaysMeteredVpnWithNonNullUnderlyingNetwork cannot execute"
+                    + " unless there is an active network");
+            return;
+        }
+        // VPN explicitly declares its underlying network.
+        ArrayList<Network> underlyingNetworks = new ArrayList<>(1);
+        underlyingNetworks.add(underlyingNetwork);
+        String allowedApps = mPackageName;
+        boolean isAlwaysMetered = true;
+
+        startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
+                new String[] {"0.0.0.0/0", "::/0"}, allowedApps, "", null,
+                underlyingNetworks, isAlwaysMetered);
+
+        // VPN's meteredness does not depend on underlying network since it is always metered.
+        assertTrue(isNetworkMetered(mNetwork));
+        assertTrue(mCM.isActiveNetworkMetered());
+    }
+
+    private boolean isNetworkMetered(Network network) {
+        NetworkCapabilities nc = mCM.getNetworkCapabilities(network);
+        return !nc.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED);
+    }
+
+    private void assertVpnTransportContains(Network underlyingNetwork) {
+        int[] transports = mCM.getNetworkCapabilities(underlyingNetwork).getTransportTypes();
+        assertVpnTransportContains(transports);
+    }
+
+    private void assertVpnTransportContains(int... transports) {
+        NetworkCapabilities vpnCaps = mCM.getNetworkCapabilities(mNetwork);
+        for (int transport : transports) {
+            assertTrue(vpnCaps.hasTransport(transport));
+        }
     }
 
     private void assertDefaultProxy(ProxyInfo expected) {
