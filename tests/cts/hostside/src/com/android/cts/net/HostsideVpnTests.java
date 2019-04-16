@@ -64,4 +64,31 @@ public class HostsideVpnTests extends HostsideNetworkTestCase {
     public void testBindToNetworkWithProxy() throws Exception {
         runDeviceTests(TEST_PKG, TEST_PKG + ".VpnTest", "testBindToNetworkWithProxy");
     }
+
+    public void testVpnMeterednessWithNoUnderlyingNetwork() throws Exception {
+        runDeviceTests(
+                TEST_PKG, TEST_PKG + ".VpnTest", "testVpnMeterednessWithNoUnderlyingNetwork");
+    }
+
+    public void testVpnMeterednessWithNullUnderlyingNetwork() throws Exception {
+        runDeviceTests(
+                TEST_PKG, TEST_PKG + ".VpnTest", "testVpnMeterednessWithNullUnderlyingNetwork");
+    }
+
+    public void testVpnMeterednessWithNonNullUnderlyingNetwork() throws Exception {
+        runDeviceTests(
+                TEST_PKG, TEST_PKG + ".VpnTest", "testVpnMeterednessWithNonNullUnderlyingNetwork");
+    }
+
+    public void testAlwaysMeteredVpnWithNullUnderlyingNetwork() throws Exception {
+        runDeviceTests(
+                TEST_PKG, TEST_PKG + ".VpnTest", "testAlwaysMeteredVpnWithNullUnderlyingNetwork");
+    }
+
+    public void testAlwaysMeteredVpnWithNonNullUnderlyingNetwork() throws Exception {
+        runDeviceTests(
+                TEST_PKG,
+                TEST_PKG + ".VpnTest",
+                "testAlwaysMeteredVpnWithNonNullUnderlyingNetwork");
+    }
 }
