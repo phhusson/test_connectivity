@@ -39,6 +39,7 @@ import android.net.wifi.aware.WifiAwareManager;
 import android.net.wifi.aware.WifiAwareSession;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.platform.test.annotations.AppModeFull;
 import android.test.AndroidTestCase;
 
 import java.util.ArrayDeque;
@@ -53,6 +54,7 @@ import java.util.concurrent.TimeUnit;
  * Wi-Fi Aware CTS test suite: single device testing. Performs tests on a single
  * device to validate Wi-Fi Aware.
  */
+@AppModeFull(reason = "Cannot get WifiAwareManager in instant app mode")
 public class SingleDeviceTest extends AndroidTestCase {
     private static final String TAG = "WifiAwareCtsTests";
 

@@ -23,6 +23,7 @@ import static org.junit.Assume.assumeTrue;
 
 import android.content.Context;
 import android.net.ConnectivityManager;
+import android.platform.test.annotations.AppModeFull;
 import android.os.FileUtils;
 
 import androidx.test.InstrumentationRegistry;
@@ -99,6 +100,7 @@ public class NetworkWatchlistTest {
      * returns the hash of config we set.
      */
     @Test
+    @AppModeFull(reason = "Cannot access resource file in instant app mode")
     public void testGetWatchlistConfigHash() throws Exception {
         // Set watchlist config file for test
         setWatchlistConfig(TEST_WATCHLIST_XML);
