@@ -747,19 +747,13 @@ public class WifiManagerTest extends AndroidTestCase {
         allowedUIDs.add(Process.NFC_UID);
 
         // only quick settings is allowed to bind to the BIND_QUICK_SETTINGS_TILE permission, using
-        // this fact to determined allowed package name for sysui
-        String validPkg = "";
-        final List<PackageInfo> sysuiPackage = pm.getPackagesHoldingPermissions(new String[] {
+        // this fact to determined allowed package name for sysui. This is a signature permission,
+        // so allow any package with this permission.
+        final List<PackageInfo> sysuiPackages = pm.getPackagesHoldingPermissions(new String[] {
                 android.Manifest.permission.BIND_QUICK_SETTINGS_TILE
         }, PackageManager.MATCH_UNINSTALLED_PACKAGES);
-
-        if (sysuiPackage.size() > 1) {
-            fail("The BIND_QUICK_SETTINGS_TILE permission must only be held by one package");
-        }
-
-        if (sysuiPackage.size() == 1) {
-            validPkg = sysuiPackage.get(0).packageName;
-            allowedPackages.add(validPkg);
+        for (PackageInfo info : sysuiPackages) {
+            allowedPackages.add(info.packageName);
         }
 
         // the captive portal flow also currently holds the NETWORK_SETTINGS permission
