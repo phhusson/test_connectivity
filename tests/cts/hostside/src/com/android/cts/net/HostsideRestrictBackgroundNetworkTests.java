@@ -81,6 +81,11 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
                 "testGetRestrictBackgroundStatus_requiredWhitelistedPackages");
     }
 
+    public void testDataSaverMode_broadcastNotSentOnUnsupportedDevices() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".DataSaverModeTest",
+                "testBroadcastNotSentOnUnsupportedDevices");
+    }
+
     /*****************************
      * Battery Saver Mode tests. *
      *****************************/
