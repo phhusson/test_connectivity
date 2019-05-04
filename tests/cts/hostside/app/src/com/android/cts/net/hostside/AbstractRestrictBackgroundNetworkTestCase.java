@@ -153,7 +153,14 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         Log.i(TAG, "Apps status on " + getName() + ":\n"
                 + "\ttest app: uid=" + mMyUid + ", state=" + getProcessStateByUid(mMyUid) + "\n"
                 + "\tapp2: uid=" + mUid + ", state=" + getProcessStateByUid(mUid));
-        executeShellCommand("settings get global app_idle_constants");
+
+        // app_idle_constants set in NetPolicyTestsPreparer.setUp() is not always sucessful (suspect
+        // timing issue), here we set it again to make sure.
+        final String appIdleConstants = "parole_duration=0,stable_charging_threshold=0";
+        executeShellCommand("settings put global app_idle_constants " + appIdleConstants);
+        final String currentConstants =
+                executeShellCommand("settings get global app_idle_constants");
+        assertEquals(appIdleConstants, currentConstants);
    }
 
     @Override
@@ -204,7 +211,7 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
         do {
             attempts++;
             count = getNumberBroadcastsReceived(receiverName, ACTION_RESTRICT_BACKGROUND_CHANGED);
-            if (count == expectedCount) {
+            if (count >= expectedCount) {
                 break;
             }
             Log.d(TAG, "Expecting count " + expectedCount + " but actual is " + count + " after "
