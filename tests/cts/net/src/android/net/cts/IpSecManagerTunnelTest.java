@@ -21,6 +21,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import android.content.pm.PackageManager;
 import android.net.IpSecAlgorithm;
 import android.net.IpSecManager;
 import android.net.IpSecTransform;
@@ -56,6 +57,12 @@ public class IpSecManagerTunnelTest extends IpSecBaseTest {
         setAppop(false);
     }
 
+    private boolean hasTunnelsFeature() {
+        return getContext()
+                .getPackageManager()
+                .hasSystemFeature(PackageManager.FEATURE_IPSEC_TUNNELS);
+    }
+
     private void setAppop(boolean allow) {
         // Under normal circumstances, the MANAGE_IPSEC_TUNNELS appop would be auto-granted by the
         // telephony framework, and the only permission that is sufficient is NETWORK_STACK. So we
@@ -69,6 +76,8 @@ public class IpSecManagerTunnelTest extends IpSecBaseTest {
     }
 
     public void testSecurityExceptionsCreateTunnelInterface() throws Exception {
+        if (!hasTunnelsFeature()) return;
+
         // Ensure we don't have the appop. Permission is not requested in the Manifest
         setAppop(false);
 
@@ -81,6 +90,8 @@ public class IpSecManagerTunnelTest extends IpSecBaseTest {
     }
 
     public void testSecurityExceptionsBuildTunnelTransform() throws Exception {
+        if (!hasTunnelsFeature()) return;
+
         // Ensure we don't have the appop. Permission is not requested in the Manifest
         setAppop(false);
 
@@ -97,6 +108,8 @@ public class IpSecManagerTunnelTest extends IpSecBaseTest {
 
     private void checkTunnel(InetAddress inner, InetAddress outer, boolean useEncap)
             throws Exception {
+        if (!hasTunnelsFeature()) return;
+
         setAppop(true);
         int innerPrefixLen = inner instanceof Inet6Address ? IP6_PREFIX_LEN : IP4_PREFIX_LEN;
 
