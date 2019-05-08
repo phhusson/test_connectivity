@@ -1184,6 +1184,16 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         return s;
     }
 
+    private int getSupportedKeepalivesFromRes() throws Exception {
+        final Network network = ensureWifiConnected();
+        final NetworkCapabilities nc = mCm.getNetworkCapabilities(network);
+
+        // Get number of supported concurrent keepalives for testing network.
+        final int[] keepalivesPerTransport = KeepaliveUtils.getSupportedKeepalives(mContext);
+        return KeepaliveUtils.getSupportedKeepalivesForNetworkCapabilities(
+                keepalivesPerTransport, nc);
+    }
+
     private boolean isKeepaliveSupported() throws Exception {
         final Network network = ensureWifiConnected();
         final Executor executor = mContext.getMainExecutor();
@@ -1293,7 +1303,8 @@ public class ConnectivityManagerTest extends AndroidTestCase {
     }
 
     private int createConcurrentSocketKeepalives(int nattCount, int tcpCount) throws Exception {
-        if (!isKeepaliveSupported()) return 0;
+        // Use customization value in resource to prevent the need of privilege.
+        if (getSupportedKeepalivesFromRes() == 0) return 0;
 
         final Network network = ensureWifiConnected();
 
@@ -1374,16 +1385,10 @@ public class ConnectivityManagerTest extends AndroidTestCase {
     public void testSocketKeepaliveLimit() throws Exception {
         adoptShellPermissionIdentity();
 
-        final Network network = ensureWifiConnected();
-        final NetworkCapabilities nc = mCm.getNetworkCapabilities(network);
+        final int supported = getSupportedKeepalivesFromRes();
 
-        // Get number of supported concurrent keepalives for testing network.
-        final int[] keepalivesPerTransport = KeepaliveUtils.getSupportedKeepalives(mContext);
-        final int supported = KeepaliveUtils.getSupportedKeepalivesForNetworkCapabilities(
-                keepalivesPerTransport, nc);
-
-        // Sanity check.
         if (!isKeepaliveSupported()) {
+            // Sanity check.
             assertEquals(0, supported);
             return;
         }
@@ -1406,6 +1411,34 @@ public class ConnectivityManagerTest extends AndroidTestCase {
                 supported / 2, supported - supported / 2));
 
         dropShellPermissionIdentity();
+    }
+
+    /**
+     * Verifies that the keepalive slots are limited as customized for unprivileged requests.
+     */
+    public void testSocketKeepaliveUnprivileged() throws Exception {
+        final int supported = getSupportedKeepalivesFromRes();
+
+        adoptShellPermissionIdentity();
+        if (!isKeepaliveSupported()) {
+            // Sanity check.
+            assertEquals(0, supported);
+            return;
+        }
+        dropShellPermissionIdentity();
+
+        final int allowedUnprivilegedPerUid = mContext.getResources().getInteger(
+                R.integer.config_allowedUnprivilegedKeepalivePerUid);
+        final int reservedPrivilegedSlots = mContext.getResources().getInteger(
+                R.integer.config_reservedPrivilegedKeepaliveSlots);
+        // Verifies that unprivileged request per uid cannot exceed the limit customized in the
+        // resource. Currently, unprivileged keepalive slots are limited to Nat-T only, this test
+        // does not apply to TCP.
+        assertGreaterOrEqual(supported, reservedPrivilegedSlots);
+        assertGreaterOrEqual(supported, allowedUnprivilegedPerUid);
+        final int expectedUnprivileged =
+                Math.min(allowedUnprivilegedPerUid, supported - reservedPrivilegedSlots);
+        assertEquals(expectedUnprivileged, createConcurrentSocketKeepalives(supported + 1, 0));
     }
 
     private static void assertGreaterOrEqual(long greater, long lesser) {
