@@ -25,10 +25,10 @@ import android.net.IpSecManager;
 import android.net.IpSecTransform;
 import android.system.Os;
 import android.system.OsConstants;
-import android.test.AndroidTestCase;
 import android.util.Log;
 
 import androidx.test.InstrumentationRegistry;
+import androidx.test.runner.AndroidJUnit4;
 
 import java.io.FileDescriptor;
 import java.io.IOException;
@@ -43,7 +43,12 @@ import java.net.SocketException;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class IpSecBaseTest extends AndroidTestCase {
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+
+@RunWith(AndroidJUnit4.class)
+public class IpSecBaseTest {
 
     private static final String TAG = IpSecBaseTest.class.getSimpleName();
 
@@ -70,9 +75,11 @@ public class IpSecBaseTest extends AndroidTestCase {
 
     protected ConnectivityManager mCM;
     protected IpSecManager mISM;
+    protected Context mContext;
 
-    protected void setUp() throws Exception {
-        super.setUp();
+    @Before
+    public void setUp() throws Exception {
+        mContext = InstrumentationRegistry.getContext();
         mISM =
                 (IpSecManager)
                         InstrumentationRegistry.getContext()
@@ -471,6 +478,7 @@ public class IpSecBaseTest extends AndroidTestCase {
         }
     }
 
+    @Test
     public void testJavaTcpSocketPair() throws Exception {
         for (String addr : LOOPBACK_ADDRS) {
             InetAddress local = InetAddress.getByName(addr);
@@ -481,6 +489,7 @@ public class IpSecBaseTest extends AndroidTestCase {
         }
     }
 
+    @Test
     public void testJavaUdpSocketPair() throws Exception {
         for (String addr : LOOPBACK_ADDRS) {
             InetAddress local = InetAddress.getByName(addr);
@@ -492,6 +501,7 @@ public class IpSecBaseTest extends AndroidTestCase {
         }
     }
 
+    @Test
     public void testJavaUdpSocketPairUnconnected() throws Exception {
         for (String addr : LOOPBACK_ADDRS) {
             InetAddress local = InetAddress.getByName(addr);
@@ -503,6 +513,7 @@ public class IpSecBaseTest extends AndroidTestCase {
         }
     }
 
+    @Test
     public void testNativeTcpSocketPair() throws Exception {
         for (String addr : LOOPBACK_ADDRS) {
             InetAddress local = InetAddress.getByName(addr);
@@ -514,6 +525,7 @@ public class IpSecBaseTest extends AndroidTestCase {
         }
     }
 
+    @Test
     public void testNativeUdpSocketPair() throws Exception {
         for (String addr : LOOPBACK_ADDRS) {
             InetAddress local = InetAddress.getByName(addr);
@@ -525,6 +537,7 @@ public class IpSecBaseTest extends AndroidTestCase {
         }
     }
 
+    @Test
     public void testNativeUdpSocketPairUnconnected() throws Exception {
         for (String addr : LOOPBACK_ADDRS) {
             InetAddress local = InetAddress.getByName(addr);
