@@ -55,8 +55,10 @@ import android.net.TestNetworkInterface;
 import android.net.TestNetworkManager;
 import android.net.cts.PacketUtils.Payload;
 import android.os.Binder;
+import android.os.Build;
 import android.os.IBinder;
 import android.os.ParcelFileDescriptor;
+import android.os.SystemProperties;
 
 import androidx.test.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
@@ -167,7 +169,9 @@ public class IpSecManagerTunnelTest extends IpSecBaseTest {
     }
 
     private static boolean hasTunnelsFeature() {
-        return sContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_IPSEC_TUNNELS);
+        return sContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_IPSEC_TUNNELS)
+                || SystemProperties.getInt("ro.product.first_api_level", 0)
+                        >= Build.VERSION_CODES.Q;
     }
 
     private static void setAppop(int appop, boolean allow) {
