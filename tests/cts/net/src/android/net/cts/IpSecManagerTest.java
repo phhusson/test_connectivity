@@ -16,6 +16,14 @@
 
 package android.net.cts;
 
+import static android.net.cts.PacketUtils.AES_CBC_BLK_SIZE;
+import static android.net.cts.PacketUtils.AES_CBC_IV_LEN;
+import static android.net.cts.PacketUtils.AES_GCM_BLK_SIZE;
+import static android.net.cts.PacketUtils.AES_GCM_IV_LEN;
+import static android.net.cts.PacketUtils.IP4_HDRLEN;
+import static android.net.cts.PacketUtils.IP6_HDRLEN;
+import static android.net.cts.PacketUtils.TCP_HDRLEN_WITH_TIMESTAMP_OPT;
+import static android.net.cts.PacketUtils.UDP_HDRLEN;
 import static android.system.OsConstants.IPPROTO_TCP;
 import static android.system.OsConstants.IPPROTO_UDP;
 import static org.junit.Assert.assertArrayEquals;
@@ -52,17 +60,6 @@ public class IpSecManagerTest extends IpSecBaseTest {
     private static final int MAX_PORT_BIND_ATTEMPTS = 10;
 
     private static final byte[] AEAD_KEY = getKey(288);
-
-    private static final int TCP_HDRLEN_WITH_OPTIONS = 32;
-    private static final int UDP_HDRLEN = 8;
-    private static final int IP4_HDRLEN = 20;
-    private static final int IP6_HDRLEN = 40;
-
-    // Encryption parameters
-    private static final int AES_GCM_IV_LEN = 8;
-    private static final int AES_CBC_IV_LEN = 16;
-    private static final int AES_GCM_BLK_SIZE = 4;
-    private static final int AES_CBC_BLK_SIZE = 16;
 
     protected void setUp() throws Exception {
         super.setUp();
@@ -432,19 +429,6 @@ public class IpSecManagerTest extends IpSecBaseTest {
         }
     }
 
-    /** Helper function to calculate expected ESP packet size. */
-    private int calculateEspPacketSize(
-            int payloadLen, int cryptIvLength, int cryptBlockSize, int authTruncLen) {
-        final int ESP_HDRLEN = 4 + 4; // SPI + Seq#
-        final int ICV_LEN = authTruncLen / 8; // Auth trailer; based on truncation length
-        payloadLen += cryptIvLength; // Initialization Vector
-        payloadLen += 2; // ESP trailer
-
-        // Align to block size of encryption algorithm
-        payloadLen += (cryptBlockSize - (payloadLen % cryptBlockSize)) % cryptBlockSize;
-        return payloadLen + ESP_HDRLEN + ICV_LEN;
-    }
-
     public void checkTransform(
             int protocol,
             String localAddress,
@@ -485,7 +469,7 @@ public class IpSecManagerTest extends IpSecBaseTest {
             try (IpSecTransform transform =
                         transformBuilder.buildTransportModeTransform(local, spi)) {
                 if (protocol == IPPROTO_TCP) {
-                    transportHdrLen = TCP_HDRLEN_WITH_OPTIONS;
+                    transportHdrLen = TCP_HDRLEN_WITH_TIMESTAMP_OPT;
                     checkTcp(transform, local, sendCount, useJavaSockets);
                 } else if (protocol == IPPROTO_UDP) {
                     transportHdrLen = UDP_HDRLEN;
@@ -522,7 +506,7 @@ public class IpSecManagerTest extends IpSecBaseTest {
 
         int innerPacketSize = TEST_DATA.length + transportHdrLen + ipHdrLen;
         int outerPacketSize =
-                calculateEspPacketSize(
+                PacketUtils.calculateEspPacketSize(
                                 TEST_DATA.length + transportHdrLen, ivLen, blkSize, truncLenBits)
                         + udpEncapLen
                         + ipHdrLen;
@@ -540,13 +524,13 @@ public class IpSecManagerTest extends IpSecBaseTest {
         // Add TCP ACKs for data packets
         if (protocol == IPPROTO_TCP) {
             int encryptedTcpPktSize =
-                    calculateEspPacketSize(TCP_HDRLEN_WITH_OPTIONS, ivLen, blkSize, truncLenBits);
+                    PacketUtils.calculateEspPacketSize(
+                            TCP_HDRLEN_WITH_TIMESTAMP_OPT, ivLen, blkSize, truncLenBits);
 
-
-                // Add data packet ACKs
-                expectedOuterBytes += (encryptedTcpPktSize + udpEncapLen + ipHdrLen) * (sendCount);
-                expectedInnerBytes += (TCP_HDRLEN_WITH_OPTIONS + ipHdrLen) * (sendCount);
-                expectedPackets += sendCount;
+            // Add data packet ACKs
+            expectedOuterBytes += (encryptedTcpPktSize + udpEncapLen + ipHdrLen) * (sendCount);
+            expectedInnerBytes += (TCP_HDRLEN_WITH_TIMESTAMP_OPT + ipHdrLen) * (sendCount);
+            expectedPackets += sendCount;
         }
 
         StatsChecker.waitForNumPackets(expectedPackets);
