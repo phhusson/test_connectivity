@@ -40,6 +40,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import android.app.AppOpsManager;
 import android.content.Context;
@@ -144,6 +145,7 @@ public class IpSecManagerTunnelTest extends IpSecBaseTest {
     }
 
     @Before
+    @Override
     public void setUp() throws Exception {
         super.setUp();
 
