@@ -22,6 +22,7 @@ import android.net.wifi.WifiEnterpriseConfig;
 import android.net.wifi.WifiEnterpriseConfig.Eap;
 import android.net.wifi.WifiEnterpriseConfig.Phase2;
 import android.net.wifi.WifiManager;
+import android.platform.test.annotations.AppModeFull;
 import android.test.AndroidTestCase;
 
 import com.android.compatibility.common.util.SystemUtil;
@@ -33,6 +34,7 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.security.spec.PKCS8EncodedKeySpec;
 
+@AppModeFull(reason = "Cannot get WifiManager in instant app mode")
 public class WifiEnterpriseConfigTest extends AndroidTestCase {
     private WifiManager mWifiManager;
 

@@ -36,6 +36,7 @@ import android.net.wifi.hotspot2.pps.Credential;
 import android.net.wifi.hotspot2.pps.HomeSp;
 import android.os.Process;
 import android.os.SystemClock;
+import android.platform.test.annotations.AppModeFull;
 import android.provider.Settings;
 import android.support.test.uiautomator.UiDevice;
 import android.test.AndroidTestCase;
@@ -56,6 +57,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+@AppModeFull(reason = "Cannot get WifiManager in instant app mode")
 public class WifiManagerTest extends AndroidTestCase {
     private static class MySync {
         int expectedState = STATE_NULL;

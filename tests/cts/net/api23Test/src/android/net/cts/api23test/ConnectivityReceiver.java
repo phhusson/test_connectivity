@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package android.net.cts;
+package android.net.cts.api23test;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
