@@ -26,6 +26,7 @@ import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.WifiLock;
 import android.net.wifi.WifiSsid;
+import android.platform.test.annotations.AppModeFull;
 import android.test.AndroidTestCase;
 
 import com.android.compatibility.common.util.PollingCheck;
@@ -33,6 +34,7 @@ import com.android.compatibility.common.util.SystemUtil;
 
 import java.util.concurrent.Callable;
 
+@AppModeFull(reason = "Cannot get WifiManager in instant app mode")
 public class WifiInfoTest extends AndroidTestCase {
     private static class MySync {
         int expectedState = STATE_NULL;

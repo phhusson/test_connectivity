@@ -21,6 +21,7 @@ import android.net.NetworkStats;
 import android.net.TrafficStats;
 import android.os.Process;
 import android.os.SystemProperties;
+import android.platform.test.annotations.AppModeFull;
 import android.test.AndroidTestCase;
 import android.util.Log;
 
@@ -81,6 +82,7 @@ public class TrafficStatsTest extends AndroidTestCase {
         return packetCount * (20 + 32 + bytes);
     }
 
+    @AppModeFull(reason = "Socket cannot bind in instant app mode")
     public void testTrafficStatsForLocalhost() throws IOException {
         final long mobileTxPacketsBefore = TrafficStats.getMobileTxPackets();
         final long mobileRxPacketsBefore = TrafficStats.getMobileRxPackets();
