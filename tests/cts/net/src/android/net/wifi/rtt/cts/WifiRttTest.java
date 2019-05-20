@@ -19,6 +19,7 @@ package android.net.wifi.rtt.cts;
 import android.net.wifi.ScanResult;
 import android.net.wifi.rtt.RangingRequest;
 import android.net.wifi.rtt.RangingResult;
+import android.platform.test.annotations.AppModeFull;
 
 import com.android.compatibility.common.util.DeviceReportLog;
 import com.android.compatibility.common.util.ResultType;
@@ -31,6 +32,7 @@ import java.util.List;
 /**
  * Wi-Fi RTT CTS test: range to all available Access Points which support IEEE 802.11mc.
  */
+@AppModeFull(reason = "Cannot get WifiManager in instant app mode")
 public class WifiRttTest extends TestBase {
     // Number of scans to do while searching for APs supporting IEEE 802.11mc
     private static final int NUM_SCANS_SEARCHING_FOR_IEEE80211MC_AP = 2;

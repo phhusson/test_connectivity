@@ -26,6 +26,7 @@ import static android.net.cts.PacketUtils.TCP_HDRLEN_WITH_TIMESTAMP_OPT;
 import static android.net.cts.PacketUtils.UDP_HDRLEN;
 import static android.system.OsConstants.IPPROTO_TCP;
 import static android.system.OsConstants.IPPROTO_UDP;
+
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -35,6 +36,7 @@ import android.net.IpSecAlgorithm;
 import android.net.IpSecManager;
 import android.net.IpSecTransform;
 import android.net.TrafficStats;
+import android.platform.test.annotations.AppModeFull;
 import android.system.ErrnoException;
 import android.system.Os;
 import android.system.OsConstants;
@@ -54,6 +56,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 @RunWith(AndroidJUnit4.class)
+@AppModeFull(reason = "Socket cannot bind in instant app mode")
 public class IpSecManagerTest extends IpSecBaseTest {
 
     private static final String TAG = IpSecManagerTest.class.getSimpleName();

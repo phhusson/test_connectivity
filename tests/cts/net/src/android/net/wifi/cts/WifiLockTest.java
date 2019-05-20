@@ -19,8 +19,10 @@ package android.net.wifi.cts;
 import android.content.Context;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.WifiLock;
+import android.platform.test.annotations.AppModeFull;
 import android.test.AndroidTestCase;
 
+@AppModeFull(reason = "Cannot get WifiManager in instant app mode")
 public class WifiLockTest extends AndroidTestCase {
 
     private static final String WIFI_TAG = "WifiLockTest";
