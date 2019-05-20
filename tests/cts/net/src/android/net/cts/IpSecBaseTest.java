@@ -76,11 +76,9 @@ public class IpSecBaseTest {
 
     protected ConnectivityManager mCM;
     protected IpSecManager mISM;
-    protected Context mContext;
 
     @Before
     public void setUp() throws Exception {
-        mContext = InstrumentationRegistry.getContext();
         mISM =
                 (IpSecManager)
                         InstrumentationRegistry.getContext()
@@ -475,7 +473,7 @@ public class IpSecBaseTest {
     private IpSecTransform buildDefaultTransform(InetAddress localAddr) throws Exception {
         try (IpSecManager.SecurityParameterIndex spi =
                 mISM.allocateSecurityParameterIndex(localAddr)) {
-            return buildIpSecTransform(mContext, spi, null, localAddr);
+            return buildIpSecTransform(InstrumentationRegistry.getContext(), spi, null, localAddr);
         }
     }
 
