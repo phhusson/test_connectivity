@@ -39,6 +39,7 @@ import android.os.SystemClock;
 import android.provider.Settings;
 import android.support.test.uiautomator.UiDevice;
 import android.test.AndroidTestCase;
+import android.text.TextUtils;
 import android.util.ArraySet;
 import android.util.Log;
 
@@ -796,6 +797,8 @@ public class WifiManagerTest extends AndroidTestCase {
      * functionality.  The permission is intended to be granted to only the device setup wizard.
      */
     public void testNetworkSetupWizardPermission() {
+        final ArraySet<String> allowedPackages = new ArraySet();
+
         final PackageManager pm = getContext().getPackageManager();
 
         final Intent intent = new Intent(Intent.ACTION_MAIN);
@@ -803,16 +806,39 @@ public class WifiManagerTest extends AndroidTestCase {
         final ResolveInfo ri = pm.resolveActivity(intent, PackageManager.MATCH_DISABLED_COMPONENTS);
         String validPkg = "";
         if (ri != null) {
+            allowedPackages.add(ri.activityInfo.packageName);
             validPkg = ri.activityInfo.packageName;
         }
 
-        final List<PackageInfo> holding = pm.getPackagesHoldingPermissions(new String[] {
-                android.Manifest.permission.NETWORK_SETUP_WIZARD
+        final Intent preIntent = new Intent("com.android.setupwizard.OEM_PRE_SETUP");
+        preIntent.addCategory(Intent.CATEGORY_DEFAULT);
+        final ResolveInfo preRi = pm
+            .resolveActivity(preIntent, PackageManager.MATCH_DISABLED_COMPONENTS);
+        String prePackageName = "";
+        if (null != preRi) {
+            prePackageName = preRi.activityInfo.packageName;
+        }
+
+        final Intent postIntent = new Intent("com.android.setupwizard.OEM_POST_SETUP");
+        postIntent.addCategory(Intent.CATEGORY_DEFAULT);
+        final ResolveInfo postRi = pm
+            .resolveActivity(postIntent, PackageManager.MATCH_DISABLED_COMPONENTS);
+        String postPackageName = "";
+        if (null != postRi) {
+            postPackageName = postRi.activityInfo.packageName;
+        }
+        if (!TextUtils.isEmpty(prePackageName) && !TextUtils.isEmpty(postPackageName)
+            && prePackageName.equals(postPackageName)) {
+            allowedPackages.add(prePackageName);
+        }
+
+        final List<PackageInfo> holding = pm.getPackagesHoldingPermissions(new String[]{
+            android.Manifest.permission.NETWORK_SETUP_WIZARD
         }, PackageManager.MATCH_UNINSTALLED_PACKAGES);
         for (PackageInfo pi : holding) {
-            if (!Objects.equals(pi.packageName, validPkg)) {
+            if (!allowedPackages.contains(pi.packageName)) {
                 fail("The NETWORK_SETUP_WIZARD permission must not be held by " + pi.packageName
-                    + " and must be revoked for security reasons [" + validPkg +"]");
+                    + " and must be revoked for security reasons [" + validPkg + "]");
             }
         }
     }
