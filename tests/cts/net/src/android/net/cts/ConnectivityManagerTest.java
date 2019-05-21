@@ -35,7 +35,6 @@ import android.app.Instrumentation;
 import android.app.PendingIntent;
 import android.app.UiAutomation;
 import android.content.BroadcastReceiver;
-import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
@@ -60,6 +59,7 @@ import android.os.Looper;
 import android.os.MessageQueue;
 import android.os.SystemClock;
 import android.os.SystemProperties;
+import android.platform.test.annotations.AppModeFull;
 import android.provider.Settings;
 import android.system.Os;
 import android.system.OsConstants;
@@ -103,8 +103,6 @@ public class ConnectivityManagerTest extends AndroidTestCase {
 
     private static final String TAG = ConnectivityManagerTest.class.getSimpleName();
 
-    private static final String FEATURE_ENABLE_HIPRI = "enableHIPRI";
-
     public static final int TYPE_MOBILE = ConnectivityManager.TYPE_MOBILE;
     public static final int TYPE_WIFI = ConnectivityManager.TYPE_WIFI;
 
@@ -114,7 +112,6 @@ public class ConnectivityManagerTest extends AndroidTestCase {
     private static final int CONNECT_TIMEOUT_MS = 2000;
     private static final int KEEPALIVE_CALLBACK_TIMEOUT_MS = 2000;
     private static final int KEEPALIVE_SOCKET_TIMEOUT_MS = 5000;
-    private static final int SEND_BROADCAST_TIMEOUT = 30000;
     private static final int MIN_KEEPALIVE_INTERVAL = 10;
     private static final int NETWORK_CHANGE_METEREDNESS_TIMEOUT = 5000;
     private static final int NUM_TRIES_MULTIPATH_PREF_CHECK = 20;
@@ -128,10 +125,6 @@ public class ConnectivityManagerTest extends AndroidTestCase {
     // Action sent to ConnectivityActionReceiver when a network callback is sent via PendingIntent.
     private static final String NETWORK_CALLBACK_ACTION =
             "ConnectivityManagerTest.NetworkCallbackAction";
-
-    // Intent string to get the number of wifi CONNECTIVITY_ACTION callbacks the test app has seen
-    public static final String GET_WIFI_CONNECTIVITY_ACTION_COUNT =
-            "android.net.cts.appForApi23.getWifiConnectivityActionCount";
 
     // device could have only one interface: data, wifi.
     private static final int MIN_NUM_NETWORK_TYPES = 1;
@@ -298,6 +291,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
      * Tests that connections can be opened on WiFi and cellphone networks,
      * and that they are made from different IP addresses.
      */
+    @AppModeFull(reason = "Cannot get WifiManager in instant app mode")
     public void testOpenConnection() throws Exception {
         boolean canRunTest = mPackageManager.hasSystemFeature(FEATURE_WIFI)
                 && mPackageManager.hasSystemFeature(FEATURE_TELEPHONY);
@@ -460,6 +454,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
      * WiFi. We could add a version that uses the telephony data connection but it's not clear
      * that it would increase test coverage by much (how many devices have 3G radio but not Wifi?).
      */
+    @AppModeFull(reason = "Cannot get WifiManager in instant app mode")
     public void testRegisterNetworkCallback() {
         if (!mPackageManager.hasSystemFeature(FEATURE_WIFI)) {
             Log.i(TAG, "testRegisterNetworkCallback cannot execute unless device supports WiFi");
@@ -500,6 +495,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
      * {@link #testRegisterNetworkCallback} except that a {@code PendingIntent} is used instead
      * of a {@code NetworkCallback}.
      */
+    @AppModeFull(reason = "Cannot get WifiManager in instant app mode")
     public void testRegisterNetworkCallback_withPendingIntent() {
         if (!mPackageManager.hasSystemFeature(FEATURE_WIFI)) {
             Log.i(TAG, "testRegisterNetworkCallback cannot execute unless device supports WiFi");
@@ -544,6 +540,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
      * Exercises the requestNetwork with NetworkCallback API. This checks to
      * see if we get a callback for an INTERNET request.
      */
+    @AppModeFull(reason = "CHANGE_NETWORK_STATE permission can't be granted to instant apps")
     public void testRequestNetworkCallback() {
         final TestNetworkCallback callback = new TestNetworkCallback();
         mCm.requestNetwork(new NetworkRequest.Builder()
@@ -566,6 +563,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
      * Exercises the requestNetwork with NetworkCallback API with timeout - expected to
      * fail. Use WIFI and switch Wi-Fi off.
      */
+    @AppModeFull(reason = "Cannot get WifiManager in instant app mode")
     public void testRequestNetworkCallback_onUnavailable() {
         final boolean previousWifiEnabledState = mWifiManager.isWifiEnabled();
         if (previousWifiEnabledState) {
@@ -588,93 +586,6 @@ public class ConnectivityManagerTest extends AndroidTestCase {
             if (previousWifiEnabledState) {
                 connectToWifi();
             }
-        }
-    }
-
-    /**
-     * Tests reporting of connectivity changed.
-     */
-    public void testConnectivityChanged_manifestRequestOnly_shouldNotReceiveIntent() {
-        if (!mPackageManager.hasSystemFeature(FEATURE_WIFI)) {
-            Log.i(TAG, "testConnectivityChanged_manifestRequestOnly_shouldNotReceiveIntent cannot execute unless device supports WiFi");
-            return;
-        }
-        ConnectivityReceiver.prepare();
-
-        toggleWifi();
-
-        // The connectivity broadcast has been sent; push through a terminal broadcast
-        // to wait for in the receive to confirm it didn't see the connectivity change.
-        Intent finalIntent = new Intent(ConnectivityReceiver.FINAL_ACTION);
-        finalIntent.setClass(mContext, ConnectivityReceiver.class);
-        mContext.sendBroadcast(finalIntent);
-        assertFalse(ConnectivityReceiver.waitForBroadcast());
-    }
-
-    public void testConnectivityChanged_whenRegistered_shouldReceiveIntent() {
-        if (!mPackageManager.hasSystemFeature(FEATURE_WIFI)) {
-            Log.i(TAG, "testConnectivityChanged_whenRegistered_shouldReceiveIntent cannot execute unless device supports WiFi");
-            return;
-        }
-        ConnectivityReceiver.prepare();
-        ConnectivityReceiver receiver = new ConnectivityReceiver();
-        IntentFilter filter = new IntentFilter();
-        filter.addAction(ConnectivityManager.CONNECTIVITY_ACTION);
-        mContext.registerReceiver(receiver, filter);
-
-        toggleWifi();
-        Intent finalIntent = new Intent(ConnectivityReceiver.FINAL_ACTION);
-        finalIntent.setClass(mContext, ConnectivityReceiver.class);
-        mContext.sendBroadcast(finalIntent);
-
-        assertTrue(ConnectivityReceiver.waitForBroadcast());
-    }
-
-    public void testConnectivityChanged_manifestRequestOnlyPreN_shouldReceiveIntent()
-            throws InterruptedException {
-        if (!mPackageManager.hasSystemFeature(FEATURE_WIFI)) {
-            Log.i(TAG, "testConnectivityChanged_manifestRequestOnlyPreN_shouldReceiveIntent cannot execute unless device supports WiFi");
-            return;
-        }
-        mContext.startActivity(new Intent()
-                .setComponent(new ComponentName("android.net.cts.appForApi23",
-                        "android.net.cts.appForApi23.ConnectivityListeningActivity"))
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-        Thread.sleep(200);
-
-        toggleWifi();
-
-        Intent getConnectivityCount = new Intent(GET_WIFI_CONNECTIVITY_ACTION_COUNT);
-        assertEquals(2, sendOrderedBroadcastAndReturnResultCode(
-                getConnectivityCount, SEND_BROADCAST_TIMEOUT));
-    }
-
-    private int sendOrderedBroadcastAndReturnResultCode(
-            Intent intent, int timeoutMs) throws InterruptedException {
-        final LinkedBlockingQueue<Integer> result = new LinkedBlockingQueue<>(1);
-        mContext.sendOrderedBroadcast(intent, null, new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                result.offer(getResultCode());
-            }
-        }, null, 0, null, null);
-
-        Integer resultCode = result.poll(timeoutMs, TimeUnit.MILLISECONDS);
-        assertNotNull("Timed out (more than " + timeoutMs +
-                " milliseconds) waiting for result code for broadcast", resultCode);
-        return resultCode;
-    }
-
-    // Toggle WiFi twice, leaving it in the state it started in
-    private void toggleWifi() {
-        if (mWifiManager.isWifiEnabled()) {
-            Network wifiNetwork = getWifiNetwork();
-            disconnectFromWifi(wifiNetwork);
-            connectToWifi();
-        } else {
-            connectToWifi();
-            Network wifiNetwork = getWifiNetwork();
-            disconnectFromWifi(wifiNetwork);
         }
     }
 
@@ -913,6 +824,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
     }
 
     /** Verify restricted networks cannot be requested. */
+    @AppModeFull(reason = "CHANGE_NETWORK_STATE permission can't be granted to instant apps")
     public void testRestrictedNetworks() {
         // Verify we can request unrestricted networks:
         NetworkRequest request = new NetworkRequest.Builder()
@@ -1030,6 +942,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
      * Verify that getMultipathPreference does return appropriate values
      * for metered and unmetered networks.
      */
+    @AppModeFull(reason = "Cannot get WifiManager in instant app mode")
     public void testGetMultipathPreference() throws Exception {
         final ContentResolver resolver = mContext.getContentResolver();
         final Network network = ensureWifiConnected();
@@ -1231,6 +1144,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         }
     }
 
+    @AppModeFull(reason = "Cannot get WifiManager in instant app mode")
     public void testCreateTcpKeepalive() throws Exception {
         adoptShellPermissionIdentity();
 
@@ -1383,6 +1297,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
      * Verifies that the concurrent keepalive slots meet the minimum requirement, and don't
      * get leaked after iterations.
      */
+    @AppModeFull(reason = "Cannot get WifiManager in instant app mode")
     public void testSocketKeepaliveLimit() throws Exception {
         adoptShellPermissionIdentity();
 
@@ -1417,6 +1332,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
     /**
      * Verifies that the keepalive slots are limited as customized for unprivileged requests.
      */
+    @AppModeFull(reason = "Cannot get WifiManager in instant app mode")
     public void testSocketKeepaliveUnprivileged() throws Exception {
         final int supported = getSupportedKeepalivesFromRes();
 

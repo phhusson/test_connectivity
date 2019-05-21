@@ -32,6 +32,7 @@ import android.net.NetworkRequest;
 import android.net.wifi.WifiManager;
 import android.net.wifi.p2p.WifiP2pManager;
 import android.provider.Settings;
+import android.platform.test.annotations.AppModeFull;
 import android.test.AndroidTestCase;
 import android.util.Log;
 
@@ -45,6 +46,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+@AppModeFull(reason = "Cannot get WifiManager in instant app mode")
 public class ConcurrencyTest extends AndroidTestCase {
     private class MySync {
         static final int WIFI_STATE = 0;

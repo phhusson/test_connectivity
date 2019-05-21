@@ -23,6 +23,7 @@ import android.net.ConnectivityManager;
 import android.net.IpSecAlgorithm;
 import android.net.IpSecManager;
 import android.net.IpSecTransform;
+import android.platform.test.annotations.AppModeFull;
 import android.system.Os;
 import android.system.OsConstants;
 import android.util.Log;
@@ -479,6 +480,7 @@ public class IpSecBaseTest {
     }
 
     @Test
+    @AppModeFull(reason = "Socket cannot bind in instant app mode")
     public void testJavaTcpSocketPair() throws Exception {
         for (String addr : LOOPBACK_ADDRS) {
             InetAddress local = InetAddress.getByName(addr);
@@ -490,6 +492,7 @@ public class IpSecBaseTest {
     }
 
     @Test
+    @AppModeFull(reason = "Socket cannot bind in instant app mode")
     public void testJavaUdpSocketPair() throws Exception {
         for (String addr : LOOPBACK_ADDRS) {
             InetAddress local = InetAddress.getByName(addr);
@@ -502,6 +505,7 @@ public class IpSecBaseTest {
     }
 
     @Test
+    @AppModeFull(reason = "Socket cannot bind in instant app mode")
     public void testJavaUdpSocketPairUnconnected() throws Exception {
         for (String addr : LOOPBACK_ADDRS) {
             InetAddress local = InetAddress.getByName(addr);
@@ -514,6 +518,7 @@ public class IpSecBaseTest {
     }
 
     @Test
+    @AppModeFull(reason = "Socket cannot bind in instant app mode")
     public void testNativeTcpSocketPair() throws Exception {
         for (String addr : LOOPBACK_ADDRS) {
             InetAddress local = InetAddress.getByName(addr);
@@ -526,6 +531,7 @@ public class IpSecBaseTest {
     }
 
     @Test
+    @AppModeFull(reason = "Socket cannot bind in instant app mode")
     public void testNativeUdpSocketPair() throws Exception {
         for (String addr : LOOPBACK_ADDRS) {
             InetAddress local = InetAddress.getByName(addr);
@@ -538,6 +544,7 @@ public class IpSecBaseTest {
     }
 
     @Test
+    @AppModeFull(reason = "Socket cannot bind in instant app mode")
     public void testNativeUdpSocketPairUnconnected() throws Exception {
         for (String addr : LOOPBACK_ADDRS) {
             InetAddress local = InetAddress.getByName(addr);
