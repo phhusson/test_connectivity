@@ -59,6 +59,7 @@ import android.os.Build;
 import android.os.IBinder;
 import android.os.ParcelFileDescriptor;
 import android.os.SystemProperties;
+import android.platform.test.annotations.AppModeFull;
 
 import androidx.test.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
@@ -81,6 +82,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 @RunWith(AndroidJUnit4.class)
+@AppModeFull(reason = "MANAGE_TEST_NETWORKS permission can't be granted to instant apps")
 public class IpSecManagerTunnelTest extends IpSecBaseTest {
     private static final String TAG = IpSecManagerTunnelTest.class.getSimpleName();
 
