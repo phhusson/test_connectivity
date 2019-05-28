@@ -59,6 +59,7 @@ import android.os.Looper;
 import android.os.MessageQueue;
 import android.os.SystemClock;
 import android.os.SystemProperties;
+import android.os.VintfRuntimeInfo;
 import android.platform.test.annotations.AppModeFull;
 import android.provider.Settings;
 import android.system.Os;
@@ -66,6 +67,7 @@ import android.system.OsConstants;
 import android.test.AndroidTestCase;
 import android.text.TextUtils;
 import android.util.Log;
+import android.util.Pair;
 
 import androidx.test.InstrumentationRegistry;
 
@@ -1107,30 +1109,6 @@ public class ConnectivityManagerTest extends AndroidTestCase {
                 keepalivesPerTransport, nc);
     }
 
-    private boolean isKeepaliveSupported() throws Exception {
-        final Network network = ensureWifiConnected();
-        final Executor executor = mContext.getMainExecutor();
-        final TestSocketKeepaliveCallback callback = new TestSocketKeepaliveCallback();
-        try (Socket s = getConnectedSocket(network, TEST_HOST,
-                HTTP_PORT, KEEPALIVE_SOCKET_TIMEOUT_MS, AF_INET);
-                SocketKeepalive sk = mCm.createSocketKeepalive(network, s, executor, callback)) {
-            sk.start(MIN_KEEPALIVE_INTERVAL);
-            final TestSocketKeepaliveCallback.CallbackValue result = callback.pollCallback();
-            switch (result.callbackType) {
-                case ON_STARTED:
-                    sk.stop();
-                    callback.expectStopped();
-                    return true;
-                case ON_ERROR:
-                    if (result.error == SocketKeepalive.ERROR_UNSUPPORTED) return false;
-                    // else fallthrough.
-                default:
-                    fail("Got unexpected callback: " + result);
-                    return false;
-            }
-        }
-    }
-
     private void adoptShellPermissionIdentity() {
         mUiAutomation.adoptShellPermissionIdentity();
         mShellPermissionIdentityAdopted = true;
@@ -1143,11 +1121,85 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         }
     }
 
+    private static boolean isTcpKeepaliveSupportedByKernel() {
+        final String kVersionString = VintfRuntimeInfo.getKernelVersion();
+        return compareMajorMinorVersion(kVersionString, "4.8") >= 0;
+    }
+
+    private static Pair<Integer, Integer> getVersionFromString(String version) {
+        // Only gets major and minor number of the version string.
+        final Pattern versionPattern = Pattern.compile("^(\\d+)(\\.(\\d+))?.*");
+        final Matcher m = versionPattern.matcher(version);
+        if (m.matches()) {
+            final int major = Integer.parseInt(m.group(1));
+            final int minor = TextUtils.isEmpty(m.group(3)) ? 0 : Integer.parseInt(m.group(3));
+            return new Pair<>(major, minor);
+        } else {
+            return new Pair<>(0, 0);
+        }
+    }
+
+    // TODO: Move to util class.
+    private static int compareMajorMinorVersion(final String s1, final String s2) {
+        final Pair<Integer, Integer> v1 = getVersionFromString(s1);
+        final Pair<Integer, Integer> v2 = getVersionFromString(s2);
+
+        if (v1.first == v2.first) {
+            return Integer.compare(v1.second, v2.second);
+        } else {
+            return Integer.compare(v1.first, v2.first);
+        }
+    }
+
+    /**
+     * Verifies that version string compare logic returns expected result for various cases.
+     * Note that only major and minor number are compared.
+     */
+    public void testMajorMinorVersionCompare() {
+        assertEquals(0, compareMajorMinorVersion("4.8.1", "4.8"));
+        assertEquals(1, compareMajorMinorVersion("4.9", "4.8.1"));
+        assertEquals(1, compareMajorMinorVersion("5.0", "4.8"));
+        assertEquals(1, compareMajorMinorVersion("5", "4.8"));
+        assertEquals(0, compareMajorMinorVersion("5", "5.0"));
+        assertEquals(1, compareMajorMinorVersion("5-beta1", "4.8"));
+        assertEquals(0, compareMajorMinorVersion("4.8.0.0", "4.8"));
+        assertEquals(0, compareMajorMinorVersion("4.8-RC1", "4.8"));
+        assertEquals(0, compareMajorMinorVersion("4.8", "4.8"));
+        assertEquals(-1, compareMajorMinorVersion("3.10", "4.8.0"));
+        assertEquals(-1, compareMajorMinorVersion("4.7.10.10", "4.8"));
+    }
+
+    /**
+     * Verifies that the keepalive API cannot create any keepalive when the maximum number of
+     * keepalives is set to 0.
+     */
+    @AppModeFull(reason = "Cannot get WifiManager in instant app mode")
+    public void testKeepaliveUnsupported() throws Exception {
+        if (getSupportedKeepalivesFromRes() != 0) return;
+
+        adoptShellPermissionIdentity();
+
+        assertEquals(0, createConcurrentSocketKeepalives(1, 0));
+        assertEquals(0, createConcurrentSocketKeepalives(0, 1));
+
+        dropShellPermissionIdentity();
+    }
+
     @AppModeFull(reason = "Cannot get WifiManager in instant app mode")
     public void testCreateTcpKeepalive() throws Exception {
         adoptShellPermissionIdentity();
 
-        if (!isKeepaliveSupported()) return;
+        if (getSupportedKeepalivesFromRes() == 0) return;
+        // If kernel < 4.8 then it doesn't support TCP keepalive, but it might still support
+        // NAT-T keepalive. If keepalive limits from resource overlay is not zero, TCP keepalive
+        // needs to be supported except if the kernel doesn't support it.
+        if (!isTcpKeepaliveSupportedByKernel()) {
+            // Sanity check to ensure the callback result is expected.
+            assertEquals(0, createConcurrentSocketKeepalives(0, 1));
+            Log.i(TAG, "testCreateTcpKeepalive is skipped for kernel "
+                    + VintfRuntimeInfo.getKernelVersion());
+            return;
+        }
 
         final Network network = ensureWifiConnected();
         final byte[] requestBytes = HTTP_REQUEST.getBytes("UTF-8");
@@ -1212,14 +1264,16 @@ public class ConnectivityManagerTest extends AndroidTestCase {
                 sk.start(MIN_KEEPALIVE_INTERVAL);
                 callback.expectError(SocketKeepalive.ERROR_SOCKET_NOT_IDLE);
             }
-
         }
     }
 
+    /**
+     * Creates concurrent keepalives until the specified counts of each type of keepalives are
+     * reached or the expected error callbacks are received for each type of keepalives.
+     *
+     * @return the total number of keepalives created.
+     */
     private int createConcurrentSocketKeepalives(int nattCount, int tcpCount) throws Exception {
-        // Use customization value in resource to prevent the need of privilege.
-        if (getSupportedKeepalivesFromRes() == 0) return 0;
-
         final Network network = ensureWifiConnected();
 
         final ArrayList<SocketKeepalive> kalist = new ArrayList<>();
@@ -1238,10 +1292,14 @@ public class ConnectivityManagerTest extends AndroidTestCase {
                 ka.start(MIN_KEEPALIVE_INTERVAL);
                 TestSocketKeepaliveCallback.CallbackValue cv = callback.pollCallback();
                 assertNotNull(cv);
-                if (cv.callbackType == TestSocketKeepaliveCallback.CallbackType.ON_ERROR
-                        && cv.error == SocketKeepalive.ERROR_INSUFFICIENT_RESOURCES) {
-                    // Limit reached.
-                    break;
+                if (cv.callbackType == TestSocketKeepaliveCallback.CallbackType.ON_ERROR) {
+                    if (i == 0 && cv.error == SocketKeepalive.ERROR_UNSUPPORTED) {
+                        // Unsupported.
+                        break;
+                    } else if (i != 0 && cv.error == SocketKeepalive.ERROR_INSUFFICIENT_RESOURCES) {
+                        // Limit reached.
+                        break;
+                    }
                 }
                 if (cv.callbackType == TestSocketKeepaliveCallback.CallbackType.ON_STARTED) {
                     kalist.add(ka);
@@ -1267,10 +1325,14 @@ public class ConnectivityManagerTest extends AndroidTestCase {
             ka.start(MIN_KEEPALIVE_INTERVAL);
             TestSocketKeepaliveCallback.CallbackValue cv = callback.pollCallback();
             assertNotNull(cv);
-            if (cv.callbackType == TestSocketKeepaliveCallback.CallbackType.ON_ERROR
-                    && cv.error == SocketKeepalive.ERROR_INSUFFICIENT_RESOURCES) {
-                // Limit reached.
-                break;
+            if (cv.callbackType == TestSocketKeepaliveCallback.CallbackType.ON_ERROR) {
+                if (i == 0 && cv.error == SocketKeepalive.ERROR_UNSUPPORTED) {
+                    // Unsupported.
+                    break;
+                } else if (i != 0 && cv.error == SocketKeepalive.ERROR_INSUFFICIENT_RESOURCES) {
+                    // Limit reached.
+                    break;
+                }
             }
             if (cv.callbackType == TestSocketKeepaliveCallback.CallbackType.ON_STARTED) {
                 kalist.add(ka);
@@ -1298,32 +1360,35 @@ public class ConnectivityManagerTest extends AndroidTestCase {
      */
     @AppModeFull(reason = "Cannot get WifiManager in instant app mode")
     public void testSocketKeepaliveLimit() throws Exception {
-        adoptShellPermissionIdentity();
-
         final int supported = getSupportedKeepalivesFromRes();
-
-        if (!isKeepaliveSupported()) {
-            // Sanity check.
-            assertEquals(0, supported);
+        if (supported == 0) {
             return;
         }
+
+        adoptShellPermissionIdentity();
 
         // Verifies that the supported keepalive slots meet MIN_SUPPORTED_KEEPALIVE_COUNT.
         assertGreaterOrEqual(supported, KeepaliveUtils.MIN_SUPPORTED_KEEPALIVE_COUNT);
 
-        // Verifies that different types of keepalives can be established.
+        // Verifies that Nat-T keepalives can be established.
         assertEquals(supported, createConcurrentSocketKeepalives(supported + 1, 0));
-        assertEquals(supported, createConcurrentSocketKeepalives(0, supported + 1));
-
-        // Verifies that different types can be established at the same time.
-        assertEquals(supported, createConcurrentSocketKeepalives(
-                supported / 2, supported - supported / 2));
-
         // Verifies that keepalives don't get leaked in second round.
         assertEquals(supported, createConcurrentSocketKeepalives(supported + 1, 0));
-        assertEquals(supported, createConcurrentSocketKeepalives(0, supported + 1));
-        assertEquals(supported, createConcurrentSocketKeepalives(
-                supported / 2, supported - supported / 2));
+
+        // If kernel < 4.8 then it doesn't support TCP keepalive, but it might still support
+        // NAT-T keepalive. Test below cases only if TCP keepalive is supported by kernel.
+        if (isTcpKeepaliveSupportedByKernel()) {
+            assertEquals(supported, createConcurrentSocketKeepalives(0, supported + 1));
+
+            // Verifies that different types can be established at the same time.
+            assertEquals(supported, createConcurrentSocketKeepalives(
+                    supported / 2, supported - supported / 2));
+
+            // Verifies that keepalives don't get leaked in second round.
+            assertEquals(supported, createConcurrentSocketKeepalives(0, supported + 1));
+            assertEquals(supported, createConcurrentSocketKeepalives(
+                    supported / 2, supported - supported / 2));
+        }
 
         dropShellPermissionIdentity();
     }
@@ -1334,14 +1399,9 @@ public class ConnectivityManagerTest extends AndroidTestCase {
     @AppModeFull(reason = "Cannot get WifiManager in instant app mode")
     public void testSocketKeepaliveUnprivileged() throws Exception {
         final int supported = getSupportedKeepalivesFromRes();
-
-        adoptShellPermissionIdentity();
-        if (!isKeepaliveSupported()) {
-            // Sanity check.
-            assertEquals(0, supported);
+        if (supported == 0) {
             return;
         }
-        dropShellPermissionIdentity();
 
         final int allowedUnprivilegedPerUid = mContext.getResources().getInteger(
                 R.integer.config_allowedUnprivilegedKeepalivePerUid);
