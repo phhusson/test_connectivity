@@ -42,6 +42,7 @@ android_test {
         "FrameworksNetCommonTests",
         "core-tests-support",
         "compatibility-device-util-axt",
+        "cts-net-utils",
         "ctstestrunner-axt",
         "ctstestserver",
         "mockwebserver",
