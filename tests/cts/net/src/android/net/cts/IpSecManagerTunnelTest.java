@@ -127,15 +127,15 @@ public class IpSecManagerTunnelTest extends IpSecBaseTest {
         // right appop permissions.
         setAppop(OP_MANAGE_IPSEC_TUNNELS, true);
 
-        TestNetworkInterface testIntf =
+        TestNetworkInterface testIface =
                 sTNM.createTunInterface(
                         new LinkAddress[] {
                             new LinkAddress(LOCAL_OUTER_4, IP4_PREFIX_LEN),
                             new LinkAddress(LOCAL_OUTER_6, IP6_PREFIX_LEN)
                         });
 
-        sTunFd = testIntf.getFileDescriptor();
-        sTunNetworkCallback = setupAndGetTestNetwork(testIntf.getInterfaceName());
+        sTunFd = testIface.getFileDescriptor();
+        sTunNetworkCallback = setupAndGetTestNetwork(testIface.getInterfaceName());
         sTunNetwork = sTunNetworkCallback.getNetworkBlocking();
 
         sTunUtils = new TunUtils(sTunFd);
@@ -498,21 +498,20 @@ public class IpSecManagerTunnelTest extends IpSecBaseTest {
                         mISM.allocateSecurityParameterIndex(localOuter, spi);
                 IpSecManager.SecurityParameterIndex outSpi =
                         mISM.allocateSecurityParameterIndex(remoteOuter, spi);
-                IpSecManager.IpSecTunnelInterface tunnelIntf =
+                IpSecManager.IpSecTunnelInterface tunnelIface =
                         mISM.createIpSecTunnelInterface(localOuter, remoteOuter, sTunNetwork)) {
             // Build the test network
-            tunnelIntf.addAddress(localInner, innerPrefixLen);
-            testNetworkCb = setupAndGetTestNetwork(tunnelIntf.getInterfaceName());
+            tunnelIface.addAddress(localInner, innerPrefixLen);
+            testNetworkCb = setupAndGetTestNetwork(tunnelIface.getInterfaceName());
             Network testNetwork = testNetworkCb.getNetworkBlocking();
 
             // Check interface was created
-            NetworkInterface netIntf = NetworkInterface.getByName(tunnelIntf.getInterfaceName());
-            assertNotNull(netIntf);
+            assertNotNull(NetworkInterface.getByName(tunnelIface.getInterfaceName()));
 
             // Verify address was added
-            netIntf = NetworkInterface.getByInetAddress(localInner);
-            assertNotNull(netIntf);
-            assertEquals(tunnelIntf.getInterfaceName(), netIntf.getDisplayName());
+            final NetworkInterface netIface = NetworkInterface.getByInetAddress(localInner);
+            assertNotNull(netIface);
+            assertEquals(tunnelIface.getInterfaceName(), netIface.getDisplayName());
 
             // Configure Transform parameters
             IpSecTransform.Builder transformBuilder = new IpSecTransform.Builder(sContext);
@@ -531,8 +530,9 @@ public class IpSecManagerTunnelTest extends IpSecBaseTest {
                             transformBuilder.buildTunnelModeTransform(remoteOuter, inSpi);
                     IpSecTransform outTransform =
                             transformBuilder.buildTunnelModeTransform(localOuter, outSpi)) {
-                mISM.applyTunnelModeTransform(tunnelIntf, IpSecManager.DIRECTION_IN, inTransform);
-                mISM.applyTunnelModeTransform(tunnelIntf, IpSecManager.DIRECTION_OUT, outTransform);
+                mISM.applyTunnelModeTransform(tunnelIface, IpSecManager.DIRECTION_IN, inTransform);
+                mISM.applyTunnelModeTransform(
+                        tunnelIface, IpSecManager.DIRECTION_OUT, outTransform);
 
                 test.run(testNetwork);
             }
@@ -541,13 +541,13 @@ public class IpSecManagerTunnelTest extends IpSecBaseTest {
             sTNM.teardownTestNetwork(testNetwork);
 
             // Remove addresses and check that interface is still present, but fails lookup-by-addr
-            tunnelIntf.removeAddress(localInner, innerPrefixLen);
-            assertNotNull(NetworkInterface.getByName(tunnelIntf.getInterfaceName()));
+            tunnelIface.removeAddress(localInner, innerPrefixLen);
+            assertNotNull(NetworkInterface.getByName(tunnelIface.getInterfaceName()));
             assertNull(NetworkInterface.getByInetAddress(localInner));
 
             // Check interface was cleaned up
-            tunnelIntf.close();
-            assertNull(NetworkInterface.getByName(tunnelIntf.getInterfaceName()));
+            tunnelIface.close();
+            assertNull(NetworkInterface.getByName(tunnelIface.getInterfaceName()));
         } finally {
             if (testNetworkCb != null) {
                 sCM.unregisterNetworkCallback(testNetworkCb);
