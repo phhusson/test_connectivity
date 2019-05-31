@@ -73,12 +73,6 @@ public class IpSecManagerTest extends IpSecBaseTest {
 
     private static final byte[] AEAD_KEY = getKey(288);
 
-    @Before
-    @Override
-    public void setUp() throws Exception {
-        super.setUp();
-    }
-
     /*
      * Allocate a random SPI
      * Allocate a specific SPI using previous randomly created SPI value
