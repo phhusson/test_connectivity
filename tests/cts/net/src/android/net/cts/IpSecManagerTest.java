@@ -41,6 +41,7 @@ import android.system.ErrnoException;
 import android.system.Os;
 import android.system.OsConstants;
 
+import androidx.test.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
 import java.io.FileDescriptor;
@@ -72,12 +73,6 @@ public class IpSecManagerTest extends IpSecBaseTest {
     private static final int MAX_PORT_BIND_ATTEMPTS = 10;
 
     private static final byte[] AEAD_KEY = getKey(288);
-
-    @Before
-    @Override
-    public void setUp() throws Exception {
-        super.setUp();
-    }
 
     /*
      * Allocate a random SPI
@@ -244,7 +239,7 @@ public class IpSecManagerTest extends IpSecBaseTest {
                 mISM.allocateSecurityParameterIndex(localAddr);
 
         IpSecTransform transform =
-                new IpSecTransform.Builder(mContext)
+                new IpSecTransform.Builder(InstrumentationRegistry.getContext())
                         .setEncryption(new IpSecAlgorithm(IpSecAlgorithm.CRYPT_AES_CBC, CRYPT_KEY))
                         .setAuthentication(
                                 new IpSecAlgorithm(
@@ -462,7 +457,8 @@ public class IpSecManagerTest extends IpSecBaseTest {
                 IpSecManager.SecurityParameterIndex spi =
                         mISM.allocateSecurityParameterIndex(local)) {
 
-            IpSecTransform.Builder transformBuilder = new IpSecTransform.Builder(mContext);
+            IpSecTransform.Builder transformBuilder =
+                    new IpSecTransform.Builder(InstrumentationRegistry.getContext());
             if (crypt != null) {
                 transformBuilder.setEncryption(crypt);
             }
@@ -623,7 +619,7 @@ public class IpSecManagerTest extends IpSecBaseTest {
             try (IpSecManager.SecurityParameterIndex spi =
                             mISM.allocateSecurityParameterIndex(local);
                     IpSecTransform transform =
-                            new IpSecTransform.Builder(mContext)
+                            new IpSecTransform.Builder(InstrumentationRegistry.getContext())
                                     .setEncryption(crypt)
                                     .setAuthentication(auth)
                                     .setIpv4Encapsulation(encapSocket, encapSocket.getPort())
