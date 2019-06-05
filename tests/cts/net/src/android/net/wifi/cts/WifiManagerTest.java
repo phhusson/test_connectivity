@@ -36,6 +36,7 @@ import android.net.wifi.hotspot2.pps.Credential;
 import android.net.wifi.hotspot2.pps.HomeSp;
 import android.os.Process;
 import android.os.SystemClock;
+import android.os.UserHandle;
 import android.platform.test.annotations.AppModeFull;
 import android.provider.Settings;
 import android.support.test.uiautomator.UiDevice;
@@ -771,21 +772,20 @@ public class WifiManagerTest extends AndroidTestCase {
         }, PackageManager.MATCH_UNINSTALLED_PACKAGES);
         for (PackageInfo pi : holding) {
             String packageName = pi.packageName;
-            if (allowedPackages.contains(packageName)) {
-                // this is an explicitly allowed package
-            } else {
-                // now check if the packages are from allowed UIDs
-                boolean allowed = false;
-                try {
-                    if (allowedUIDs.contains(pm.getPackageUid(packageName, 0))) {
-                        allowed = true;
-                        Log.d(TAG, packageName + " is on an allowed UID");
-                    }
-                } catch (PackageManager.NameNotFoundException e) { }
-                if (!allowed) {
-                    fail("The NETWORK_SETTINGS permission must not be held by "
-                            + packageName + " and must be revoked for security reasons");
-                }
+
+            // this is an explicitly allowed package
+            if (allowedPackages.contains(packageName)) continue;
+
+            // now check if the packages are from allowed UIDs
+            int uid = -1;
+            try {
+                uid = pm.getPackageUidAsUser(packageName, UserHandle.USER_SYSTEM);
+            } catch (PackageManager.NameNotFoundException e) {
+                continue;
+            }
+            if (!allowedUIDs.contains(uid)) {
+                fail("The NETWORK_SETTINGS permission must not be held by " + packageName
+                        + ":" + uid + " and must be revoked for security reasons");
             }
         }
     }
