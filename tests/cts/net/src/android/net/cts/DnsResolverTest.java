@@ -39,6 +39,7 @@ import android.net.ParseException;
 import android.os.CancellationSignal;
 import android.os.Handler;
 import android.os.Looper;
+import android.platform.test.annotations.AppModeFull;
 import android.provider.Settings;
 import android.system.ErrnoException;
 import android.test.AndroidTestCase;
@@ -53,6 +54,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
+@AppModeFull(reason = "WRITE_SECURE_SETTINGS permission can't be granted to instant apps")
 public class DnsResolverTest extends AndroidTestCase {
     private static final String TAG = "DnsResolverTest";
     private static final char[] HEX_CHARS = {
