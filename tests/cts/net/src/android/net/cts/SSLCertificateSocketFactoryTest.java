@@ -92,7 +92,7 @@ public class SSLCertificateSocketFactoryTest extends AndroidTestCase {
 
     // a host and port that are expected to be available but have
     // a cert with a different CN, in this case CN=mail.google.com
-    private static String TEST_CREATE_SOCKET_HOST = "googlemail.com";
+    private static String TEST_CREATE_SOCKET_HOST = "www3.l.google.com";
     private static int TEST_CREATE_SOCKET_PORT = 443;
 
     /**
