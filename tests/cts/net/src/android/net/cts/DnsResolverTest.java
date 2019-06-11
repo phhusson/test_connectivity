@@ -80,12 +80,14 @@ public class DnsResolverTest extends AndroidTestCase {
     static final int TIMEOUT_MS = 12_000;
     static final int CANCEL_TIMEOUT_MS = 3_000;
     static final int CANCEL_RETRY_TIMES = 5;
+    static final int QUERY_TIMES = 10;
     static final int NXDOMAIN = 3;
     static final int PRIVATE_DNS_SETTING_TIMEOUT_MS = 2_000;
 
     private ContentResolver mCR;
     private ConnectivityManager mCM;
     private Executor mExecutor;
+    private Executor mExecutorInline;
     private DnsResolver mDns;
 
     private String mOldMode;
@@ -97,6 +99,7 @@ public class DnsResolverTest extends AndroidTestCase {
         mCM = (ConnectivityManager) getContext().getSystemService(Context.CONNECTIVITY_SERVICE);
         mDns = DnsResolver.getInstance();
         mExecutor = new Handler(Looper.getMainLooper())::post;
+        mExecutorInline = (Runnable r) -> r.run();
         mCR = getContext().getContentResolver();
         storePrivateDnsSetting();
     }
@@ -274,12 +277,44 @@ public class DnsResolverTest extends AndroidTestCase {
         }
     }
 
-    public void testRawQuery() throws InterruptedException {
+    public void testRawQuery() throws Exception {
+        doTestRawQuery(mExecutor);
+    }
+
+    public void testRawQueryInline() throws Exception {
+        doTestRawQuery(mExecutorInline);
+    }
+
+    public void testRawQueryBlob() throws Exception {
+        doTestRawQueryBlob(mExecutor);
+    }
+
+    public void testRawQueryBlobInline() throws Exception {
+        doTestRawQueryBlob(mExecutorInline);
+    }
+
+    public void testRawQueryRoot() throws Exception {
+        doTestRawQueryRoot(mExecutor);
+    }
+
+    public void testRawQueryRootInline() throws Exception {
+        doTestRawQueryRoot(mExecutorInline);
+    }
+
+    public void testRawQueryNXDomain() throws Exception {
+        doTestRawQueryNXDomain(mExecutor);
+    }
+
+    public void testRawQueryNXDomainInline() throws Exception {
+        doTestRawQueryNXDomain(mExecutorInline);
+    }
+
+    public void doTestRawQuery(Executor executor) throws InterruptedException {
         final String msg = "RawQuery " + TEST_DOMAIN;
         for (Network network : getTestableNetworks()) {
             final VerifyCancelCallback callback = new VerifyCancelCallback(msg);
             mDns.rawQuery(network, TEST_DOMAIN, CLASS_IN, TYPE_AAAA, FLAG_NO_CACHE_LOOKUP,
-                    mExecutor, null, callback);
+                    executor, null, callback);
 
             assertTrue(msg + " but no answer after " + TIMEOUT_MS + "ms.",
                     callback.waitForAnswer());
@@ -287,7 +322,7 @@ public class DnsResolverTest extends AndroidTestCase {
         }
     }
 
-    public void testRawQueryBlob() throws InterruptedException {
+    public void doTestRawQueryBlob(Executor executor) throws InterruptedException {
         final byte[] blob = new byte[]{
                 /* Header */
                 0x55, 0x66, /* Transaction ID */
@@ -305,7 +340,7 @@ public class DnsResolverTest extends AndroidTestCase {
         final String msg = "RawQuery blob " + byteArrayToHexString(blob);
         for (Network network : getTestableNetworks()) {
             final VerifyCancelCallback callback = new VerifyCancelCallback(msg);
-            mDns.rawQuery(network, blob, FLAG_NO_CACHE_LOOKUP, mExecutor, null, callback);
+            mDns.rawQuery(network, blob, FLAG_NO_CACHE_LOOKUP, executor, null, callback);
 
             assertTrue(msg + " but no answer after " + TIMEOUT_MS + "ms.",
                     callback.waitForAnswer());
@@ -313,13 +348,13 @@ public class DnsResolverTest extends AndroidTestCase {
         }
     }
 
-    public void testRawQueryRoot() throws InterruptedException {
+    public void doTestRawQueryRoot(Executor executor) throws InterruptedException {
         final String dname = "";
         final String msg = "RawQuery empty dname(ROOT) ";
         for (Network network : getTestableNetworks()) {
             final VerifyCancelCallback callback = new VerifyCancelCallback(msg);
             mDns.rawQuery(network, dname, CLASS_IN, TYPE_AAAA, FLAG_NO_CACHE_LOOKUP,
-                    mExecutor, null, callback);
+                    executor, null, callback);
 
             assertTrue(msg + " but no answer after " + TIMEOUT_MS + "ms.",
                     callback.waitForAnswer());
@@ -328,13 +363,13 @@ public class DnsResolverTest extends AndroidTestCase {
         }
     }
 
-    public void testRawQueryNXDomain() throws InterruptedException {
+    public void doTestRawQueryNXDomain(Executor executor) throws InterruptedException {
         final String dname = "test1-nx.metric.gstatic.com";
         final String msg = "RawQuery " + dname;
         for (Network network : getTestableNetworks()) {
             final VerifyCancelCallback callback = new VerifyCancelCallback(msg);
             mDns.rawQuery(network, dname, CLASS_IN, TYPE_AAAA, FLAG_NO_CACHE_LOOKUP,
-                    mExecutor, null, callback);
+                    executor, null, callback);
 
             assertTrue(msg + " but no answer after " + TIMEOUT_MS + "ms.",
                     callback.waitForAnswer());
@@ -476,12 +511,44 @@ public class DnsResolverTest extends AndroidTestCase {
         }
     }
 
-    public void testQueryForInetAddress() throws InterruptedException {
+    public void testQueryForInetAddress() throws Exception {
+        doTestQueryForInetAddress(mExecutor);
+    }
+
+    public void testQueryForInetAddressInline() throws Exception {
+        doTestQueryForInetAddress(mExecutorInline);
+    }
+
+    public void testQueryForInetAddressIpv4() throws Exception {
+        doTestQueryForInetAddressIpv4(mExecutor);
+    }
+
+    public void testQueryForInetAddressIpv4Inline() throws Exception {
+        doTestQueryForInetAddressIpv4(mExecutorInline);
+    }
+
+    public void testQueryForInetAddressIpv6() throws Exception {
+        doTestQueryForInetAddressIpv6(mExecutor);
+    }
+
+    public void testQueryForInetAddressIpv6Inline() throws Exception {
+        doTestQueryForInetAddressIpv6(mExecutorInline);
+    }
+
+    public void testContinuousQueries() throws Exception {
+        doTestContinuousQueries(mExecutor);
+    }
+
+    public void testContinuousQueriesInline() throws Exception {
+        doTestContinuousQueries(mExecutorInline);
+    }
+
+    public void doTestQueryForInetAddress(Executor executor) throws InterruptedException {
         final String msg = "Test query for InetAddress " + TEST_DOMAIN;
         for (Network network : getTestableNetworks()) {
             final VerifyCancelInetAddressCallback callback =
                     new VerifyCancelInetAddressCallback(msg, null);
-            mDns.query(network, TEST_DOMAIN, FLAG_NO_CACHE_LOOKUP, mExecutor, null, callback);
+            mDns.query(network, TEST_DOMAIN, FLAG_NO_CACHE_LOOKUP, executor, null, callback);
 
             assertTrue(msg + " but no answer after " + TIMEOUT_MS + "ms.",
                     callback.waitForAnswer());
@@ -518,13 +585,13 @@ public class DnsResolverTest extends AndroidTestCase {
         }
     }
 
-    public void testQueryForInetAddressIpv4() throws InterruptedException {
+    public void doTestQueryForInetAddressIpv4(Executor executor) throws InterruptedException {
         final String msg = "Test query for IPv4 InetAddress " + TEST_DOMAIN;
         for (Network network : getTestableNetworks()) {
             final VerifyCancelInetAddressCallback callback =
                     new VerifyCancelInetAddressCallback(msg, null);
             mDns.query(network, TEST_DOMAIN, TYPE_A, FLAG_NO_CACHE_LOOKUP,
-                    mExecutor, null, callback);
+                    executor, null, callback);
 
             assertTrue(msg + " but no answer after " + TIMEOUT_MS + "ms.",
                     callback.waitForAnswer());
@@ -533,13 +600,13 @@ public class DnsResolverTest extends AndroidTestCase {
         }
     }
 
-    public void testQueryForInetAddressIpv6() throws InterruptedException {
+    public void doTestQueryForInetAddressIpv6(Executor executor) throws InterruptedException {
         final String msg = "Test query for IPv6 InetAddress " + TEST_DOMAIN;
         for (Network network : getTestableNetworks()) {
             final VerifyCancelInetAddressCallback callback =
                     new VerifyCancelInetAddressCallback(msg, null);
             mDns.query(network, TEST_DOMAIN, TYPE_AAAA, FLAG_NO_CACHE_LOOKUP,
-                    mExecutor, null, callback);
+                    executor, null, callback);
 
             assertTrue(msg + " but no answer after " + TIMEOUT_MS + "ms.",
                     callback.waitForAnswer());
@@ -630,6 +697,26 @@ public class DnsResolverTest extends AndroidTestCase {
 
             // Reset process network to default.
             mCM.bindProcessToNetwork(null);
+        }
+    }
+
+    public void doTestContinuousQueries(Executor executor) throws InterruptedException {
+        final String msg = "Test continuous " + QUERY_TIMES + " queries " + TEST_DOMAIN;
+        for (Network network : getTestableNetworks()) {
+            for (int i = 0; i < QUERY_TIMES ; ++i) {
+                final VerifyCancelInetAddressCallback callback =
+                        new VerifyCancelInetAddressCallback(msg, null);
+                // query v6/v4 in turn
+                boolean queryV6 = (i % 2 == 0);
+                mDns.query(network, TEST_DOMAIN, queryV6 ? TYPE_AAAA : TYPE_A,
+                        FLAG_NO_CACHE_LOOKUP, executor, null, callback);
+
+                assertTrue(msg + " but no answer after " + TIMEOUT_MS + "ms.",
+                        callback.waitForAnswer());
+                assertTrue(msg + " returned 0 results", !callback.isAnswerEmpty());
+                assertTrue(msg + " returned " + (queryV6 ? "Ipv4" : "Ipv6") + " results",
+                        queryV6 ? !callback.hasIpv4Answer() : !callback.hasIpv6Answer());
+            }
         }
     }
 }
