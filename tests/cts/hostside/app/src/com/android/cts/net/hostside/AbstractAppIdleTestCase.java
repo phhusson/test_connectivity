@@ -150,6 +150,11 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
     }
 
     public void testAppIdleNetworkAccess_whenCharging() throws Exception {
+        if (!isBatterySaverSupported()) {
+            Log.i(TAG, "Skipping " + getClass() + "." + getName()
+                    + "() because device does not support Battery saver mode");
+            return;
+        }
         if (!isSupported()) return;
 
         // Check that app is paroled when charging
