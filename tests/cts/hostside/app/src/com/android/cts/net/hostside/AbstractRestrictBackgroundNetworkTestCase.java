@@ -34,6 +34,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.NetworkInfo.DetailedState;
@@ -43,11 +44,14 @@ import android.os.BatteryManager;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.os.SystemProperties;
 import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
 import android.test.InstrumentationTestCase;
 import android.text.TextUtils;
 import android.util.Log;
+
+import com.android.compatibility.common.util.BatteryUtils;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -309,6 +313,10 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
      */
     protected boolean isSupported() throws Exception {
         return mSupported;
+    }
+
+    protected boolean isBatterySaverSupported() {
+        return BatteryUtils.isBatterySaverSupported();
     }
 
     /**
