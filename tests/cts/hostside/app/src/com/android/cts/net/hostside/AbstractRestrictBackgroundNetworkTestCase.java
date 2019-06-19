@@ -38,6 +38,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.NetworkInfo.DetailedState;
@@ -52,6 +53,8 @@ import android.service.notification.NotificationListenerService;
 import android.test.InstrumentationTestCase;
 import android.text.TextUtils;
 import android.util.Log;
+
+import com.android.compatibility.common.util.BatteryUtils;
 
 /**
  * Superclass for tests related to background network restrictions.
@@ -299,6 +302,10 @@ abstract class AbstractRestrictBackgroundNetworkTestCase extends Instrumentation
      */
     protected boolean isSupported() throws Exception {
         return mSupported;
+    }
+
+    protected boolean isBatterySaverSupported() throws Exception {
+        return BatteryUtils.isBatterySaverSupported();
     }
 
     /**
