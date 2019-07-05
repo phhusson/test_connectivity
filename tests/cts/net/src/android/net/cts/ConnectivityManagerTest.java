@@ -44,6 +44,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.content.res.Resources;
 import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.NetworkCallback;
 import android.net.IpSecManager;
@@ -74,9 +75,6 @@ import android.util.Log;
 import android.util.Pair;
 
 import androidx.test.InstrumentationRegistry;
-
-import com.android.internal.R;
-import com.android.internal.telephony.PhoneConstants;
 
 import libcore.io.Streams;
 
@@ -128,6 +126,13 @@ public class ConnectivityManagerTest extends AndroidTestCase {
     // Minimum supported keepalive counts for wifi and cellular.
     public static final int MIN_SUPPORTED_CELLULAR_KEEPALIVE_COUNT = 1;
     public static final int MIN_SUPPORTED_WIFI_KEEPALIVE_COUNT = 3;
+
+    private static final String NETWORK_METERED_MULTIPATH_PREFERENCE_RES_NAME =
+            "config_networkMeteredMultipathPreference";
+    private static final String KEEPALIVE_ALLOWED_UNPRIVILEGED_RES_NAME =
+            "config_allowedUnprivilegedKeepalivePerUid";
+    private static final String KEEPALIVE_RESERVED_PER_SLOT_RES_NAME =
+            "config_reservedPrivilegedKeepaliveSlots";
 
     private Context mContext;
     private Instrumentation mInstrumentation;
@@ -376,9 +381,6 @@ public class ConnectivityManagerTest extends AndroidTestCase {
 
         final String invalidateFeature = "invalidateFeature";
         final String mmsFeature = "enableMMS";
-        final int failureCode = -1;
-        final int wifiOnlyStartFailureCode = PhoneConstants.APN_REQUEST_FAILED;
-        final int wifiOnlyStopFailureCode = -1;
 
         assertStartUsingNetworkFeatureUnsupported(TYPE_MOBILE, invalidateFeature);
         assertStopUsingNetworkFeatureUnsupported(TYPE_MOBILE, invalidateFeature);
@@ -672,7 +674,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         final String rawMeteredPref = Settings.Global.getString(resolver,
                 NETWORK_METERED_MULTIPATH_PREFERENCE);
         return TextUtils.isEmpty(rawMeteredPref)
-            ? mContext.getResources().getInteger(R.integer.config_networkMeteredMultipathPreference)
+            ? getIntResourceForName(NETWORK_METERED_MULTIPATH_PREFERENCE_RES_NAME)
             : Integer.parseInt(rawMeteredPref);
     }
 
@@ -1216,6 +1218,12 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         dropShellPermissionIdentity();
     }
 
+    private int getIntResourceForName(@NonNull String resName) {
+        final Resources r = mContext.getResources();
+        final int resId = r.getIdentifier(resName, "integer", "android");
+        return r.getInteger(resId);
+    }
+
     /**
      * Verifies that the keepalive slots are limited as customized for unprivileged requests.
      */
@@ -1233,10 +1241,12 @@ public class ConnectivityManagerTest extends AndroidTestCase {
             return;
         }
 
-        final int allowedUnprivilegedPerUid = mContext.getResources().getInteger(
-                R.integer.config_allowedUnprivilegedKeepalivePerUid);
-        final int reservedPrivilegedSlots = mContext.getResources().getInteger(
-                R.integer.config_reservedPrivilegedKeepaliveSlots);
+        // Resource ID might be shifted on devices that compiled with different symbols.
+        // Thus, resolve ID at runtime is needed.
+        final int allowedUnprivilegedPerUid =
+                getIntResourceForName(KEEPALIVE_ALLOWED_UNPRIVILEGED_RES_NAME);
+        final int reservedPrivilegedSlots =
+                getIntResourceForName(KEEPALIVE_RESERVED_PER_SLOT_RES_NAME);
         // Verifies that unprivileged request per uid cannot exceed the limit customized in the
         // resource. Currently, unprivileged keepalive slots are limited to Nat-T only, this test
         // does not apply to TCP.
