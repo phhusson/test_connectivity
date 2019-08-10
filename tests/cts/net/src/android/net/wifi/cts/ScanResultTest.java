@@ -23,6 +23,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.wifi.ScanResult;
+import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.WifiLock;
 import android.platform.test.annotations.AppModeFull;
@@ -54,6 +55,8 @@ public class ScanResultTest extends AndroidTestCase {
     private static final int ENABLE_WAIT_MSEC = 10000;
     private static final int SCAN_WAIT_MSEC = 10000;
     private static final int SCAN_MAX_RETRY_COUNT = 6;
+    private static final int SCAN_FIND_BSSID_MAX_RETRY_COUNT = 5;
+    private static final long SCAN_FIND_BSSID_WAIT_MSEC = 5_000L;
     private IntentFilter mIntentFilter;
     private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
         @Override
@@ -200,4 +203,31 @@ public class ScanResultTest extends AndroidTestCase {
 
     }
 
+    public void testScanResultMatchesWifiInfo() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+
+        // This test case should run while connected to Wifi
+        final WifiInfo wifiInfo = mWifiManager.getConnectionInfo();
+        assertNotNull(wifiInfo);
+
+        ScanResult currentNetwork = null;
+        for (int i = 0; i < SCAN_FIND_BSSID_MAX_RETRY_COUNT; i++) {
+            scanAndWait();
+            final List<ScanResult> scanResults = mWifiManager.getScanResults();
+            currentNetwork = scanResults.stream().filter(r -> r.BSSID.equals(wifiInfo.getBSSID()))
+                    .findAny().orElse(null);
+
+            if (currentNetwork != null) {
+                break;
+            }
+            Thread.sleep(SCAN_FIND_BSSID_WAIT_MSEC);
+        }
+        assertNotNull("Current network not found in scan results", currentNetwork);
+
+        assertEquals(wifiInfo.getWifiSsid(), currentNetwork.wifiSsid);
+        assertEquals(wifiInfo.getFrequency(), currentNetwork.frequency);
+    }
 }
