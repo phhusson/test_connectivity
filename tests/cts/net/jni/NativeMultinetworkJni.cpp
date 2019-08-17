@@ -455,13 +455,17 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runDatagramCheck(
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeo, sizeof(timeo));
 
     // For reference see:
-    //     https://tools.ietf.org/html/draft-tsvwg-quic-protocol-01#section-6.1
-    uint8_t quic_packet[] = {
-        0x0c,                    // public flags: 64bit conn ID, 8bit sequence number
+    //     https://tools.ietf.org/html/draft-tsvwg-quic-protocol#section-6.1
+    uint8_t quic_packet[1200] = {
+        0x0d,                    // public flags:
+                                 //   - version present (0x01),
+                                 //   - 64bit connection ID (0x0c),
+                                 //   - 1 byte packet number (0x00)
         0, 0, 0, 0, 0, 0, 0, 0,  // 64bit connection ID
-        0x01,                    // sequence number
+        0xaa, 0xda, 0xca, 0xaa,  // reserved-space version number
+        1,                       // 1 byte packet number
         0x00,                    // private flags
-        0x07,                    // type: regular frame type "PING"
+        0x07,                    // PING frame (cuz why not)
     };
 
     arc4random_buf(quic_packet + 1, 8);  // random connection ID
@@ -489,7 +493,7 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runDatagramCheck(
                   i + 1, MAX_RETRIES, rcvd, errnum);
         }
     }
-    if (rcvd < sent) {
+    if (rcvd < 9) {
         ALOGD("QUIC UDP %s: sent=%zd but rcvd=%zd, errno=%d", kPort, sent, rcvd, errnum);
         if (rcvd <= 0) {
             ALOGD("Does this network block UDP port %s?", kPort);
@@ -505,8 +509,7 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runDatagramCheck(
         return -EPROTO;
     }
 
-    // TODO: log, and compare to the IP address encoded in the
-    // response, since this should be a public reset packet.
+    // TODO: Replace this quick 'n' dirty test with proper QUIC-capable code.
 
     close(fd);
     return 0;
