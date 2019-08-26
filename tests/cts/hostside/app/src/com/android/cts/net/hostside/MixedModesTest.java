@@ -71,6 +71,11 @@ public class MixedModesTest extends AbstractRestrictBackgroundNetworkTestCase {
      * Tests all DS ON and BS ON scenarios from network-policy-restrictions.md on metered networks.
      */
     public void testDataAndBatterySaverModes_meteredNetwork() throws Exception {
+        if (!isBatterySaverSupported()) {
+            Log.i(TAG, "Skipping " + getClass() + "." + getName()
+                    + "() because device does not support Battery saver mode");
+            return;
+        }
         if (!isSupported()) return;
 
         Log.i(TAG, "testDataAndBatterySaverModes_meteredNetwork() tests");
@@ -141,6 +146,11 @@ public class MixedModesTest extends AbstractRestrictBackgroundNetworkTestCase {
      * networks.
      */
     public void testDataAndBatterySaverModes_nonMeteredNetwork() throws Exception {
+        if (!isBatterySaverSupported()) {
+            Log.i(TAG, "Skipping " + getClass() + "." + getName()
+                    + "() because device does not support Battery saver mode");
+            return;
+        }
         if (!isSupported()) return;
 
         if (!setUnmeteredNetwork()) {
@@ -206,6 +216,11 @@ public class MixedModesTest extends AbstractRestrictBackgroundNetworkTestCase {
      * are enabled.
      */
     public void testDozeAndBatterySaverMode_powerSaveWhitelists() throws Exception {
+        if (!isBatterySaverSupported()) {
+            Log.i(TAG, "Skipping " + getClass() + "." + getName()
+                    + "() because device does not support Battery saver mode");
+            return;
+        }
         if (!isSupported()) {
             return;
         }
@@ -285,6 +300,11 @@ public class MixedModesTest extends AbstractRestrictBackgroundNetworkTestCase {
     }
 
     public void testAppIdleAndBatterySaver_tempPowerSaveWhitelists() throws Exception {
+        if (!isBatterySaverSupported()) {
+            Log.i(TAG, "Skipping " + getClass() + "." + getName()
+                    + "() because device does not support Battery saver mode");
+            return;
+        }
         if (!isSupported()) {
             return;
         }
