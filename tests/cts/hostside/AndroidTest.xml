@@ -31,4 +31,9 @@
         <option name="jar" value="CtsHostsideNetworkTests.jar" />
         <option name="runtime-hint" value="3m56s" />
     </test>
+
+    <metrics_collector class="com.android.tradefed.device.metric.FilePullerLogCollector">
+        <option name="directory-keys" value="/sdcard/CtsHostsideNetworkTests" />
+        <option name="collect-on-run-ended-only" value="true" />
+    </metrics_collector>
 </configuration>
