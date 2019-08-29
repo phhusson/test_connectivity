@@ -139,8 +139,11 @@ public class WifiInfoTest extends AndroidTestCase {
         }
 
         wifiInfo.getBSSID();
+        wifiInfo.getFrequency();
         wifiInfo.getIpAddress();
         wifiInfo.getLinkSpeed();
+        wifiInfo.getPasspointFqdn();
+        wifiInfo.getPasspointProviderFriendlyName();
         wifiInfo.getTxLinkSpeedMbps();
         wifiInfo.getRxLinkSpeedMbps();
         wifiInfo.getRssi();
