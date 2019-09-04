@@ -28,5 +28,6 @@
         <option name="package" value="android.net.cts" />
         <option name="runtime-hint" value="9m4s" />
         <option name="hidden-api-checks" value="false" />
+        <option name="isolated-storage" value="false" />
     </test>
 </configuration>

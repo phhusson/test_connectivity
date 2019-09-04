@@ -23,17 +23,31 @@ import android.platform.test.annotations.AppModeFull;
 import android.test.AndroidTestCase;
 
 @AppModeFull(reason = "Cannot get WifiManager in instant app mode")
-public class WifiManager_WifiLockTest extends AndroidTestCase {
+public class WifiLockTest extends AndroidTestCase {
 
-    private static final String WIFI_TAG = "WifiManager_WifiLockTest";
+    private static final String WIFI_TAG = "WifiLockTest";
 
-    public void testWifiLock() {
+    /**
+     * Verify acquire and release of High Performance wifi locks
+     */
+    public void testHiPerfWifiLock() {
+        testWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF);
+    }
+
+    /**
+     * Verify acquire and release of Low latency wifi locks
+     */
+    public void testLowLatencyWifiLock() {
+        testWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY);
+    }
+
+    private void testWifiLock(int lockType) {
         if (!WifiFeature.isWifiSupported(getContext())) {
             // skip the test if WiFi is not supported
             return;
         }
         WifiManager wm = (WifiManager) getContext().getSystemService(Context.WIFI_SERVICE);
-        WifiLock wl = wm.createWifiLock(WIFI_TAG);
+        WifiLock wl = wm.createWifiLock(lockType, WIFI_TAG);
 
         wl.setReferenceCounted(true);
         assertFalse(wl.isHeld());
@@ -57,7 +71,7 @@ public class WifiManager_WifiLockTest extends AndroidTestCase {
             // expected
         }
 
-        wl = wm.createWifiLock(WIFI_TAG);
+        wl = wm.createWifiLock(lockType, WIFI_TAG);
         wl.setReferenceCounted(false);
         assertFalse(wl.isHeld());
         wl.acquire();
@@ -70,7 +84,7 @@ public class WifiManager_WifiLockTest extends AndroidTestCase {
         wl.release();
         assertFalse(wl.isHeld());
         assertNotNull(wl.toString());
-        // should be ignored
+        // releasing again after release: but ignored for non-referenced locks
         wl.release();
     }
 }

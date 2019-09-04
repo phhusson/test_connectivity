@@ -22,6 +22,8 @@ import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_WHITELI
 
 import android.util.Log;
 
+import com.android.compatibility.common.util.CddTest;
+
 public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase {
 
     private static final String[] REQUIRED_WHITELISTED_PACKAGES = {
@@ -35,7 +37,6 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
         super.setUp();
 
         mIsDataSaverSupported = isDataSaverSupported();
-        if (!isSupported()) return;
 
         // Set initial state.
         setRestrictBackground(false);
@@ -199,6 +200,20 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
         if (error.length() > 0) {
             fail(error.toString());
         }
+    }
+
+    @CddTest(requirement="7.4.7/C-2-2")
+    public void testBroadcastNotSentOnUnsupportedDevices() throws Exception {
+        if (isSupported()) return;
+
+        setRestrictBackground(true);
+        assertRestrictBackgroundChangedReceived(0);
+
+        setRestrictBackground(false);
+        assertRestrictBackgroundChangedReceived(0);
+
+        setRestrictBackground(true);
+        assertRestrictBackgroundChangedReceived(0);
     }
 
     private void assertDataSaverStatusOnBackground(int expectedStatus) throws Exception {
