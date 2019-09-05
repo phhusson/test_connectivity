@@ -180,6 +180,25 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
         assertBackgroundNetworkAccess(true);
     }
 
+    public void testAppIdleNetworkAccess_idleWhitelisted() throws Exception {
+        if (!isSupported()) return;
+
+        setAppIdle(true);
+        assertAppIdle(true);
+        assertBackgroundNetworkAccess(false);
+
+        addAppIdleWhitelist(mUid);
+        assertBackgroundNetworkAccess(true);
+
+        removeAppIdleWhitelist(mUid);
+        assertBackgroundNetworkAccess(false);
+
+        // Make sure whitelisting a random app doesn't affect the tested app.
+        addAppIdleWhitelist(mUid + 1);
+        assertBackgroundNetworkAccess(false);
+        removeAppIdleWhitelist(mUid + 1);
+    }
+
     public void testAppIdle_toast() throws Exception {
         if (!isSupported()) return;
 

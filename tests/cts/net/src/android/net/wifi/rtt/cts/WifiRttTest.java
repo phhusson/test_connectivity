@@ -64,7 +64,10 @@ public class WifiRttTest extends TestBase {
 
         // Scan for IEEE 802.11mc supporting APs
         ScanResult testAp = scanForTestAp(NUM_SCANS_SEARCHING_FOR_IEEE80211MC_AP);
-        assertTrue("Cannot find test AP", testAp != null);
+        assertTrue(
+                "Cannot find any test APs which support RTT / IEEE 802.11mc - please verify that "
+                        + "your test setup includes them!",
+                testAp != null);
 
         // Perform RTT operations
         RangingRequest request = new RangingRequest.Builder().addAccessPoint(testAp).build();
