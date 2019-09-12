@@ -62,7 +62,7 @@ public class AudioGroupTest extends AndroidTestCase {
         mSocketB.connect(mStreamB.getLocalAddress(), mStreamB.getLocalPort());
         mStreamB.associate(mSocketB.getLocalAddress(), mSocketB.getLocalPort());
 
-        mGroup = new AudioGroup();
+        mGroup = new AudioGroup(mContext);
     }
 
     @Override
