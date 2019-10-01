@@ -897,6 +897,32 @@ public class VpnTest extends InstrumentationTestCase {
         assertTrue(mCM.isActiveNetworkMetered());
     }
 
+    public void testB141603906() throws Exception {
+        final InetSocketAddress src = new InetSocketAddress(0);
+        final InetSocketAddress dst = new InetSocketAddress(0);
+        final int NUM_THREADS = 8;
+        final int NUM_SOCKETS = 5000;
+        final Thread[] threads = new Thread[NUM_THREADS];
+        startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
+                 new String[] {"0.0.0.0/0", "::/0"},
+                 "", "", null, null /* underlyingNetworks */, false /* isAlwaysMetered */);
+
+        for (int i = 0; i < NUM_THREADS; i++) {
+            threads[i] = new Thread(() -> {
+                for (int j = 0; j < NUM_SOCKETS; j++) {
+                    mCM.getConnectionOwnerUid(IPPROTO_TCP, src, dst);
+                }
+            });
+        }
+        for (Thread thread : threads) {
+            thread.start();
+        }
+        for (Thread thread : threads) {
+            thread.join();
+        }
+        stopVpn();
+    }
+
     private boolean isNetworkMetered(Network network) {
         NetworkCapabilities nc = mCM.getNetworkCapabilities(network);
         return !nc.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED);
