@@ -20,8 +20,6 @@
     <option name="config-descriptor:metadata" key="parameter" value="not_multi_abi" />
     <option name="config-descriptor:metadata" key="parameter" value="secondary_user" />
 
-    <target_preparer class="com.android.cts.net.NetPolicyTestsPreparer" />
-
     <target_preparer class="com.android.tradefed.targetprep.RunCommandTargetPreparer">
         <option name="teardown-command" value="cmd power set-mode 0" />
         <option name="teardown-command" value="cmd battery reset" />

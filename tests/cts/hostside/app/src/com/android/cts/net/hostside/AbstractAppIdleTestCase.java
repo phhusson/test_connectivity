@@ -131,11 +131,11 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
     @RequiredProperties({BATTERY_SAVER_MODE})
     @Test
     public void testAppIdleNetworkAccess_whenCharging() throws Exception {
-        // Check that app is paroled when charging
+        // Check that idle app doesn't get network when charging
         setAppIdle(true);
         assertBackgroundNetworkAccess(false);
         turnBatteryOff();
-        assertBackgroundNetworkAccess(true);
+        assertBackgroundNetworkAccess(false);
         turnBatteryOn();
         assertBackgroundNetworkAccess(false);
 
