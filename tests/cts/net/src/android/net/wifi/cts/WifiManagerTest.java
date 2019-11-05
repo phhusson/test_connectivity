@@ -921,9 +921,9 @@ public class WifiManagerTest extends AndroidTestCase {
                 .distinct()
                 .collect(Collectors.toList());
 
-        if (uniquePackageNames.size() > 1) {
-            fail("The NETWORK_CARRIER_PROVISIONING permission must not be held by more than one "
-                    + "application, but is held by " + uniquePackageNames.size() + " applications: "
+        if (uniquePackageNames.size() > 2) {
+            fail("The NETWORK_CARRIER_PROVISIONING permission must not be held by more than two "
+                    + "applications, but is held by " + uniquePackageNames.size() + " applications: "
                     + String.join(", ", uniquePackageNames));
         }
     }
