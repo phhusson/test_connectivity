@@ -17,6 +17,7 @@
 package android.net.wifi.cts;
 
 
+import android.app.UiAutomation;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -25,8 +26,10 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.net.ConnectivityManager;
+import android.net.MacAddress;
 import android.net.NetworkInfo;
 import android.net.wifi.ScanResult;
+import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.TxPacketCountListener;
@@ -45,7 +48,7 @@ import android.text.TextUtils;
 import android.util.ArraySet;
 import android.util.Log;
 
-import androidx.test.InstrumentationRegistry;
+import androidx.test.platform.app.InstrumentationRegistry;
 
 import com.android.compatibility.common.util.SystemUtil;
 
@@ -53,8 +56,11 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.MessageDigest;
 import java.security.cert.X509Certificate;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -103,6 +109,10 @@ public class WifiManagerTest extends AndroidTestCase {
     private static final String TEST_PAC_URL = "http://www.example.com/proxy.pac";
     private static final String MANAGED_PROVISIONING_PACKAGE_NAME
             = "com.android.managedprovisioning";
+
+    private static final String TEST_SSID_UNQUOTED = "testSsid1";
+    private static final MacAddress TEST_MAC = MacAddress.fromString("aa:bb:cc:dd:ee:ff");
+    private static final String TEST_PASSPHRASE = "passphrase";
 
     private IntentFilter mIntentFilter;
     private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
@@ -514,7 +524,7 @@ public class WifiManagerTest extends AndroidTestCase {
         assertTrue(i < 15);
     }
 
-    public class TestLocalOnlyHotspotCallback extends WifiManager.LocalOnlyHotspotCallback {
+    private static class TestLocalOnlyHotspotCallback extends WifiManager.LocalOnlyHotspotCallback {
         Object hotspotLock;
         WifiManager.LocalOnlyHotspotReservation reservation = null;
         boolean onStartedCalled = false;
@@ -600,7 +610,7 @@ public class WifiManagerTest extends AndroidTestCase {
      *
      * Note: Location mode must be enabled for this test.
      */
-    public void testStartLocalOnlyHotspotSuccess() {
+    public void testStartLocalOnlyHotspotSuccess() throws Exception {
         if (!WifiFeature.isWifiSupported(getContext())) {
             // skip the test if WiFi is not supported
             return;
@@ -616,12 +626,8 @@ public class WifiManagerTest extends AndroidTestCase {
 
         // add sleep to avoid calling stopLocalOnlyHotspot before TetherController initialization.
         // TODO: remove this sleep as soon as b/124330089 is fixed.
-        try {
-            Log.d(TAG, "Sleep for 2 seconds");
-            Thread.sleep(2000);
-        } catch (InterruptedException e) {
-            Log.d(TAG, "Thread InterruptedException!");
-        }
+        Log.d(TAG, "Sleeping for 2 seconds");
+        Thread.sleep(2000);
 
         stopLocalOnlyHotspot(callback, wifiEnabled);
 
@@ -668,7 +674,7 @@ public class WifiManagerTest extends AndroidTestCase {
      *
      * Note: Location mode must be enabled for this test.
      */
-    public void testStartLocalOnlyHotspotSingleRequestByApps() {
+    public void testStartLocalOnlyHotspotSingleRequestByApps() throws Exception {
         if (!WifiFeature.isWifiSupported(getContext())) {
             // skip the test if WiFi is not supported
             return;
@@ -694,20 +700,75 @@ public class WifiManagerTest extends AndroidTestCase {
         }
         if (!caughtException) {
             // second start did not fail, should clean up the hotspot.
+
+            // add sleep to avoid calling stopLocalOnlyHotspot before TetherController initialization.
+            // TODO: remove this sleep as soon as b/124330089 is fixed.
+            Log.d(TAG, "Sleeping for 2 seconds");
+            Thread.sleep(2000);
+
             stopLocalOnlyHotspot(callback2, wifiEnabled);
         }
         assertTrue(caughtException);
 
         // add sleep to avoid calling stopLocalOnlyHotspot before TetherController initialization.
         // TODO: remove this sleep as soon as b/124330089 is fixed.
-        try {
-            Log.d(TAG, "Sleep for 2 seconds");
-            Thread.sleep(2000);
-        } catch (InterruptedException e) {
-            Log.d(TAG, "Thread InterruptedException!");
-        }
+        Log.d(TAG, "Sleeping for 2 seconds");
+        Thread.sleep(2000);
 
         stopLocalOnlyHotspot(callback, wifiEnabled);
+    }
+
+    private static class TestExecutor implements Executor {
+        private ConcurrentLinkedQueue<Runnable> tasks = new ConcurrentLinkedQueue<>();
+
+        @Override
+        public void execute(Runnable task) {
+            tasks.add(task);
+        }
+
+        private void runAll() {
+            Runnable task = tasks.poll();
+            while (task != null) {
+                task.run();
+                task = tasks.poll();
+            }
+        }
+    }
+
+    public void testStartLocalOnlyHotspotWithConfig() throws Exception {
+        SoftApConfiguration customConfig = new SoftApConfiguration.Builder()
+                .setBssid(TEST_MAC)
+                .setSsid(TEST_SSID_UNQUOTED)
+                .setWpa2Passphrase(TEST_PASSPHRASE)
+                .build();
+        TestExecutor executor = new TestExecutor();
+        TestLocalOnlyHotspotCallback callback = new TestLocalOnlyHotspotCallback(mLOHSLock);
+        UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        try {
+            uiAutomation.adoptShellPermissionIdentity();
+
+            boolean wifiEnabled = mWifiManager.isWifiEnabled();
+            mWifiManager.startLocalOnlyHotspot(customConfig, executor, callback);
+            Log.d(TAG, "Sleeping for 2 seconds");
+            Thread.sleep(2000);
+
+            // Verify callback is run on the supplied executor
+            assertFalse(callback.onStartedCalled);
+            executor.runAll();
+            assertTrue(callback.onStartedCalled);
+
+            assertNotNull(callback.reservation);
+            WifiConfiguration wifiConfig = callback.reservation.getWifiConfiguration();
+            assertNotNull(wifiConfig);
+            assertEquals(TEST_MAC, MacAddress.fromString(wifiConfig.BSSID));
+            assertEquals(TEST_SSID_UNQUOTED, wifiConfig.SSID);
+            assertEquals(TEST_PASSPHRASE, wifiConfig.preSharedKey);
+
+            // clean up
+            stopLocalOnlyHotspot(callback, wifiEnabled);
+        } finally {
+            uiAutomation.dropShellPermissionIdentity();
+        }
     }
 
     /**
@@ -921,9 +982,9 @@ public class WifiManagerTest extends AndroidTestCase {
                 .distinct()
                 .collect(Collectors.toList());
 
-        if (uniquePackageNames.size() > 1) {
-            fail("The NETWORK_CARRIER_PROVISIONING permission must not be held by more than one "
-                    + "application, but is held by " + uniquePackageNames.size() + " applications: "
+        if (uniquePackageNames.size() > 2) {
+            fail("The NETWORK_CARRIER_PROVISIONING permission must not be held by more than two "
+                    + "applications, but is held by " + uniquePackageNames.size() + " applications: "
                     + String.join(", ", uniquePackageNames));
         }
     }
