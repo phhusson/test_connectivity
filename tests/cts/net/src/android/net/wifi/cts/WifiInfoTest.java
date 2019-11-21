@@ -25,7 +25,6 @@ import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.WifiLock;
-import android.net.wifi.WifiSsid;
 import android.platform.test.annotations.AppModeFull;
 import android.test.AndroidTestCase;
 
@@ -132,7 +131,7 @@ public class WifiInfoTest extends AndroidTestCase {
         SupplicantState.isValidState(wifiInfo.getSupplicantState());
         WifiInfo.getDetailedStateOf(SupplicantState.DISCONNECTED);
         String ssid = wifiInfo.getSSID();
-        if (!ssid.startsWith("0x") && !ssid.equals(WifiSsid.NONE)) {
+        if (!ssid.startsWith("0x") && !ssid.equals(WifiManager.UNKNOWN_SSID)) {
             // Non-hex string should be quoted
             assertTrue(ssid.charAt(0) == '"');
             assertTrue(ssid.charAt(ssid.length() - 1) == '"');
