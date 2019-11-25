@@ -21,6 +21,7 @@ import static android.net.DnsResolver.FLAG_EMPTY;
 import static android.net.DnsResolver.FLAG_NO_CACHE_LOOKUP;
 import static android.net.DnsResolver.TYPE_A;
 import static android.net.DnsResolver.TYPE_AAAA;
+import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 import static android.system.OsConstants.ETIMEDOUT;
 
 import android.annotation.NonNull;
@@ -36,6 +37,7 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.net.ParseException;
+import android.net.cts.util.CtsNetUtils;
 import android.os.CancellationSignal;
 import android.os.Handler;
 import android.os.Looper;
@@ -62,7 +64,9 @@ public class DnsResolverTest extends AndroidTestCase {
     };
 
     static final String TEST_DOMAIN = "www.google.com";
+    static final String TEST_NX_DOMAIN = "test1-nx.metric.gstatic.com";
     static final String INVALID_PRIVATE_DNS_SERVER = "invalid.google";
+    static final String GOOGLE_PRIVATE_DNS_SERVER = "dns.google";
     static final byte[] TEST_BLOB = new byte[]{
             /* Header */
             0x55, 0x66, /* Transaction ID */
@@ -86,6 +90,7 @@ public class DnsResolverTest extends AndroidTestCase {
 
     private ContentResolver mCR;
     private ConnectivityManager mCM;
+    private CtsNetUtils mCtsNetUtils;
     private Executor mExecutor;
     private Executor mExecutorInline;
     private DnsResolver mDns;
@@ -101,6 +106,7 @@ public class DnsResolverTest extends AndroidTestCase {
         mExecutor = new Handler(Looper.getMainLooper())::post;
         mExecutorInline = (Runnable r) -> r.run();
         mCR = getContext().getContentResolver();
+        mCtsNetUtils = new CtsNetUtils(getContext());
         storePrivateDnsSetting();
     }
 
@@ -309,6 +315,14 @@ public class DnsResolverTest extends AndroidTestCase {
         doTestRawQueryNXDomain(mExecutorInline);
     }
 
+    public void testRawQueryNXDomainWithPrivateDns() throws Exception {
+        doTestRawQueryNXDomainWithPrivateDns(mExecutor);
+    }
+
+    public void testRawQueryNXDomainInlineWithPrivateDns() throws Exception {
+        doTestRawQueryNXDomainWithPrivateDns(mExecutorInline);
+    }
+
     public void doTestRawQuery(Executor executor) throws InterruptedException {
         final String msg = "RawQuery " + TEST_DOMAIN;
         for (Network network : getTestableNetworks()) {
@@ -364,11 +378,46 @@ public class DnsResolverTest extends AndroidTestCase {
     }
 
     public void doTestRawQueryNXDomain(Executor executor) throws InterruptedException {
-        final String dname = "test1-nx.metric.gstatic.com";
-        final String msg = "RawQuery " + dname;
+        final String msg = "RawQuery " + TEST_NX_DOMAIN;
+
         for (Network network : getTestableNetworks()) {
+            final NetworkCapabilities nc = (network != null)
+                    ? mCM.getNetworkCapabilities(network)
+                    : mCM.getNetworkCapabilities(mCM.getActiveNetwork());
+            assertNotNull("Couldn't determine NetworkCapabilities for " + network, nc);
+            // Some cellular networks configure their DNS servers never to return NXDOMAIN, so don't
+            // test NXDOMAIN on these DNS servers.
+            // b/144521720
+            if (nc.hasTransport(TRANSPORT_CELLULAR)) continue;
             final VerifyCancelCallback callback = new VerifyCancelCallback(msg);
-            mDns.rawQuery(network, dname, CLASS_IN, TYPE_AAAA, FLAG_NO_CACHE_LOOKUP,
+            mDns.rawQuery(network, TEST_NX_DOMAIN, CLASS_IN, TYPE_AAAA, FLAG_NO_CACHE_LOOKUP,
+                    executor, null, callback);
+
+            assertTrue(msg + " but no answer after " + TIMEOUT_MS + "ms.",
+                    callback.waitForAnswer());
+            callback.assertNXDomain();
+        }
+    }
+
+    public void doTestRawQueryNXDomainWithPrivateDns(Executor executor)
+            throws InterruptedException {
+        final String msg = "RawQuery " + TEST_NX_DOMAIN + " with private DNS";
+
+        // Enable private DNS strict mode and set server to dns.google before doing NxDomain test.
+        // b/144521720
+        Settings.Global.putString(mCR, Settings.Global.PRIVATE_DNS_MODE, "hostname");
+        Settings.Global.putString(mCR,
+                Settings.Global.PRIVATE_DNS_SPECIFIER, GOOGLE_PRIVATE_DNS_SERVER);
+
+        for (Network network :  getTestableNetworks()) {
+            final Network networkForPrivateDns =
+                    (network != null) ? network : mCM.getActiveNetwork();
+            assertNotNull("Can't find network to await private DNS on", networkForPrivateDns);
+            mCtsNetUtils.awaitPrivateDnsSetting(msg + " wait private DNS setting timeout",
+                    networkForPrivateDns, GOOGLE_PRIVATE_DNS_SERVER,
+                    PRIVATE_DNS_SETTING_TIMEOUT_MS);
+            final VerifyCancelCallback callback = new VerifyCancelCallback(msg);
+            mDns.rawQuery(network, TEST_NX_DOMAIN, CLASS_IN, TYPE_AAAA, FLAG_NO_CACHE_LOOKUP,
                     executor, null, callback);
 
             assertTrue(msg + " but no answer after " + TIMEOUT_MS + "ms.",
@@ -615,23 +664,6 @@ public class DnsResolverTest extends AndroidTestCase {
         }
     }
 
-    private void awaitPrivateDnsSetting(@NonNull String msg,
-            @NonNull Network network, @NonNull String server) throws InterruptedException {
-        CountDownLatch latch = new CountDownLatch(1);
-        NetworkRequest request = new NetworkRequest.Builder().clearCapabilities().build();
-        NetworkCallback callback = new NetworkCallback() {
-            @Override
-            public void onLinkPropertiesChanged(Network n, LinkProperties lp) {
-                if (network.equals(n) && server.equals(lp.getPrivateDnsServerName())) {
-                    latch.countDown();
-                }
-            }
-        };
-        mCM.registerNetworkCallback(request, callback);
-        assertTrue(msg, latch.await(PRIVATE_DNS_SETTING_TIMEOUT_MS, TimeUnit.MILLISECONDS));
-        mCM.unregisterNetworkCallback(callback);
-    }
-
     public void testPrivateDnsBypass() throws InterruptedException {
         final Network[] testNetworks = getTestableNetworks();
 
@@ -647,8 +679,8 @@ public class DnsResolverTest extends AndroidTestCase {
             if (network == null) continue;
 
             // wait for private DNS setting propagating
-            awaitPrivateDnsSetting(msg + " wait private DNS setting timeout",
-                    network, INVALID_PRIVATE_DNS_SERVER);
+            mCtsNetUtils.awaitPrivateDnsSetting(msg + " wait private DNS setting timeout",
+                    network, INVALID_PRIVATE_DNS_SERVER, PRIVATE_DNS_SETTING_TIMEOUT_MS);
 
             final CountDownLatch latch = new CountDownLatch(1);
             final DnsResolver.Callback<List<InetAddress>> errorCallback =
