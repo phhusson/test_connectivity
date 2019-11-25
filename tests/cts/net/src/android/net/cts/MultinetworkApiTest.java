@@ -16,17 +16,21 @@
 
 package android.net.cts;
 
+import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
+
 import android.content.Context;
+import android.content.ContentResolver;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkUtils;
+import android.net.cts.util.CtsNetUtils;
+import android.provider.Settings;
 import android.system.ErrnoException;
 import android.system.OsConstants;
 import android.test.AndroidTestCase;
 
 import java.util.ArrayList;
-
 
 public class MultinetworkApiTest extends AndroidTestCase {
 
@@ -35,6 +39,8 @@ public class MultinetworkApiTest extends AndroidTestCase {
     }
 
     private static final String TAG = "MultinetworkNativeApiTest";
+    static final String GOOGLE_PRIVATE_DNS_SERVER = "dns.google";
+    static final int PRIVATE_DNS_SETTING_TIMEOUT_MS = 2_000;
 
     /**
      * @return 0 on success
@@ -43,18 +49,44 @@ public class MultinetworkApiTest extends AndroidTestCase {
     private static native int runSetprocnetwork(long networkHandle);
     private static native int runSetsocknetwork(long networkHandle);
     private static native int runDatagramCheck(long networkHandle);
-    private static native int runResNapiMalformedCheck(long networkHandle);
-    private static native int runResNcancelCheck(long networkHandle);
-    private static native int runResNqueryCheck(long networkHandle);
-    private static native int runResNsendCheck(long networkHandle);
+    private static native void runResNapiMalformedCheck(long networkHandle);
+    private static native void runResNcancelCheck(long networkHandle);
+    private static native void runResNqueryCheck(long networkHandle);
+    private static native void runResNsendCheck(long networkHandle);
+    private static native void runResNnxDomainCheck(long networkHandle);
 
 
-
+    private ContentResolver mCR;
     private ConnectivityManager mCM;
+    private CtsNetUtils mCtsNetUtils;
+    private String mOldMode;
+    private String mOldDnsSpecifier;
 
+    @Override
     protected void setUp() throws Exception {
         super.setUp();
         mCM = (ConnectivityManager) getContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+        mCR = getContext().getContentResolver();
+        mCtsNetUtils = new CtsNetUtils(getContext());
+        storePrivateDnsSetting();
+    }
+
+    @Override
+    protected void tearDown() throws Exception {
+        restorePrivateDnsSetting();
+        super.tearDown();
+    }
+
+    private void storePrivateDnsSetting() {
+        // Store private DNS setting
+        mOldMode = Settings.Global.getString(mCR, Settings.Global.PRIVATE_DNS_MODE);
+        mOldDnsSpecifier = Settings.Global.getString(mCR, Settings.Global.PRIVATE_DNS_SPECIFIER);
+    }
+
+    private void restorePrivateDnsSetting() {
+        // restore private DNS setting
+        Settings.Global.putString(mCR, Settings.Global.PRIVATE_DNS_MODE, mOldMode);
+        Settings.Global.putString(mCR, Settings.Global.PRIVATE_DNS_SPECIFIER, mOldDnsSpecifier);
     }
 
     private Network[] getTestableNetworks() {
@@ -182,13 +214,34 @@ public class MultinetworkApiTest extends AndroidTestCase {
         } catch (IllegalArgumentException e) {}
     }
 
-    public void testResNApi() {
-        for (Network network : getTestableNetworks()) {
+    public void testResNApi() throws InterruptedException {
+        final Network[] testNetworks = getTestableNetworks();
+
+        for (Network network : testNetworks) {
             // Throws AssertionError directly in jni function if test fail.
             runResNqueryCheck(network.getNetworkHandle());
             runResNsendCheck(network.getNetworkHandle());
             runResNcancelCheck(network.getNetworkHandle());
             runResNapiMalformedCheck(network.getNetworkHandle());
+
+            final NetworkCapabilities nc = mCM.getNetworkCapabilities(network);
+            // Some cellular networks configure their DNS servers never to return NXDOMAIN, so don't
+            // test NXDOMAIN on these DNS servers.
+            // b/144521720
+            if (nc != null && !nc.hasTransport(TRANSPORT_CELLULAR)) {
+                runResNnxDomainCheck(network.getNetworkHandle());
+            }
+        }
+        // Enable private DNS strict mode and set server to dns.google before doing NxDomain test.
+        // b/144521720
+        Settings.Global.putString(mCR, Settings.Global.PRIVATE_DNS_MODE, "hostname");
+        Settings.Global.putString(mCR,
+                Settings.Global.PRIVATE_DNS_SPECIFIER, GOOGLE_PRIVATE_DNS_SERVER);
+        for (Network network : testNetworks) {
+          // Wait for private DNS setting to propagate.
+          mCtsNetUtils.awaitPrivateDnsSetting("NxDomain test wait private DNS setting timeout",
+                    network, GOOGLE_PRIVATE_DNS_SERVER, PRIVATE_DNS_SETTING_TIMEOUT_MS);
+          runResNnxDomainCheck(network.getNetworkHandle());
         }
     }
 }

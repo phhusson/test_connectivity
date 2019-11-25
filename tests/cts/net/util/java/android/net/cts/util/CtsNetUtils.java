@@ -24,12 +24,14 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import android.annotation.NonNull;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.NetworkCallback;
+import android.net.LinkProperties;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
@@ -241,6 +243,23 @@ public final class CtsNetUtils {
             throw e;
         }
         return s;
+    }
+
+    public void awaitPrivateDnsSetting(@NonNull String msg, @NonNull Network network,
+            @NonNull String server, int timeoutMs) throws InterruptedException {
+        CountDownLatch latch = new CountDownLatch(1);
+        NetworkRequest request = new NetworkRequest.Builder().clearCapabilities().build();
+        NetworkCallback callback = new NetworkCallback() {
+            @Override
+            public void onLinkPropertiesChanged(Network n, LinkProperties lp) {
+                if (network.equals(n) && server.equals(lp.getPrivateDnsServerName())) {
+                    latch.countDown();
+                }
+            }
+        };
+        mCm.registerNetworkCallback(request, callback);
+        assertTrue(msg, latch.await(timeoutMs, TimeUnit.MILLISECONDS));
+        mCm.unregisterNetworkCallback(callback);
     }
 
     /**
