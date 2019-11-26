@@ -49,6 +49,7 @@ import androidx.test.InstrumentationRegistry;
 
 import com.android.compatibility.common.util.SystemUtil;
 
+import java.lang.StringBuilder;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.MessageDigest;
@@ -770,6 +771,7 @@ public class WifiManagerTest extends AndroidTestCase {
         final List<PackageInfo> holding = pm.getPackagesHoldingPermissions(new String[] {
                 android.Manifest.permission.NETWORK_SETTINGS
         }, PackageManager.MATCH_UNINSTALLED_PACKAGES);
+        StringBuilder stringBuilder = new StringBuilder();
         for (PackageInfo pi : holding) {
             String packageName = pi.packageName;
 
@@ -784,9 +786,12 @@ public class WifiManagerTest extends AndroidTestCase {
                 continue;
             }
             if (!allowedUIDs.contains(uid)) {
-                fail("The NETWORK_SETTINGS permission must not be held by " + packageName
-                        + ":" + uid + " and must be revoked for security reasons");
+                stringBuilder.append("The NETWORK_SETTINGS permission must not be held by "
+                    + packageName + ":" + uid + " and must be revoked for security reasons\n");
             }
+        }
+        if (stringBuilder.length() > 0) {
+            fail(stringBuilder.toString());
         }
     }
 
