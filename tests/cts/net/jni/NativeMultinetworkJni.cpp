@@ -145,7 +145,7 @@ int expectAnswersNotValid(JNIEnv* env, int fd, int expectedErrno) {
 }
 
 extern "C"
-JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runResNqueryCheck(
+JNIEXPORT void Java_android_net_cts_MultinetworkApiTest_runResNqueryCheck(
         JNIEnv* env, jclass, jlong nethandle) {
     net_handle_t handle = (net_handle_t) nethandle;
 
@@ -155,29 +155,15 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runResNqueryCheck(
     EXPECT_EQ(env, 0, expectAnswersValid(env, fd, AF_INET, ns_r_noerror),
             "v4 res_nquery check answers");
 
-    // V4 NXDOMAIN
-    fd = android_res_nquery(handle, kNxDomainName, ns_c_in, ns_t_a, 0);
-    EXPECT_GE(env, fd, 0, "v4 res_nquery NXDOMAIN");
-    EXPECT_EQ(env, 0, expectAnswersValid(env, fd, AF_INET, ns_r_nxdomain),
-            "v4 res_nquery NXDOMAIN check answers");
-
     // V6
     fd = android_res_nquery(handle, kHostname, ns_c_in, ns_t_aaaa, 0);
     EXPECT_GE(env, fd, 0, "v6 res_nquery");
     EXPECT_EQ(env, 0, expectAnswersValid(env, fd, AF_INET, ns_r_noerror),
             "v6 res_nquery check answers");
-
-    // V6 NXDOMAIN
-    fd = android_res_nquery(handle, kNxDomainName, ns_c_in, ns_t_aaaa, 0);
-    EXPECT_GE(env, fd, 0, "v6 res_nquery NXDOMAIN");
-    EXPECT_EQ(env, 0, expectAnswersValid(env, fd, AF_INET, ns_r_nxdomain),
-            "v6 res_nquery NXDOMAIN check answers");
-
-    return 0;
 }
 
 extern "C"
-JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runResNsendCheck(
+JNIEXPORT void Java_android_net_cts_MultinetworkApiTest_runResNsendCheck(
         JNIEnv* env, jclass, jlong nethandle) {
     net_handle_t handle = (net_handle_t) nethandle;
     // V4
@@ -200,15 +186,6 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runResNsendCheck(
     EXPECT_EQ(env, 0, expectAnswersValid(env, fd1, AF_INET, ns_r_noerror),
             "v4 res_nsend 1st check answers");
 
-    // V4 NXDOMAIN
-    memset(buf1, 0, sizeof(buf1));
-    len1 = makeQuery(kNxDomainName, ns_t_a, buf1, sizeof(buf1));
-    EXPECT_GT(env, len1, 0, "v4 res_mkquery NXDOMAIN");
-    fd1 = android_res_nsend(handle, buf1, len1, 0);
-    EXPECT_GE(env, fd1, 0, "v4 res_nsend NXDOMAIN");
-    EXPECT_EQ(env, 0, expectAnswersValid(env, fd1, AF_INET, ns_r_nxdomain),
-            "v4 res_nsend NXDOMAIN check answers");
-
     // V6
     memset(buf1, 0, sizeof(buf1));
     memset(buf2, 0, sizeof(buf2));
@@ -226,21 +203,47 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runResNsendCheck(
             "v6 res_nsend 2nd check answers");
     EXPECT_EQ(env, 0, expectAnswersValid(env, fd1, AF_INET6, ns_r_noerror),
             "v6 res_nsend 1st check answers");
-
-    // V6 NXDOMAIN
-    memset(buf1, 0, sizeof(buf1));
-    len1 = makeQuery(kNxDomainName, ns_t_aaaa, buf1, sizeof(buf1));
-    EXPECT_GT(env, len1, 0, "v6 res_mkquery NXDOMAIN");
-    fd1 = android_res_nsend(handle, buf1, len1, 0);
-    EXPECT_GE(env, fd1, 0, "v6 res_nsend NXDOMAIN");
-    EXPECT_EQ(env, 0, expectAnswersValid(env, fd1, AF_INET6, ns_r_nxdomain),
-            "v6 res_nsend NXDOMAIN check answers");
-
-    return 0;
 }
 
 extern "C"
-JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runResNcancelCheck(
+JNIEXPORT void Java_android_net_cts_MultinetworkApiTest_runResNnxDomainCheck(
+        JNIEnv* env, jclass, jlong nethandle) {
+    net_handle_t handle = (net_handle_t) nethandle;
+
+    // res_nquery V4 NXDOMAIN
+    int fd = android_res_nquery(handle, kNxDomainName, ns_c_in, ns_t_a, 0);
+    EXPECT_GE(env, fd, 0, "v4 res_nquery NXDOMAIN");
+    EXPECT_EQ(env, 0, expectAnswersValid(env, fd, AF_INET, ns_r_nxdomain),
+            "v4 res_nquery NXDOMAIN check answers");
+
+    // res_nquery V6 NXDOMAIN
+    fd = android_res_nquery(handle, kNxDomainName, ns_c_in, ns_t_aaaa, 0);
+    EXPECT_GE(env, fd, 0, "v6 res_nquery NXDOMAIN");
+    EXPECT_EQ(env, 0, expectAnswersValid(env, fd, AF_INET6, ns_r_nxdomain),
+            "v6 res_nquery NXDOMAIN check answers");
+
+    uint8_t buf[MAXPACKET] = {};
+    // res_nsend V4 NXDOMAIN
+    int len = makeQuery(kNxDomainName, ns_t_a, buf, sizeof(buf));
+    EXPECT_GT(env, len, 0, "v4 res_mkquery NXDOMAIN");
+    fd = android_res_nsend(handle, buf, len, 0);
+    EXPECT_GE(env, fd, 0, "v4 res_nsend NXDOMAIN");
+    EXPECT_EQ(env, 0, expectAnswersValid(env, fd, AF_INET, ns_r_nxdomain),
+            "v4 res_nsend NXDOMAIN check answers");
+
+    // res_nsend V6 NXDOMAIN
+    memset(buf, 0, sizeof(buf));
+    len = makeQuery(kNxDomainName, ns_t_aaaa, buf, sizeof(buf));
+    EXPECT_GT(env, len, 0, "v6 res_mkquery NXDOMAIN");
+    fd = android_res_nsend(handle, buf, len, 0);
+    EXPECT_GE(env, fd, 0, "v6 res_nsend NXDOMAIN");
+    EXPECT_EQ(env, 0, expectAnswersValid(env, fd, AF_INET6, ns_r_nxdomain),
+            "v6 res_nsend NXDOMAIN check answers");
+}
+
+
+extern "C"
+JNIEXPORT void Java_android_net_cts_MultinetworkApiTest_runResNcancelCheck(
         JNIEnv* env, jclass, jlong nethandle) {
     net_handle_t handle = (net_handle_t) nethandle;
 
@@ -251,11 +254,10 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runResNcancelCheck(
     EXPECT_EQ(env, 0, err, "res_cancel");
     // DO NOT call cancel or result with the same fd more than once,
     // otherwise it will hit fdsan double-close fd.
-    return 0;
 }
 
 extern "C"
-JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runResNapiMalformedCheck(
+JNIEXPORT void Java_android_net_cts_MultinetworkApiTest_runResNapiMalformedCheck(
         JNIEnv* env, jclass, jlong nethandle) {
     net_handle_t handle = (net_handle_t) nethandle;
 
@@ -311,8 +313,6 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runResNapiMalformedCheck
     EXPECT_GE(env, fd, 0, "res_nsend 500 bytes filled with 0xFF");
     EXPECT_EQ(env, 0, expectAnswersNotValid(env, fd, -EINVAL),
             "res_nsend 500 bytes filled with 0xFF check answers");
-
-    return 0;
 }
 
 extern "C"
