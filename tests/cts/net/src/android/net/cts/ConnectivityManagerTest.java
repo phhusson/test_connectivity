@@ -16,8 +16,10 @@
 
 package android.net.cts;
 
+import static android.content.pm.PackageManager.FEATURE_ETHERNET;
 import static android.content.pm.PackageManager.FEATURE_TELEPHONY;
 import static android.content.pm.PackageManager.FEATURE_WIFI;
+import static android.content.pm.PackageManager.FEATURE_USB_HOST;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_IMS;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED;
@@ -257,7 +259,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
 
     public void testGetNetworkInfo() {
         for (int type = -1; type <= ConnectivityManager.MAX_NETWORK_TYPE+1; type++) {
-            if (isSupported(type)) {
+            if (shouldBeSupported(type)) {
                 NetworkInfo ni = mCm.getNetworkInfo(type);
                 assertTrue("Info shouldn't be null for " + type, ni != null);
                 State state = ni.getState();
@@ -277,7 +279,7 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         NetworkInfo[] ni = mCm.getAllNetworkInfo();
         assertTrue(ni.length >= MIN_NUM_NETWORK_TYPES);
         for (int type = 0; type <= ConnectivityManager.MAX_NETWORK_TYPE; type++) {
-            int desiredFoundCount = (isSupported(type) ? 1 : 0);
+            int desiredFoundCount = (shouldBeSupported(type) ? 1 : 0);
             int foundCount = 0;
             for (NetworkInfo i : ni) {
                 if (i.getType() == type) foundCount++;
@@ -385,20 +387,32 @@ public class ConnectivityManagerTest extends AndroidTestCase {
         assertStartUsingNetworkFeatureUnsupported(TYPE_WIFI, mmsFeature);
     }
 
-    private boolean isSupported(int networkType) {
+    private boolean shouldEthernetBeSupported() {
+        // Instant mode apps aren't allowed to query the Ethernet service due to selinux policies.
+        // When in instant mode, don't fail if the Ethernet service is available. Instead, rely on
+        // the fact that Ethernet should be supported if the device has a hardware Ethernet port, or
+        // if the device can be a USB host and thus can use USB Ethernet adapters.
+        //
+        // Note that this test this will still fail in instant mode if a device supports Ethernet
+        // via other hardware means. We are not currently aware of any such device.
+        return (mContext.getSystemService(Context.ETHERNET_SERVICE) != null) ||
+            mPackageManager.hasSystemFeature(FEATURE_ETHERNET) ||
+            mPackageManager.hasSystemFeature(FEATURE_USB_HOST);
+    }
+
+    private boolean shouldBeSupported(int networkType) {
         return mNetworks.containsKey(networkType) ||
                (networkType == ConnectivityManager.TYPE_VPN) ||
-               (networkType == ConnectivityManager.TYPE_ETHERNET &&
-                       mContext.getSystemService(Context.ETHERNET_SERVICE) != null);
+               (networkType == ConnectivityManager.TYPE_ETHERNET && shouldEthernetBeSupported());
     }
 
     public void testIsNetworkSupported() {
         for (int type = -1; type <= ConnectivityManager.MAX_NETWORK_TYPE; type++) {
             boolean supported = mCm.isNetworkSupported(type);
-            if (isSupported(type)) {
-                assertTrue(supported);
+            if (shouldBeSupported(type)) {
+                assertTrue("Network type " + type + " should be supported", supported);
             } else {
-                assertFalse(supported);
+                assertFalse("Network type " + type + " should not be supported", supported);
             }
         }
     }
