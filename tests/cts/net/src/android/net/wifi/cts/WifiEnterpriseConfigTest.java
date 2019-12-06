@@ -34,7 +34,6 @@ import java.security.spec.PKCS8EncodedKeySpec;
 
 public class WifiEnterpriseConfigTest extends AndroidTestCase {
     private  WifiManager mWifiManager;
-
     private static final String SSID = "\"TestSSID\"";
     private static final String IDENTITY = "identity";
     private static final String PASSWORD = "password";
@@ -684,6 +683,9 @@ public class WifiEnterpriseConfigTest extends AndroidTestCase {
     @Override
     protected void setUp() throws Exception {
         super.setUp();
+        if(!hasWifi()) {
+            return;
+        }
         mWifiManager = (WifiManager) mContext
                 .getSystemService(Context.WIFI_SERVICE);
         assertNotNull(mWifiManager);
@@ -802,6 +804,9 @@ public class WifiEnterpriseConfigTest extends AndroidTestCase {
     }
 
     public void testEnterpriseConfigDoesNotPrintPassword() {
+        if(!hasWifi()) {
+            return;
+        }
         WifiEnterpriseConfig enterpriseConfig = new WifiEnterpriseConfig();
         final String identity = "IdentityIsOkayToBeDisplayedHere";
         final String password = "PasswordIsNotOkayToBeDisplayedHere";
