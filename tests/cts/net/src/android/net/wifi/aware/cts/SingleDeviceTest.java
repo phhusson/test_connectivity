@@ -16,6 +16,8 @@
 
 package android.net.wifi.aware.cts;
 
+import static org.junit.Assert.assertNotEquals;
+
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -39,7 +41,6 @@ import android.net.wifi.aware.WifiAwareManager;
 import android.net.wifi.aware.WifiAwareSession;
 import android.os.Handler;
 import android.os.HandlerThread;
-import android.os.SystemClock;
 import android.platform.test.annotations.AppModeFull;
 import android.test.AndroidTestCase;
 
@@ -421,6 +422,7 @@ public class SingleDeviceTest extends AndroidTestCase {
         assertEquals("Service Specific Information Length",
                 characteristics.getMaxServiceSpecificInfoLength(), 255);
         assertEquals("Match Filter Length", characteristics.getMaxMatchFilterLength(), 255);
+        assertNotEquals("Cipher suites", characteristics.getSupportedCipherSuites(), 0);
     }
 
     /**
