@@ -33,6 +33,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -163,13 +164,13 @@ public class TetheringManagerTest {
             if (state == null || state.mErrored == null) return;
 
             if (state.mErrored.size() > 0) {
-                fail("Found failed tethering interfaces: " + state.mErrored.toArray());
+                fail("Found failed tethering interfaces: " + Arrays.toString(state.mErrored.toArray()));
             }
         }
 
         private void assertNoActiveIfaces(final TetherState state) {
             if (state.mActive != null && state.mActive.size() > 0) {
-                fail("Found active tethering interface: " + state.mActive.toArray());
+                fail("Found active tethering interface: " + Arrays.toString(state.mActive.toArray()));
             }
         }
     }
