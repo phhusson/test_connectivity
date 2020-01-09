@@ -740,7 +740,7 @@ public class WifiManagerTest extends AndroidTestCase {
         SoftApConfiguration customConfig = new SoftApConfiguration.Builder()
                 .setBssid(TEST_MAC)
                 .setSsid(TEST_SSID_UNQUOTED)
-                .setWpa2Passphrase(TEST_PASSPHRASE)
+                .setPassphrase(TEST_PASSPHRASE, SoftApConfiguration.SECURITY_TYPE_WPA2_PSK)
                 .build();
         TestExecutor executor = new TestExecutor();
         TestLocalOnlyHotspotCallback callback = new TestLocalOnlyHotspotCallback(mLOHSLock);
