@@ -227,7 +227,14 @@ public class ScanResultTest extends AndroidTestCase {
         }
         assertNotNull("Current network not found in scan results", currentNetwork);
 
-        assertEquals(wifiInfo.getWifiSsid(), currentNetwork.wifiSsid);
+        String wifiInfoSsidQuoted = wifiInfo.getSSID();
+        String scanResultSsidUnquoted = currentNetwork.SSID;
+
+        assertEquals(
+                "SSID mismatch: make sure this isn't a hidden network or an SSID containing "
+                        + "non-UTF-8 characters - neither is supported by this CTS test.",
+                wifiInfoSsidQuoted,
+                "\"" + scanResultSsidUnquoted + "\"");
         assertEquals(wifiInfo.getFrequency(), currentNetwork.frequency);
     }
 }
