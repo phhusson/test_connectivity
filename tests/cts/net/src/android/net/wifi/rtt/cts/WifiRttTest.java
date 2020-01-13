@@ -16,6 +16,8 @@
 
 package android.net.wifi.rtt.cts;
 
+import static org.mockito.Mockito.mock;
+
 import android.net.wifi.ScanResult;
 import android.net.wifi.rtt.RangingRequest;
 import android.net.wifi.rtt.RangingResult;
@@ -185,7 +187,7 @@ public class WifiRttTest extends TestBase {
             return;
         }
 
-        ScanResult dummy = new ScanResult();
+        ScanResult dummy = mock(ScanResult.class);
         dummy.BSSID = "00:01:02:03:04:05";
 
         RangingRequest.Builder builder = new RangingRequest.Builder();
