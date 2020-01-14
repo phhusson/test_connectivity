@@ -32,11 +32,7 @@ import android.net.wifi.ScanResult;
 import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
-import android.net.wifi.WifiManager.TxPacketCountListener;
 import android.net.wifi.WifiManager.WifiLock;
-import android.net.wifi.hotspot2.PasspointConfiguration;
-import android.net.wifi.hotspot2.pps.Credential;
-import android.net.wifi.hotspot2.pps.HomeSp;
 import android.os.Process;
 import android.os.SystemClock;
 import android.os.UserHandle;
@@ -52,18 +48,11 @@ import androidx.test.platform.app.InstrumentationRegistry;
 
 import com.android.compatibility.common.util.SystemUtil;
 
-import java.lang.StringBuilder;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.security.MessageDigest;
-import java.security.cert.X509Certificate;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 @AppModeFull(reason = "Cannot get WifiManager in instant app mode")
@@ -232,21 +221,14 @@ public class WifiManagerTest extends AndroidTestCase {
 
     // Get the current scan status from sticky broadcast.
     private boolean isScanCurrentlyAvailable() {
-        boolean isAvailable = false;
         IntentFilter intentFilter = new IntentFilter();
-        intentFilter.addAction(WifiManager.WIFI_SCAN_AVAILABLE);
+        intentFilter.addAction(WifiManager.ACTION_WIFI_SCAN_AVAILABLE);
         Intent intent = mContext.registerReceiver(null, intentFilter);
         assertNotNull(intent);
-        if (intent.getAction().equals(WifiManager.WIFI_SCAN_AVAILABLE)) {
-            int state = intent.getIntExtra(
-                    WifiManager.EXTRA_SCAN_AVAILABLE, WifiManager.WIFI_STATE_UNKNOWN);
-            if (state == WifiManager.WIFI_STATE_ENABLED) {
-                isAvailable = true;
-            } else if (state == WifiManager.WIFI_STATE_DISABLED) {
-                isAvailable = false;
-            }
+        if (intent.getAction().equals(WifiManager.ACTION_WIFI_SCAN_AVAILABLE)) {
+            return intent.getBooleanExtra(WifiManager.EXTRA_SCAN_AVAILABLE, false);
         }
-        return isAvailable;
+        return false;
     }
 
     private void startScan() throws Exception {
@@ -439,90 +421,6 @@ public class WifiManagerTest extends AndroidTestCase {
         rssiA = 5;
         rssiB = 4;
         assertTrue(WifiManager.compareSignalLevel(rssiA, rssiB) > 0);
-    }
-
-    private int getTxPacketCount() throws Exception {
-        final AtomicInteger ret = new AtomicInteger(-1);
-
-        mWifiManager.getTxPacketCount(new TxPacketCountListener() {
-            @Override
-            public void onSuccess(int count) {
-                ret.set(count);
-            }
-            @Override
-            public void onFailure(int reason) {
-                ret.set(0);
-            }
-        });
-
-        long timeout = System.currentTimeMillis() + TIMEOUT_MSEC;
-        while (ret.get() < 0 && System.currentTimeMillis() < timeout)
-            Thread.sleep(WAIT_MSEC);
-        assertTrue(ret.get() >= 0);
-        return ret.get();
-    }
-
-    /**
-     * The new WiFi watchdog requires kernel/driver to export some packet loss
-     * counters. This CTS tests whether those counters are correctly exported.
-     * To pass this CTS test, a connected WiFi link is required.
-     */
-    public void testWifiWatchdog() throws Exception {
-        if (!WifiFeature.isWifiSupported(getContext())) {
-            // skip the test if WiFi is not supported
-            return;
-        }
-        // Make sure WiFi is enabled
-        if (!mWifiManager.isWifiEnabled()) {
-            setWifiEnabled(true);
-            Thread.sleep(DURATION);
-        }
-        assertTrue(mWifiManager.isWifiEnabled());
-
-        // give the test a chance to autoconnect
-        Thread.sleep(DURATION);
-        if (mNetworkInfo.getState() != NetworkInfo.State.CONNECTED) {
-            // this test requires a connectable network be configured
-            fail("This test requires a wifi network connection.");
-        }
-
-        // This will generate a distinct stack trace if the initial connection fails.
-        connectWifi();
-
-        int i = 0;
-        for (; i < 15; i++) {
-            // Wait for a WiFi connection
-            connectWifi();
-
-            // Read TX packet counter
-            int txcount1 = getTxPacketCount();
-
-            // Do some network operations
-            HttpURLConnection connection = null;
-            try {
-                URL url = new URL("http://www.google.com/");
-                connection = (HttpURLConnection) url.openConnection();
-                connection.setInstanceFollowRedirects(false);
-                connection.setConnectTimeout(TIMEOUT_MSEC);
-                connection.setReadTimeout(TIMEOUT_MSEC);
-                connection.setUseCaches(false);
-                connection.getInputStream();
-            } catch (Exception e) {
-                // ignore
-            } finally {
-                if (connection != null) connection.disconnect();
-            }
-
-            // Read TX packet counter again and make sure it increases
-            int txcount2 = getTxPacketCount();
-
-            if (txcount2 > txcount1) {
-                break;
-            } else {
-                Thread.sleep(DURATION);
-            }
-        }
-        assertTrue(i < 15);
     }
 
     private static class TestLocalOnlyHotspotCallback extends WifiManager.LocalOnlyHotspotCallback {
