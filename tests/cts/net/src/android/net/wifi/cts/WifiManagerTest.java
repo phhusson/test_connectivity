@@ -478,11 +478,11 @@ public class WifiManagerTest extends AndroidTestCase {
             }
             // check if we got the callback
             assertTrue(callback.onStartedCalled);
-            assertNotNull(callback.reservation.getWifiConfiguration());
+            assertNotNull(callback.reservation.getSoftApConfiguration());
             if (!hasAutomotiveFeature()) {
                 assertEquals(
-                        WifiConfiguration.AP_BAND_2GHZ,
-                        callback.reservation.getWifiConfiguration().apBand);
+                        SoftApConfiguration.BAND_2GHZ,
+                        callback.reservation.getSoftApConfiguration().getBand());
             }
             assertFalse(callback.onFailedCalled);
             assertFalse(callback.onStoppedCalled);
@@ -657,11 +657,11 @@ public class WifiManagerTest extends AndroidTestCase {
             assertTrue(callback.onStartedCalled);
 
             assertNotNull(callback.reservation);
-            WifiConfiguration wifiConfig = callback.reservation.getWifiConfiguration();
-            assertNotNull(wifiConfig);
-            assertEquals(TEST_MAC, MacAddress.fromString(wifiConfig.BSSID));
-            assertEquals(TEST_SSID_UNQUOTED, wifiConfig.SSID);
-            assertEquals(TEST_PASSPHRASE, wifiConfig.preSharedKey);
+            SoftApConfiguration softApConfig = callback.reservation.getSoftApConfiguration();
+            assertNotNull(softApConfig);
+            assertEquals(TEST_MAC, softApConfig.getBssid());
+            assertEquals(TEST_SSID_UNQUOTED, softApConfig.getSsid());
+            assertEquals(TEST_PASSPHRASE, softApConfig.getPassphrase());
 
             // clean up
             stopLocalOnlyHotspot(callback, wifiEnabled);
