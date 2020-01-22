@@ -272,6 +272,14 @@ public class ConcurrencyTest extends AndroidTestCase {
                     + " needs Location enabled.");
         }
 
+        mWifiP2pManager =
+                (WifiP2pManager) getContext().getSystemService(Context.WIFI_P2P_SERVICE);
+        mWifiP2pChannel = mWifiP2pManager.initialize(
+                getContext(), getContext().getMainLooper(), null);
+
+        assertNotNull(mWifiP2pManager);
+        assertNotNull(mWifiP2pChannel);
+
         long timeout = System.currentTimeMillis() + TIMEOUT_MSEC;
         while (!mWifiManager.isWifiEnabled() && System.currentTimeMillis() < timeout) {
             try {
@@ -287,14 +295,6 @@ public class ConcurrencyTest extends AndroidTestCase {
 
         assertEquals(WifiManager.WIFI_STATE_ENABLED, mMySync.expectedWifiState);
         assertEquals(WifiP2pManager.WIFI_P2P_STATE_ENABLED, mMySync.expectedP2pState);
-
-        mWifiP2pManager =
-                (WifiP2pManager) getContext().getSystemService(Context.WIFI_P2P_SERVICE);
-        mWifiP2pChannel = mWifiP2pManager.initialize(
-                getContext(), getContext().getMainLooper(), null);
-
-        assertNotNull(mWifiP2pManager);
-        assertNotNull(mWifiP2pChannel);
 
         assertTrue(waitForBroadcasts(MySync.NETWORK_INFO));
         // wait for changing to EnabledState
