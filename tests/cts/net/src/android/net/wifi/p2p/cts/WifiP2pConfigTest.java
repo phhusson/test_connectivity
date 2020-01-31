@@ -41,7 +41,7 @@ public class WifiP2pConfigTest extends AndroidTestCase {
         assertEquals(config.getNetworkName(), TEST_NETWORK_NAME);
         assertEquals(config.getPassphrase(), TEST_PASSPHRASE);
         assertEquals(config.getGroupOwnerBand(), TEST_OWNER_BAND);
-        assertEquals(config.getNetworkId(), WifiP2pGroup.PERSISTENT_NET_ID);
+        assertEquals(config.getNetworkId(), WifiP2pGroup.NETWORK_ID_PERSISTENT);
     }
 
     public void testWifiP2pConfigBuilderForNonPersist() {
@@ -57,6 +57,6 @@ public class WifiP2pConfigTest extends AndroidTestCase {
         assertEquals(config.getNetworkName(), TEST_NETWORK_NAME);
         assertEquals(config.getPassphrase(), TEST_PASSPHRASE);
         assertEquals(config.getGroupOwnerBand(), TEST_OWNER_FREQ);
-        assertEquals(config.getNetworkId(), WifiP2pGroup.TEMPORARY_NET_ID);
+        assertEquals(config.getNetworkId(), WifiP2pGroup.NETWORK_ID_TEMPORARY);
     }
 }
