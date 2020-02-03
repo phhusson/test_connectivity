@@ -222,10 +222,10 @@ public class WifiManagerTest extends AndroidTestCase {
     // Get the current scan status from sticky broadcast.
     private boolean isScanCurrentlyAvailable() {
         IntentFilter intentFilter = new IntentFilter();
-        intentFilter.addAction(WifiManager.ACTION_WIFI_SCAN_AVAILABLE);
+        intentFilter.addAction(WifiManager.ACTION_WIFI_SCAN_AVAILABILITY_CHANGED);
         Intent intent = mContext.registerReceiver(null, intentFilter);
         assertNotNull(intent);
-        if (intent.getAction().equals(WifiManager.ACTION_WIFI_SCAN_AVAILABLE)) {
+        if (intent.getAction().equals(WifiManager.ACTION_WIFI_SCAN_AVAILABILITY_CHANGED)) {
             return intent.getBooleanExtra(WifiManager.EXTRA_SCAN_AVAILABLE, false);
         }
         return false;
