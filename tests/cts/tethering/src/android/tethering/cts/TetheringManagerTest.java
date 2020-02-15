@@ -15,13 +15,16 @@
  */
 package android.tethering.test;
 
+import static android.net.TetheringManager.TETHERING_WIFI;
+
 import static org.junit.Assert.fail;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.net.ConnectivityManager;
+import android.net.TetheringManager;
+import android.net.TetheringManager.TetheringRequest;
 import android.os.ConditionVariable;
 
 import androidx.test.InstrumentationRegistry;
@@ -35,6 +38,7 @@ import org.junit.runner.RunWith;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
@@ -43,7 +47,7 @@ public class TetheringManagerTest {
 
     private Context mContext;
 
-    private ConnectivityManager mCM;
+    private TetheringManager mTM;
 
     private TetherChangeReceiver mTetherChangeReceiver;
 
@@ -57,10 +61,10 @@ public class TetheringManagerTest {
                 .getUiAutomation()
                 .adoptShellPermissionIdentity();
         mContext = InstrumentationRegistry.getContext();
-        mCM = (ConnectivityManager) mContext.getSystemService(Context.CONNECTIVITY_SERVICE);
+        mTM = (TetheringManager) mContext.getSystemService(Context.TETHERING_SERVICE);
         mTetherChangeReceiver = new TetherChangeReceiver();
         final IntentFilter filter = new IntentFilter(
-                ConnectivityManager.ACTION_TETHER_STATE_CHANGED);
+                TetheringManager.ACTION_TETHER_STATE_CHANGED);
         final Intent intent = mContext.registerReceiver(mTetherChangeReceiver, filter);
         if (intent != null) mTetherChangeReceiver.onReceive(null, intent);
     }
@@ -81,36 +85,37 @@ public class TetheringManagerTest {
 
             TetherState(Intent intent) {
                 mAvailable = intent.getStringArrayListExtra(
-                        ConnectivityManager.EXTRA_AVAILABLE_TETHER);
+                        TetheringManager.EXTRA_AVAILABLE_TETHER);
                 mActive = intent.getStringArrayListExtra(
-                        ConnectivityManager.EXTRA_ACTIVE_TETHER);
+                        TetheringManager.EXTRA_ACTIVE_TETHER);
                 mErrored = intent.getStringArrayListExtra(
-                        ConnectivityManager.EXTRA_ERRORED_TETHER);
+                        TetheringManager.EXTRA_ERRORED_TETHER);
             }
         }
 
         @Override
         public void onReceive(Context content, Intent intent) {
             String action = intent.getAction();
-            if (action.equals(ConnectivityManager.ACTION_TETHER_STATE_CHANGED)) {
+            if (action.equals(TetheringManager.ACTION_TETHER_STATE_CHANGED)) {
                 mResult.add(new TetherState(intent));
             }
         }
 
         public final LinkedBlockingQueue<TetherState> mResult = new LinkedBlockingQueue<>();
 
-        // This method expects either an event where one of the interfaces is active, or an event
-        // where one of the interface is available followed by one where one of the interfaces is
-        // active.
+        // This method expects either an event where one of the interfaces is active, or events
+        // where the interfaces are available followed by one event where one of the interfaces is
+        // active. Here is a typical example for wifi tethering:
+        // AVAILABLE(wlan0) -> AVAILABLE(wlan1) -> ACTIVATE(wlan1).
         public void expectActiveTethering(String[] ifaceRegexs) {
-            TetherState state = pollAndAssertNoError(DEFAULT_TIMEOUT_MS);
-            if (state == null) fail("Do not receive tethering state change broadcast");
-
-            if (isIfaceActive(ifaceRegexs, state)) return;
-
-            if (isIfaceAvailable(ifaceRegexs, state)) {
+            TetherState state = null;
+            while (true) {
                 state = pollAndAssertNoError(DEFAULT_TIMEOUT_MS);
+                if (state == null) fail("Do not receive active state change broadcast");
+
                 if (isIfaceActive(ifaceRegexs, state)) return;
+
+                if (!isIfaceAvailable(ifaceRegexs, state)) break;
             }
 
             fail("Tethering is not actived, available ifaces: " + state.mAvailable.toString()
@@ -175,16 +180,15 @@ public class TetheringManagerTest {
         }
     }
 
-    private class OnStartTetheringCallback extends
-            ConnectivityManager.OnStartTetheringCallback {
+    private class StartTetheringCallback extends TetheringManager.StartTetheringCallback {
         @Override
         public void onTetheringStarted() {
             // Do nothing, TetherChangeReceiver will wait until it receives the broadcast.
         }
 
         @Override
-        public void onTetheringFailed() {
-            fail("startTethering fail");
+        public void onTetheringFailed(final int resultCode) {
+            fail("startTethering fail: " + resultCode);
         }
     }
 
@@ -206,18 +210,19 @@ public class TetheringManagerTest {
 
     @Test
     public void testStartTetheringWithStateChangeBroadcast() throws Exception {
-        if (!mCM.isTetheringSupported()) return;
+        if (!mTM.isTetheringSupported()) return;
 
-        final String[] wifiRegexs = mCM.getTetherableWifiRegexs();
+        final String[] wifiRegexs = mTM.getTetherableWifiRegexs();
         if (wifiRegexs.length == 0) return;
 
         mTetherChangeReceiver.expectNoActiveTethering(0 /** timeout */);
 
-        final OnStartTetheringCallback startTetheringCallback = new OnStartTetheringCallback();
-        mCM.startTethering(ConnectivityManager.TETHERING_WIFI, true, startTetheringCallback);
+        final StartTetheringCallback startTetheringCallback = new StartTetheringCallback();
+        mTM.startTethering(new TetheringRequest.Builder(TETHERING_WIFI).build(), c -> c.run(),
+                startTetheringCallback);
         mTetherChangeReceiver.expectActiveTethering(wifiRegexs);
 
-        mCM.stopTethering(ConnectivityManager.TETHERING_WIFI);
+        mTM.stopTethering(TETHERING_WIFI);
         mTetherChangeReceiver.expectNoActiveTethering(DEFAULT_TIMEOUT_MS);
     }
 }
