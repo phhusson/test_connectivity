@@ -16,6 +16,7 @@
 package com.android.cts.net.hostside;
 
 import static com.android.cts.net.hostside.AbstractRestrictBackgroundNetworkTestCase.TAG;
+import static com.android.cts.net.hostside.AbstractRestrictBackgroundNetworkTestCase.TEST_APP2_PKG;
 import static com.android.cts.net.hostside.AbstractRestrictBackgroundNetworkTestCase.TEST_PKG;
 
 import android.os.Environment;
@@ -58,7 +59,7 @@ public class DumpOnFailureRule extends OnFailureRule {
             for (String cmd : new String[] {
                     "dumpsys netpolicy",
                     "dumpsys network_management",
-                    "dumpsys usagestats " + TEST_PKG,
+                    "dumpsys usagestats " + TEST_PKG + " " + TEST_APP2_PKG,
                     "dumpsys usagestats appstandby",
             }) {
                 dumpCommandOutput(out, cmd);
