@@ -16,11 +16,13 @@
 
 package android.net.wifi.cts;
 
+import static com.google.common.truth.Truth.assertThat;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.net.wifi.ScanResult;
 import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
@@ -78,13 +80,13 @@ public class WifiInfoTest extends AndroidTestCase {
 
         mContext.registerReceiver(mReceiver, mIntentFilter);
         mWifiManager = (WifiManager) getContext().getSystemService(Context.WIFI_SERVICE);
-        assertNotNull(mWifiManager);
+        assertThat(mWifiManager).isNotNull();
         mWifiLock = mWifiManager.createWifiLock(TAG);
         mWifiLock.acquire();
         if (!mWifiManager.isWifiEnabled())
             setWifiEnabled(true);
         Thread.sleep(DURATION);
-        assertTrue(mWifiManager.isWifiEnabled());
+        assertThat(mWifiManager.isWifiEnabled()).isTrue();
         mMySync.expectedState = STATE_NULL;
     }
 
@@ -123,31 +125,19 @@ public class WifiInfoTest extends AndroidTestCase {
             // skip the test if WiFi is not supported
             return;
         }
+
+        // wait for Wifi to be connected
+        PollingCheck.check(
+                "Wifi not connected - Please ensure there is a saved network in range of this "
+                        + "device",
+                20000,
+                () -> mWifiManager.getConnectionInfo().getNetworkId() != -1);
+
         // this test case should in Wifi environment
         WifiInfo wifiInfo = mWifiManager.getConnectionInfo();
 
-        assertNotNull(wifiInfo);
-        assertNotNull(wifiInfo.toString());
-        SupplicantState.isValidState(wifiInfo.getSupplicantState());
-        WifiInfo.getDetailedStateOf(SupplicantState.DISCONNECTED);
-        String ssid = wifiInfo.getSSID();
-        if (!ssid.startsWith("0x") && !ssid.equals(WifiManager.UNKNOWN_SSID)) {
-            // Non-hex string should be quoted
-            assertTrue(ssid.charAt(0) == '"');
-            assertTrue(ssid.charAt(ssid.length() - 1) == '"');
-        }
+        testWifiInfoPropertiesWhileConnected(wifiInfo);
 
-        wifiInfo.getBSSID();
-        wifiInfo.getFrequency();
-        wifiInfo.getIpAddress();
-        wifiInfo.getLinkSpeed();
-        wifiInfo.getPasspointFqdn();
-        wifiInfo.getPasspointProviderFriendlyName();
-        wifiInfo.getTxLinkSpeedMbps();
-        wifiInfo.getRxLinkSpeedMbps();
-        wifiInfo.getRssi();
-        wifiInfo.getHiddenSSID();
-        wifiInfo.getMacAddress();
         setWifiEnabled(false);
 
         PollingCheck.check("getNetworkId not -1", 20000, new Callable<Boolean>() {
@@ -166,4 +156,55 @@ public class WifiInfoTest extends AndroidTestCase {
         });
     }
 
+    private void testWifiInfoPropertiesWhileConnected(WifiInfo wifiInfo) {
+        assertThat(wifiInfo).isNotNull();
+        assertThat(wifiInfo.toString()).isNotNull();
+        SupplicantState.isValidState(wifiInfo.getSupplicantState());
+        WifiInfo.getDetailedStateOf(SupplicantState.DISCONNECTED);
+        String ssid = wifiInfo.getSSID();
+        if (!ssid.startsWith("0x") && !ssid.equals(WifiManager.UNKNOWN_SSID)) {
+            // Non-hex string should be quoted
+            assertThat(ssid).startsWith("\"");
+            assertThat(ssid).endsWith("\"");
+        }
+
+        assertThat(wifiInfo.getBSSID()).isNotNull();
+        assertThat(wifiInfo.getFrequency()).isGreaterThan(0);
+        assertThat(wifiInfo.getMacAddress()).isNotNull();
+
+        wifiInfo.getRssi();
+        wifiInfo.getIpAddress();
+        wifiInfo.getHiddenSSID();
+        wifiInfo.getScore();
+
+        // null for saved networks
+        assertThat(wifiInfo.getRequestingPackageName()).isNull();
+        assertThat(wifiInfo.getPasspointFqdn()).isNull();
+        assertThat(wifiInfo.getPasspointProviderFriendlyName()).isNull();
+
+        // false for saved networks
+        assertThat(wifiInfo.isEphemeral()).isFalse();
+        assertThat(wifiInfo.isOsuAp()).isFalse();
+        assertThat(wifiInfo.isPasspointAp()).isFalse();
+
+        assertThat(wifiInfo.getWifiStandard()).isAnyOf(
+                ScanResult.WIFI_STANDARD_UNKNOWN,
+                ScanResult.WIFI_STANDARD_LEGACY,
+                ScanResult.WIFI_STANDARD_11N,
+                ScanResult.WIFI_STANDARD_11AC,
+                ScanResult.WIFI_STANDARD_11AX
+        );
+
+        assertThat(wifiInfo.getLostTxPacketsPerSecond()).isAtLeast(0.0);
+        assertThat(wifiInfo.getRetriedTxPacketsPerSecond()).isAtLeast(0.0);
+        assertThat(wifiInfo.getSuccessfulRxPacketsPerSecond()).isAtLeast(0.0);
+        assertThat(wifiInfo.getSuccessfulTxPacketsPerSecond()).isAtLeast(0.0);
+
+        // Can be -1 if link speed is unknown
+        assertThat(wifiInfo.getLinkSpeed()).isAtLeast(-1);
+        assertThat(wifiInfo.getTxLinkSpeedMbps()).isAtLeast(-1);
+        assertThat(wifiInfo.getRxLinkSpeedMbps()).isAtLeast(-1);
+        assertThat(wifiInfo.getMaxSupportedTxLinkSpeedMbps()).isAtLeast(-1);
+        assertThat(wifiInfo.getMaxSupportedRxLinkSpeedMbps()).isAtLeast(-1);
+    }
 }
