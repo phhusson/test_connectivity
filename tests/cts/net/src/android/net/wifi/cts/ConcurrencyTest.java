@@ -299,7 +299,6 @@ public class ConcurrencyTest extends AndroidTestCase {
         assertTrue(waitForBroadcasts(MySync.NETWORK_INFO));
         // wait for changing to EnabledState
         assertNotNull(mMySync.expectedNetworkInfo);
-        assertTrue(mMySync.expectedNetworkInfo.isAvailable());
 
         return true;
     }
