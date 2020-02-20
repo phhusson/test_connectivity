@@ -16,16 +16,14 @@
 
 package android.net.wifi.cts;
 
-import android.content.Context;
+import static com.google.common.truth.Truth.assertThat;
+
 import android.content.pm.PackageManager;
 import android.net.wifi.WifiEnterpriseConfig;
 import android.net.wifi.WifiEnterpriseConfig.Eap;
 import android.net.wifi.WifiEnterpriseConfig.Phase2;
-import android.net.wifi.WifiManager;
 import android.platform.test.annotations.AppModeFull;
 import android.test.AndroidTestCase;
-
-import com.android.compatibility.common.util.SystemUtil;
 
 import java.io.ByteArrayInputStream;
 import java.security.KeyFactory;
@@ -36,9 +34,7 @@ import java.security.spec.PKCS8EncodedKeySpec;
 
 @AppModeFull(reason = "Cannot get WifiManager in instant app mode")
 public class WifiEnterpriseConfigTest extends AndroidTestCase {
-    private WifiManager mWifiManager;
 
-    private static final String SSID = "\"TestSSID\"";
     private static final String IDENTITY = "identity";
     private static final String PASSWORD = "password";
     private static final String SUBJECT_MATCH = "subjectmatch";
@@ -47,7 +43,11 @@ public class WifiEnterpriseConfigTest extends AndroidTestCase {
     private static final String PLMN = "plmn";
     private static final String REALM = "realm";
     private static final String ANON_IDENTITY = "anonidentity";
-    private static final int ENABLE_DELAY = 10000;
+    private static final String CERTIFICATE_ALIAS1 = "certificatealias1";
+    private static final String CERTIFICATE_ALIAS2 = "certificatealias2";
+    private static final String CA_PATH = "capath";
+    private static final String CLIENT_CERTIFICATE_ALIAS = "clientcertificatealias";
+    private static final String WAPI_CERT_SUITE = "wapicertsuite";
 
     /*
      * The keys and certificates below are generated with:
@@ -684,22 +684,6 @@ public class WifiEnterpriseConfigTest extends AndroidTestCase {
                 PackageManager.FEATURE_WIFI);
     }
 
-    @Override
-    protected void setUp() throws Exception {
-        super.setUp();
-        if(!hasWifi()) {
-            return;
-        }
-        mWifiManager = (WifiManager) mContext
-                .getSystemService(Context.WIFI_SERVICE);
-        assertNotNull(mWifiManager);
-        SystemUtil.runShellCommand("svc wifi enable");
-        Thread.sleep(ENABLE_DELAY);
-        if (hasWifi()) {
-            assertTrue(mWifiManager.isWifiEnabled());
-        }
-    }
-
     public void testSettersAndGetters() throws Exception {
         if (!hasWifi()) {
             return;
@@ -766,6 +750,7 @@ public class WifiEnterpriseConfigTest extends AndroidTestCase {
         assertTrue(testClientCertChain.length == 2);
         assertTrue(testClientCertChain[0] == testClientCert);
         assertTrue(testClientCertChain[1] == cert1);
+        assertSame(clientKey, config.getClientPrivateKey());
 
         config.setSubjectMatch(SUBJECT_MATCH);
         assertTrue(config.getSubjectMatch().equals(SUBJECT_MATCH));
@@ -792,5 +777,123 @@ public class WifiEnterpriseConfigTest extends AndroidTestCase {
         final String stringRepresentation = enterpriseConfig.toString();
         assertTrue(stringRepresentation.contains(identity));
         assertFalse(stringRepresentation.contains(password));
+    }
+
+    public void testGetSetCaCertificateAliases() {
+        if (!hasWifi()) {
+            return;
+        }
+        WifiEnterpriseConfig config = new WifiEnterpriseConfig();
+
+        config.setCaCertificateAliases(null);
+        assertThat(config.getCaCertificateAliases()).isNull();
+
+        config.setCaCertificateAliases(new String[]{CERTIFICATE_ALIAS1});
+        assertThat(config.getCaCertificateAliases()).isEqualTo(new String[]{CERTIFICATE_ALIAS1});
+
+        config.setCaCertificateAliases(new String[]{CERTIFICATE_ALIAS1, CERTIFICATE_ALIAS2});
+        assertThat(config.getCaCertificateAliases())
+                .isEqualTo(new String[]{CERTIFICATE_ALIAS1, CERTIFICATE_ALIAS2});
+    }
+
+    public void testGetSetCaPath() {
+        if (!hasWifi()) {
+            return;
+        }
+        WifiEnterpriseConfig config = new WifiEnterpriseConfig();
+
+        config.setCaPath("");
+        assertThat(config.getCaPath()).isEmpty();
+
+        config.setCaPath(CA_PATH);
+        assertThat(config.getCaPath()).isEqualTo(CA_PATH);
+    }
+
+    public void testGetSetClientCertificateAlias() {
+        if (!hasWifi()) {
+            return;
+        }
+        WifiEnterpriseConfig config = new WifiEnterpriseConfig();
+
+        config.setClientCertificateAlias("");
+        assertThat(config.getClientCertificateAlias()).isEmpty();
+
+        config.setClientCertificateAlias(CLIENT_CERTIFICATE_ALIAS);
+        assertThat(config.getClientCertificateAlias()).isEqualTo(CLIENT_CERTIFICATE_ALIAS);
+    }
+
+    public void testGetSetOcsp() {
+        if (!hasWifi()) {
+            return;
+        }
+        WifiEnterpriseConfig config = new WifiEnterpriseConfig();
+
+        config.setOcsp(WifiEnterpriseConfig.OCSP_NONE);
+        assertThat(config.getOcsp()).isEqualTo(WifiEnterpriseConfig.OCSP_NONE);
+
+        config.setOcsp(WifiEnterpriseConfig.OCSP_REQUIRE_ALL_NON_TRUSTED_CERTS_STATUS);
+        assertThat(config.getOcsp())
+                .isEqualTo(WifiEnterpriseConfig.OCSP_REQUIRE_ALL_NON_TRUSTED_CERTS_STATUS);
+
+        try {
+            config.setOcsp(-1);
+            fail("WifiEnterpriseConfig.setOcsp(-1) did not throw an IllegalArgumentException!");
+        } catch (IllegalArgumentException expected) {}
+    }
+
+    public void testGetSetWapiCertSuite() {
+        if (!hasWifi()) {
+            return;
+        }
+        WifiEnterpriseConfig config = new WifiEnterpriseConfig();
+
+        config.setWapiCertSuite("");
+        assertThat(config.getWapiCertSuite()).isEmpty();
+
+        config.setWapiCertSuite(WAPI_CERT_SUITE);
+        assertThat(config.getWapiCertSuite()).isEqualTo(WAPI_CERT_SUITE);
+    }
+
+    public void testIsAuthenticationSimBased() {
+        if (!hasWifi()) {
+            return;
+        }
+        WifiEnterpriseConfig config = new WifiEnterpriseConfig();
+
+        config.setEapMethod(Eap.AKA);
+        assertThat(config.isAuthenticationSimBased()).isTrue();
+
+        config.setEapMethod(Eap.PWD);
+        assertThat(config.isAuthenticationSimBased()).isFalse();
+
+        config.setEapMethod(Eap.PEAP);
+        config.setPhase2Method(Phase2.SIM);
+        assertThat(config.isAuthenticationSimBased()).isTrue();
+
+        config.setEapMethod(Eap.PEAP);
+        config.setPhase2Method(Phase2.NONE);
+        assertThat(config.isAuthenticationSimBased()).isFalse();
+    }
+
+    public void testCopyConstructor() {
+        if (!hasWifi()) {
+            return;
+        }
+        WifiEnterpriseConfig config = new WifiEnterpriseConfig();
+        config.setEapMethod(Eap.WAPI_CERT);
+        config.setWapiCertSuite(WAPI_CERT_SUITE);
+        config.setOcsp(WifiEnterpriseConfig.OCSP_REQUIRE_ALL_NON_TRUSTED_CERTS_STATUS);
+        config.setCaPath(CA_PATH);
+        config.setPassword(PASSWORD);
+        config.setRealm(REALM);
+
+        WifiEnterpriseConfig copy = new WifiEnterpriseConfig(config);
+        assertThat(copy.getEapMethod()).isEqualTo(Eap.WAPI_CERT);
+        assertThat(copy.getWapiCertSuite()).isEqualTo(WAPI_CERT_SUITE);
+        assertThat(copy.getOcsp())
+                .isEqualTo(WifiEnterpriseConfig.OCSP_REQUIRE_ALL_NON_TRUSTED_CERTS_STATUS);
+        assertThat(copy.getCaPath()).isEqualTo(CA_PATH);
+        assertThat(copy.getPassword()).isEqualTo(PASSWORD);
+        assertThat(copy.getRealm()).isEqualTo(REALM);
     }
 }
