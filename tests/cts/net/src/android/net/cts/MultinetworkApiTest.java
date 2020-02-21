@@ -245,7 +245,7 @@ public class MultinetworkApiTest extends AndroidTestCase {
             for (Network network : getTestableNetworks()) {
               // Wait for private DNS setting to propagate.
               mCtsNetUtils.awaitPrivateDnsSetting("NxDomain test wait private DNS setting timeout",
-                        network, GOOGLE_PRIVATE_DNS_SERVER, PRIVATE_DNS_SETTING_TIMEOUT_MS);
+                        network, GOOGLE_PRIVATE_DNS_SERVER, PRIVATE_DNS_SETTING_TIMEOUT_MS, true);
               runResNnxDomainCheck(network.getNetworkHandle());
             }
         } finally {
