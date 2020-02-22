@@ -79,7 +79,6 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     private static final String TEST_APP2_SERVICE_CLASS = TEST_APP2_PKG + ".MyForegroundService";
 
     private static final int SLEEP_TIME_SEC = 1;
-    private static final boolean DEBUG = true;
 
     // Constants below must match values defined on app2's Common.java
     private static final String MANIFEST_RECEIVER = "ManifestReceiver";
@@ -159,6 +158,7 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         if (!mIsLocationOn) {
             enableLocation();
         }
+        executeShellCommand("cmd netpolicy start-watching " + mUid);
         setAppIdle(false);
 
         Log.i(TAG, "Apps status:\n"
@@ -167,6 +167,7 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     }
 
     protected void tearDown() throws Exception {
+        executeShellCommand("cmd netpolicy stop-watching");
         if (!mIsLocationOn) {
             disableLocation();
         }

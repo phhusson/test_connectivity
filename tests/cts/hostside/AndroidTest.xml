@@ -25,6 +25,7 @@
     <target_preparer class="com.android.tradefed.targetprep.RunCommandTargetPreparer">
         <option name="teardown-command" value="cmd power set-mode 0" />
         <option name="teardown-command" value="cmd battery reset" />
+        <option name="teardown-command" value="cmd netpolicy stop-watching" />
     </target_preparer>
 
     <test class="com.android.compatibility.common.tradefed.testtype.JarHostTest" >

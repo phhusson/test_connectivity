@@ -56,6 +56,7 @@ public final class CtsNetUtils {
     private static final String TAG = CtsNetUtils.class.getSimpleName();
     private static final int DURATION = 10000;
     private static final int SOCKET_TIMEOUT_MS = 2000;
+    private static final int PRIVATE_DNS_PROBE_MS = 1_000;
 
     public static final int HTTP_PORT = 80;
     public static final String TEST_HOST = "connectivitycheck.gstatic.com";
@@ -246,12 +247,16 @@ public final class CtsNetUtils {
     }
 
     public void awaitPrivateDnsSetting(@NonNull String msg, @NonNull Network network,
-            @NonNull String server, int timeoutMs) throws InterruptedException {
+            @NonNull String server, int timeoutMs,
+            boolean requiresValidatedServers) throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
         NetworkRequest request = new NetworkRequest.Builder().clearCapabilities().build();
         NetworkCallback callback = new NetworkCallback() {
             @Override
             public void onLinkPropertiesChanged(Network n, LinkProperties lp) {
+                if (requiresValidatedServers && lp.getValidatedPrivateDnsServers().isEmpty()) {
+                    return;
+                }
                 if (network.equals(n) && server.equals(lp.getPrivateDnsServerName())) {
                     latch.countDown();
                 }
@@ -260,6 +265,18 @@ public final class CtsNetUtils {
         mCm.registerNetworkCallback(request, callback);
         assertTrue(msg, latch.await(timeoutMs, TimeUnit.MILLISECONDS));
         mCm.unregisterNetworkCallback(callback);
+        // Wait some time for NetworkMonitor's private DNS probe to complete. If we do not do
+        // this, then the test could complete before the NetworkMonitor private DNS probe
+        // completes. This would result in tearDown disabling private DNS, and the NetworkMonitor
+        // private DNS probe getting stuck because there are no longer any private DNS servers to
+        // query. This then results in the next test not being able to change the private DNS
+        // setting within the timeout, because the NetworkMonitor thread is blocked in the
+        // private DNS probe. There is no way to know when the probe has completed: because the
+        // network is likely already validated, there is no callback that we can listen to, so
+        // just sleep.
+        if (requiresValidatedServers) {
+            Thread.sleep(PRIVATE_DNS_PROBE_MS);
+        }
     }
 
     /**
