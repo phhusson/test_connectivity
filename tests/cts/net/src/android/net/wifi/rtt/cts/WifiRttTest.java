@@ -163,7 +163,7 @@ public class WifiRttTest extends TestBase {
 
         // Analyze results
         assertTrue("Wi-Fi RTT failure rate exceeds threshold: FAIL=" + numFailures + ", ITERATIONS="
-                        + NUM_OF_RTT_ITERATIONS,
+                        + NUM_OF_RTT_ITERATIONS + ", AP RSSI=" + testAp.level,
                 numFailures <= NUM_OF_RTT_ITERATIONS * MAX_FAILURE_RATE_PERCENT / 100);
         if (numFailures != NUM_OF_RTT_ITERATIONS) {
             double distanceAvg = distanceSum / (NUM_OF_RTT_ITERATIONS - numFailures);
