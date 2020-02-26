@@ -45,6 +45,8 @@ import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.WifiLock;
 import android.net.wifi.WifiNetworkConnectionStatistics;
+import android.net.wifi.hotspot2.ConfigParser;
+import android.net.wifi.hotspot2.PasspointConfiguration;
 import android.os.Process;
 import android.os.SystemClock;
 import android.os.UserHandle;
@@ -63,6 +65,10 @@ import com.android.compatibility.common.util.PollingCheck;
 import com.android.compatibility.common.util.ShellIdentityUtils;
 import com.android.compatibility.common.util.SystemUtil;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.List;
@@ -125,6 +131,9 @@ public class WifiManagerTest extends AndroidTestCase {
     private static final String TEST_SSID_UNQUOTED = "testSsid1";
     private static final MacAddress TEST_MAC = MacAddress.fromString("aa:bb:cc:dd:ee:ff");
     private static final String TEST_PASSPHRASE = "passphrase";
+    private static final String PASSPOINT_INSTALLATION_FILE_WITH_CA_CERT =
+            "assets/ValidPasspointProfile.base64";
+    private static final String TYPE_WIFI_CONFIG = "application/x-wifi-config";
 
     private IntentFilter mIntentFilter;
     private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
@@ -742,6 +751,51 @@ public class WifiManagerTest extends AndroidTestCase {
         }
     }
 
+    /**
+     * Read the content of the given resource file into a String.
+     *
+     * @param filename String name of the file
+     * @return String
+     * @throws IOException
+     */
+    private String loadResourceFile(String filename) throws IOException {
+        InputStream in = getClass().getClassLoader().getResourceAsStream(filename);
+        BufferedReader reader = new BufferedReader(new InputStreamReader(in));
+        StringBuilder builder = new StringBuilder();
+        String line;
+        while ((line = reader.readLine()) != null) {
+            builder.append(line).append("\n");
+        }
+        return builder.toString();
+    }
+
+    /**
+     * Verify that changing the mac randomization setting of a Passpoint configuration.
+     */
+    public void testMacRandomizationSettingPasspoint() throws Exception {
+        String configStr = loadResourceFile(PASSPOINT_INSTALLATION_FILE_WITH_CA_CERT);
+        PasspointConfiguration config =
+                ConfigParser.parsePasspointConfig(TYPE_WIFI_CONFIG, configStr.getBytes());
+        UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        try {
+            uiAutomation.adoptShellPermissionIdentity();
+
+            mWifiManager.addOrUpdatePasspointConfiguration(config);
+            List<PasspointConfiguration> passpointConfigs =
+                    mWifiManager.getPasspointConfigurations();
+            PasspointConfiguration passpointConfig = passpointConfigs.get(0);
+            assertEquals(1, passpointConfigs.size());
+            assertTrue("Mac randomization should be enabled for passpoint networks by default.",
+                    passpointConfig.isMacRandomizationEnabled());
+
+            String fqdn = passpointConfig.getHomeSp().getFqdn();
+            mWifiManager.setMacRandomizationSettingPasspointEnabled(fqdn, false);
+            assertFalse("Mac randomization should be disabled by the API call.",
+                    mWifiManager.getPasspointConfigurations().get(0).isMacRandomizationEnabled());
+        } finally {
+            uiAutomation.dropShellPermissionIdentity();
+        }
+    }
     /**
      * Verify that the {@link android.Manifest.permission#NETWORK_STACK} permission is never held by
      * any package.
