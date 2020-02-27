@@ -33,6 +33,7 @@ import android.test.AndroidTestCase;
 import com.android.compatibility.common.util.PollingCheck;
 import com.android.compatibility.common.util.SystemUtil;
 
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.Callable;
 
 @AppModeFull(reason = "Cannot get WifiManager in instant app mode")
@@ -48,6 +49,12 @@ public class WifiInfoTest extends AndroidTestCase {
     private static final int STATE_NULL = 0;
     private static final int STATE_WIFI_CHANGING = 1;
     private static final int STATE_WIFI_CHANGED = 2;
+
+    private static final String TEST_SSID = "Test123";
+    private static final String TEST_BSSID = "12:12:12:12:12:12";
+    private static final int TEST_RSSI = -60;
+    private static final int TEST_NETWORK_ID = 5;
+    private static final int TEST_NETWORK_ID2 = 6;
 
     private static final String TAG = "WifiInfoTest";
     private static final int TIMEOUT_MSEC = 6000;
@@ -206,5 +213,43 @@ public class WifiInfoTest extends AndroidTestCase {
         assertThat(wifiInfo.getRxLinkSpeedMbps()).isAtLeast(-1);
         assertThat(wifiInfo.getMaxSupportedTxLinkSpeedMbps()).isAtLeast(-1);
         assertThat(wifiInfo.getMaxSupportedRxLinkSpeedMbps()).isAtLeast(-1);
+    }
+
+    /**
+     * Test that the WifiInfo Builder returns the same values that was set, and that
+     * calling build multiple times returns different instances.
+     */
+    public void testWifiInfoBuilder() throws Exception {
+        WifiInfo.Builder builder = new WifiInfo.Builder()
+                .setSsid(TEST_SSID.getBytes(StandardCharsets.UTF_8))
+                .setBssid(TEST_BSSID)
+                .setRssi(TEST_RSSI)
+                .setNetworkId(TEST_NETWORK_ID);
+
+        WifiInfo info1 = builder.build();
+
+        assertThat(info1.getSSID()).isEqualTo("\"" + TEST_SSID + "\"");
+        assertThat(info1.getBSSID()).isEqualTo(TEST_BSSID);
+        assertThat(info1.getRssi()).isEqualTo(TEST_RSSI);
+        assertThat(info1.getNetworkId()).isEqualTo(TEST_NETWORK_ID);
+
+        WifiInfo info2 = builder
+                .setNetworkId(TEST_NETWORK_ID2)
+                .build();
+
+        // different instances
+        assertThat(info1).isNotSameAs(info2);
+
+        // assert that info1 didn't change
+        assertThat(info1.getSSID()).isEqualTo("\"" + TEST_SSID + "\"");
+        assertThat(info1.getBSSID()).isEqualTo(TEST_BSSID);
+        assertThat(info1.getRssi()).isEqualTo(TEST_RSSI);
+        assertThat(info1.getNetworkId()).isEqualTo(TEST_NETWORK_ID);
+
+        // assert that info2 changed
+        assertThat(info2.getSSID()).isEqualTo("\"" + TEST_SSID + "\"");
+        assertThat(info2.getBSSID()).isEqualTo(TEST_BSSID);
+        assertThat(info2.getRssi()).isEqualTo(TEST_RSSI);
+        assertThat(info2.getNetworkId()).isEqualTo(TEST_NETWORK_ID2);
     }
 }
