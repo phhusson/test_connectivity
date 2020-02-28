@@ -50,6 +50,7 @@ import android.os.UserHandle;
 import android.platform.test.annotations.AppModeFull;
 import android.provider.Settings;
 import android.support.test.uiautomator.UiDevice;
+import android.telephony.TelephonyManager;
 import android.test.AndroidTestCase;
 import android.text.TextUtils;
 import android.util.ArraySet;
@@ -64,6 +65,7 @@ import com.android.compatibility.common.util.SystemUtil;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
@@ -1542,5 +1544,30 @@ public class WifiManagerTest extends AndroidTestCase {
             }
             uiAutomation.dropShellPermissionIdentity();
         }
+    }
+
+    /**
+     * Test that the wifi country code is either null, or a length-2 string.
+     */
+    public void testGetCountryCode() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+
+        String wifiCountryCode = ShellIdentityUtils.invokeWithShellPermissions(
+                mWifiManager::getCountryCode);
+
+        if (wifiCountryCode == null) {
+            return;
+        }
+        assertEquals(2, wifiCountryCode.length());
+
+        // assert that the country code is all uppercase
+        assertEquals(wifiCountryCode.toUpperCase(Locale.US), wifiCountryCode);
+
+        String telephonyCountryCode = getContext().getSystemService(TelephonyManager.class)
+                .getNetworkCountryIso();
+        assertEquals(telephonyCountryCode, wifiCountryCode.toLowerCase(Locale.US));
     }
 }
