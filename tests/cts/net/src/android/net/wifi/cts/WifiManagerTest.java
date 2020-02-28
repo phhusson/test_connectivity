@@ -16,6 +16,7 @@
 
 package android.net.wifi.cts;
 
+import static com.google.common.truth.Truth.assertWithMessage;
 
 import android.app.UiAutomation;
 import android.content.BroadcastReceiver;
@@ -421,6 +422,33 @@ public class WifiManagerTest extends AndroidTestCase {
         rssiA = 5;
         rssiB = 4;
         assertTrue(WifiManager.compareSignalLevel(rssiA, rssiB) > 0);
+    }
+
+    /**
+     * Test that {@link WifiManager#calculateSignalLevel(int)} returns a value in the range
+     * [0, {@link WifiManager#getMaxSignalLevel()}], and its value is monotonically increasing as
+     * the RSSI increases.
+     */
+    public void testCalculateSignalLevel() {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+
+        int maxSignalLevel = mWifiManager.getMaxSignalLevel();
+
+        int prevSignalLevel = 0;
+        for (int rssi = -150; rssi <= 50; rssi++) {
+            int signalLevel = mWifiManager.calculateSignalLevel(rssi);
+
+            // between [0, maxSignalLevel]
+            assertWithMessage("For RSSI=%s", rssi).that(signalLevel).isAtLeast(0);
+            assertWithMessage("For RSSI=%s", rssi).that(signalLevel).isAtMost(maxSignalLevel);
+
+            // calculateSignalLevel(rssi) <= calculateSignalLevel(rssi + 1)
+            assertWithMessage("For RSSI=%s", rssi).that(signalLevel).isAtLeast(prevSignalLevel);
+            prevSignalLevel = signalLevel;
+        }
     }
 
     private static class TestLocalOnlyHotspotCallback extends WifiManager.LocalOnlyHotspotCallback {
