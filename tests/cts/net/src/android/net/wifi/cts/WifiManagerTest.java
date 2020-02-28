@@ -18,6 +18,7 @@ package android.net.wifi.cts;
 
 
 import static android.net.NetworkCapabilitiesProto.TRANSPORT_WIFI;
+import static android.net.wifi.WifiManager.TrafficStateCallback.DATA_ACTIVITY_INOUT;
 
 import static org.junit.Assert.assertNotEquals;
 
@@ -54,12 +55,16 @@ import android.util.Log;
 
 import androidx.test.platform.app.InstrumentationRegistry;
 
+import com.android.compatibility.common.util.ShellIdentityUtils;
 import com.android.compatibility.common.util.SystemUtil;
 
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -97,7 +102,7 @@ public class WifiManagerTest extends AndroidTestCase {
     private static final int SCAN_TIMEOUT_MSEC = 9000;
     private static final int TIMEOUT_MSEC = 6000;
     private static final int WAIT_MSEC = 60;
-    private static final int DURATION = 10000;
+    private static final int DURATION = 10_000;
     private static final int DURATION_SCREEN_TOGGLE = 2000;
     private static final int WIFI_SCAN_TEST_INTERVAL_MILLIS = 60 * 1000;
     private static final int WIFI_SCAN_TEST_CACHE_DELAY_MILLIS = 3 * 60 * 1000;
@@ -187,6 +192,10 @@ public class WifiManagerTest extends AndroidTestCase {
         synchronized (mMySync) {
             mMySync.expectedState = STATE_NULL;
         }
+
+        List<WifiConfiguration> savedNetworks = ShellIdentityUtils.invokeMethodWithShellPermissions(
+                mWifiManager, (wm) -> wm.getConfiguredNetworks());
+        assertFalse("Need at least one saved network", savedNetworks.isEmpty());
     }
 
     @Override
@@ -1072,8 +1081,6 @@ public class WifiManagerTest extends AndroidTestCase {
             // These below API's only work with privileged permissions (obtained via shell identity
             // for test)
             savedNetworks = mWifiManager.getConfiguredNetworks();
-            assertNotNull(savedNetworks);
-            assertFalse(savedNetworks.isEmpty());
 
             // Disable all the saved networks to trigger disconnect & disable autojoin.
             for (WifiConfiguration network : savedNetworks) {
@@ -1182,8 +1189,6 @@ public class WifiManagerTest extends AndroidTestCase {
             // These below API's only work with privileged permissions (obtained via shell identity
             // for test)
             savedNetworks = mWifiManager.getConfiguredNetworks();
-            assertNotNull(savedNetworks);
-            assertFalse(savedNetworks.isEmpty());
 
             // Ensure that the saved network is not metered.
             savedNetwork = savedNetworks.get(0);
@@ -1219,6 +1224,81 @@ public class WifiManagerTest extends AndroidTestCase {
             if (savedNetwork != null) {
                 mWifiManager.updateNetwork(savedNetwork);
             }
+            uiAutomation.dropShellPermissionIdentity();
+        }
+    }
+
+    private static class TestTrafficStateCallback implements WifiManager.TrafficStateCallback {
+        private final Object mLock;
+        public boolean onStateChangedCalled = false;
+        public int state = -1;
+
+        TestTrafficStateCallback(Object lock) {
+            mLock = lock;
+        }
+
+        @Override
+        public void onStateChanged(int state) {
+            synchronized (mLock) {
+                onStateChangedCalled = true;
+                this.state = state;
+                mLock.notify();
+            }
+        }
+    }
+
+    private void sendTraffic() {
+        for (int i = 0; i < 10; i ++) {
+            // Do some network operations
+            HttpURLConnection connection = null;
+            try {
+                URL url = new URL("http://www.google.com/");
+                connection = (HttpURLConnection) url.openConnection();
+                connection.setInstanceFollowRedirects(false);
+                connection.setConnectTimeout(TIMEOUT_MSEC);
+                connection.setReadTimeout(TIMEOUT_MSEC);
+                connection.setUseCaches(false);
+                connection.getInputStream();
+            } catch (Exception e) {
+                // ignore
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        }
+    }
+
+    /**
+     * Tests {@link WifiManager#registerTrafficStateCallback(Executor,
+     * WifiManager.TrafficStateCallback)} by sending some traffic.
+     */
+    public void testTrafficStateCallback() throws Exception {
+        TestTrafficStateCallback trafficStateCallback = new TestTrafficStateCallback(mLock);
+        UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        try {
+            uiAutomation.adoptShellPermissionIdentity();
+            // Trigger a scan & wait for connection to one of the saved networks.
+            mWifiManager.startScan();
+            waitForConnection();
+
+            // Turn screen on for wifi traffic polling.
+            turnScreenOn();
+            synchronized (mLock) {
+                try {
+                    mWifiManager.registerTrafficStateCallback(
+                            Executors.newSingleThreadExecutor(), trafficStateCallback);
+                    // Send some traffic to trigger the traffic state change callbacks.
+                    sendTraffic();
+                    // now wait for callback
+                    mLock.wait(DURATION);
+                } catch (InterruptedException e) {
+                }
+            }
+            // check if we got the state changed callback
+            assertTrue(trafficStateCallback.onStateChangedCalled);
+            assertEquals(DATA_ACTIVITY_INOUT, trafficStateCallback.state);
+        } finally {
+            turnScreenOff();
+            mWifiManager.unregisterTrafficStateCallback(trafficStateCallback);
             uiAutomation.dropShellPermissionIdentity();
         }
     }
