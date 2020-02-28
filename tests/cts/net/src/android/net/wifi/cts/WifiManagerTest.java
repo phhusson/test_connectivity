@@ -17,6 +17,10 @@
 package android.net.wifi.cts;
 
 
+import static android.net.NetworkCapabilitiesProto.TRANSPORT_WIFI;
+
+import static org.junit.Assert.assertNotEquals;
+
 import android.app.UiAutomation;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -26,8 +30,12 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.net.ConnectivityManager;
+import android.net.LinkProperties;
 import android.net.MacAddress;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
+import android.net.NetworkRequest;
 import android.net.wifi.ScanResult;
 import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.WifiConfiguration;
@@ -62,6 +70,7 @@ public class WifiManagerTest extends AndroidTestCase {
     }
 
     private WifiManager mWifiManager;
+    private ConnectivityManager mConnectivityManager;
     private WifiLock mWifiLock;
     private static MySync mMySync;
     private List<ScanResult> mScanResults = null;
@@ -165,6 +174,7 @@ public class WifiManagerTest extends AndroidTestCase {
 
         mContext.registerReceiver(mReceiver, mIntentFilter);
         mWifiManager = (WifiManager) getContext().getSystemService(Context.WIFI_SERVICE);
+        mConnectivityManager = getContext().getSystemService(ConnectivityManager.class);
         assertNotNull(mWifiManager);
         mWifiLock = mWifiManager.createWifiLock(TAG);
         mWifiLock.acquire();
@@ -1115,6 +1125,102 @@ public class WifiManagerTest extends AndroidTestCase {
      */
     public void testConnectWithWifiConfiguration() throws Exception {
         testConnect(false);
+
+    }
+
+    private static class TestNetworkCallback extends ConnectivityManager.NetworkCallback {
+        private final Object mLock;
+        public boolean onAvailableCalled = false;
+        public NetworkCapabilities networkCapabilities;
+
+        TestNetworkCallback(Object lock) {
+            mLock = lock;
+        }
+
+        @Override
+        public void onAvailable(Network network, NetworkCapabilities networkCapabilities,
+                LinkProperties linkProperties, boolean blocked) {
+            synchronized (mLock) {
+                onAvailableCalled = true;
+                this.networkCapabilities = networkCapabilities;
+                mLock.notify();
+            }
+        }
+    }
+
+    private void waitForNetworkCallbackAndCheckForMeteredness(boolean expectMetered) {
+        TestNetworkCallback networkCallbackListener = new TestNetworkCallback(mLock);
+        synchronized (mLock) {
+            try {
+                // File a request for wifi network.
+                mConnectivityManager.registerNetworkCallback(
+                        new NetworkRequest.Builder()
+                                .addTransportType(TRANSPORT_WIFI)
+                                .build(),
+                        networkCallbackListener);
+                // now wait for callback
+                mLock.wait(DURATION);
+            } catch (InterruptedException e) {
+            }
+        }
+        assertTrue(networkCallbackListener.onAvailableCalled);
+        assertNotEquals(expectMetered, networkCallbackListener.networkCapabilities.hasCapability(
+                NetworkCapabilities.NET_CAPABILITY_NOT_METERED));
+    }
+
+    /**
+     * Tests {@link WifiManager#save(WifiConfiguration, WifiManager.ActionListener)} by marking
+     * an existing saved network metered.
+     */
+    public void testSave() throws Exception {
+        TestActionListener actionListener = new TestActionListener(mLock);
+        UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        List<WifiConfiguration> savedNetworks = null;
+        WifiConfiguration savedNetwork = null;
+        try {
+            uiAutomation.adoptShellPermissionIdentity();
+            // These below API's only work with privileged permissions (obtained via shell identity
+            // for test)
+            savedNetworks = mWifiManager.getConfiguredNetworks();
+            assertNotNull(savedNetworks);
+            assertFalse(savedNetworks.isEmpty());
+
+            // Ensure that the saved network is not metered.
+            savedNetwork = savedNetworks.get(0);
+            assertNotEquals("Ensure that the saved network is configured as unmetered",
+                    savedNetwork.meteredOverride,
+                    WifiConfiguration.METERED_OVERRIDE_METERED);
+
+            // Trigger a scan & wait for connection to one of the saved networks.
+            mWifiManager.startScan();
+            waitForConnection();
+
+            // Check the network capabilities to ensure that the network is marked not metered.
+            waitForNetworkCallbackAndCheckForMeteredness(false);
+
+            // Now mark the network metered and save.
+            synchronized (mLock) {
+                try {
+                    WifiConfiguration modSavedNetwork = new WifiConfiguration(savedNetwork);
+                    modSavedNetwork.meteredOverride = WifiConfiguration.METERED_OVERRIDE_METERED;
+                    mWifiManager.save(modSavedNetwork, actionListener);
+                    // now wait for callback
+                    mLock.wait(DURATION);
+                } catch (InterruptedException e) {
+                }
+            }
+            // check if we got the success callback
+            assertTrue(actionListener.onSuccessCalled);
+            // Check the network capabilities to ensure that the network is marked metered now.
+            waitForNetworkCallbackAndCheckForMeteredness(true);
+
+        } finally {
+            // Restore original network config (restore the meteredness back);
+            if (savedNetwork != null) {
+                mWifiManager.updateNetwork(savedNetwork);
+            }
+            uiAutomation.dropShellPermissionIdentity();
+        }
     }
 
     private void assertWifiScanningIsOn() {
