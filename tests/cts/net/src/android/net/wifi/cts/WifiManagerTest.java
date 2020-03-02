@@ -1473,4 +1473,34 @@ public class WifiManagerTest extends AndroidTestCase {
             uiAutomation.dropShellPermissionIdentity();
         }
     }
+
+    /**
+     * Tests {@link WifiManager#factoryReset()}.
+     *
+     * Note: This test assumes that the device only has 1 or more saved networks before the test.
+     * The test will restore those when the test exits. But, it does not restore the softap
+     * configuration, suggestions, etc which will also have been lost on factory reset.
+     */
+    public void testFactoryReset() throws Exception {
+        UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        List<WifiConfiguration> savedNetworks = null;
+        try {
+            uiAutomation.adoptShellPermissionIdentity();
+            // These below API's only work with privileged permissions (obtained via shell identity
+            // for test)
+            savedNetworks = mWifiManager.getConfiguredNetworks();
+
+            mWifiManager.factoryReset();
+            // Ensure all the saved networks are removed.
+            assertEquals(0, mWifiManager.getConfiguredNetworks().size());
+        } finally {
+            // Restore the original saved networks.
+            if (savedNetworks != null) {
+                for (WifiConfiguration network : savedNetworks) {
+                    mWifiManager.save(network, null);
+                }
+            }
+            uiAutomation.dropShellPermissionIdentity();
+        }
+    }
 }
