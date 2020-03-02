@@ -19,6 +19,7 @@ package android.net.wifi.cts;
 import static com.google.common.truth.Truth.assertWithMessage;
 
 import static android.net.NetworkCapabilitiesProto.TRANSPORT_WIFI;
+import static android.net.wifi.WifiConfiguration.INVALID_NETWORK_ID;
 import static android.net.wifi.WifiManager.TrafficStateCallback.DATA_ACTIVITY_INOUT;
 
 import static org.junit.Assert.assertNotEquals;
@@ -605,9 +606,9 @@ public class WifiManagerTest extends AndroidTestCase {
         wifiConfiguration.SSID = SSID1;
         wifiConfiguration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
 
-        assertEquals(WifiConfiguration.INVALID_NETWORK_ID,
+        assertEquals(INVALID_NETWORK_ID,
                 mWifiManager.addNetwork(wifiConfiguration));
-        assertEquals(WifiConfiguration.INVALID_NETWORK_ID,
+        assertEquals(INVALID_NETWORK_ID,
                 mWifiManager.updateNetwork(wifiConfiguration));
         assertFalse(mWifiManager.enableNetwork(0, true));
         assertFalse(mWifiManager.disableNetwork(0));
@@ -1252,6 +1253,48 @@ public class WifiManagerTest extends AndroidTestCase {
             if (savedNetwork != null) {
                 mWifiManager.updateNetwork(savedNetwork);
             }
+            uiAutomation.dropShellPermissionIdentity();
+        }
+    }
+
+    /**
+     * Tests {@link WifiManager#forget(int, WifiManager.ActionListener)} by adding/removing a new
+     * network.
+     */
+    public void testForget() throws Exception {
+        TestActionListener actionListener = new TestActionListener(mLock);
+        UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        int newNetworkId = INVALID_NETWORK_ID;
+        try {
+            uiAutomation.adoptShellPermissionIdentity();
+            // These below API's only work with privileged permissions (obtained via shell identity
+            // for test)
+            List<WifiConfiguration> savedNetworks = mWifiManager.getConfiguredNetworks();
+
+            WifiConfiguration newOpenNetwork = new WifiConfiguration();
+            newOpenNetwork.SSID = "\"" + TEST_SSID_UNQUOTED + "\"";
+            newNetworkId = mWifiManager.addNetwork(newOpenNetwork);
+            assertNotEquals(INVALID_NETWORK_ID, newNetworkId);
+
+            assertEquals(savedNetworks.size() + 1, mWifiManager.getConfiguredNetworks().size());
+
+            // Now remove the network
+            synchronized (mLock) {
+                try {
+                    mWifiManager.forget(newNetworkId, actionListener);
+                    // now wait for callback
+                    mLock.wait(DURATION);
+                } catch (InterruptedException e) {
+                }
+            }
+            // check if we got the success callback
+            assertTrue(actionListener.onSuccessCalled);
+
+            // Ensure that the new network has been successfully removed.
+            assertEquals(savedNetworks.size(), mWifiManager.getConfiguredNetworks().size());
+        } finally {
+            // For whatever reason, if the forget fails, try removing using the public remove API.
+            if (newNetworkId != INVALID_NETWORK_ID) mWifiManager.removeNetwork(newNetworkId);
             uiAutomation.dropShellPermissionIdentity();
         }
     }
