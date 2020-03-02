@@ -52,6 +52,10 @@ public class WifiMigrationTest extends AndroidTestCase {
      * Tests {@link android.net.wifi.WifiMigration.ConfigStoreMigrationData} class.
      */
     public void testWifiMigrationConfigStoreDataBuilder() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         WifiConfiguration savedNetwork1 = new WifiConfiguration();
         savedNetwork1.SSID = "\"test1\"";
         WifiConfiguration savedNetwork2 = new WifiConfiguration();
@@ -83,6 +87,10 @@ public class WifiMigrationTest extends AndroidTestCase {
      * Tests {@link android.net.wifi.WifiMigration.ConfigStoreMigrationData} class.
      */
     public void testWifiMigrationSettingsDataBuilder() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         WifiMigration.SettingsMigrationData migrationData =
                 new WifiMigration.SettingsMigrationData.Builder()
                         .setScanAlwaysAvailable(true)

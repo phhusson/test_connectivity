@@ -1160,6 +1160,10 @@ public class WifiManagerTest extends AndroidTestCase {
      * network.
      */
     public void testConnectWithNetworkId() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         testConnect(true);
     }
 
@@ -1168,6 +1172,10 @@ public class WifiManagerTest extends AndroidTestCase {
      * existing saved network.
      */
     public void testConnectWithWifiConfiguration() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         testConnect(false);
 
     }
@@ -1217,6 +1225,10 @@ public class WifiManagerTest extends AndroidTestCase {
      * an existing saved network metered.
      */
     public void testSave() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         TestActionListener actionListener = new TestActionListener(mLock);
         UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
         List<WifiConfiguration> savedNetworks = null;
@@ -1270,6 +1282,10 @@ public class WifiManagerTest extends AndroidTestCase {
      * network.
      */
     public void testForget() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         TestActionListener actionListener = new TestActionListener(mLock);
         UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
         int newNetworkId = INVALID_NETWORK_ID;
@@ -1351,6 +1367,10 @@ public class WifiManagerTest extends AndroidTestCase {
      * WifiManager.TrafficStateCallback)} by sending some traffic.
      */
     public void testTrafficStateCallback() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         TestTrafficStateCallback trafficStateCallback = new TestTrafficStateCallback(mLock);
         UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
         try {
@@ -1387,6 +1407,10 @@ public class WifiManagerTest extends AndroidTestCase {
      * {@link WifiManager#isScanAlwaysAvailable()}.
      */
     public void testScanAlwaysAvailable() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
         Boolean currState = null;
         try {
@@ -1410,6 +1434,10 @@ public class WifiManagerTest extends AndroidTestCase {
      * {@link WifiManager#isScanThrottleEnabled()}.
      */
     public void testScanThrottleEnabled() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
         Boolean currState = null;
         try {
@@ -1433,6 +1461,10 @@ public class WifiManagerTest extends AndroidTestCase {
      * {@link WifiManager#isAutoWakeupEnabled()}.
      */
     public void testAutoWakeUpEnabled() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
         Boolean currState = null;
         try {
@@ -1456,6 +1488,10 @@ public class WifiManagerTest extends AndroidTestCase {
      * {@link WifiManager#isVerboseLoggingEnabled()}.
      */
     public void testVerboseLoggingEnabled() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
         Boolean currState = null;
         try {
@@ -1482,6 +1518,10 @@ public class WifiManagerTest extends AndroidTestCase {
      * configuration, suggestions, etc which will also have been lost on factory reset.
      */
     public void testFactoryReset() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
         List<WifiConfiguration> savedNetworks = null;
         try {
