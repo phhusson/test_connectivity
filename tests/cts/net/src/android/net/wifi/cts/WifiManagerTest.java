@@ -57,6 +57,7 @@ import android.util.Log;
 
 import androidx.test.platform.app.InstrumentationRegistry;
 
+import com.android.compatibility.common.util.PollingCheck;
 import com.android.compatibility.common.util.ShellIdentityUtils;
 import com.android.compatibility.common.util.SystemUtil;
 
@@ -106,6 +107,7 @@ public class WifiManagerTest extends AndroidTestCase {
     private static final int WAIT_MSEC = 60;
     private static final int DURATION = 10_000;
     private static final int DURATION_SCREEN_TOGGLE = 2000;
+    private static final int DURATION_SETTINGS_TOGGLE = 1_000;
     private static final int WIFI_SCAN_TEST_INTERVAL_MILLIS = 60 * 1000;
     private static final int WIFI_SCAN_TEST_CACHE_DELAY_MILLIS = 3 * 60 * 1000;
     private static final int WIFI_SCAN_TEST_ITERATIONS = 5;
@@ -990,6 +992,12 @@ public class WifiManagerTest extends AndroidTestCase {
         Thread.sleep(DURATION_SCREEN_TOGGLE);
     }
 
+    private void assertWifiScanningIsOn() {
+        if (!mWifiManager.isScanAlwaysAvailable()) {
+            fail("Wi-Fi scanning should be on.");
+        }
+    }
+
     /**
      * Verify that Wi-Fi scanning is not turned off when the screen turns off while wifi is disabled
      * but location is on.
@@ -1374,9 +1382,95 @@ public class WifiManagerTest extends AndroidTestCase {
         }
     }
 
-    private void assertWifiScanningIsOn() {
-        if(!mWifiManager.isScanAlwaysAvailable()) {
-            fail("Wi-Fi scanning should be on.");
+    /**
+     * Tests {@link WifiManager#setScanAlwaysAvailable(boolean)} &
+     * {@link WifiManager#isScanAlwaysAvailable()}.
+     */
+    public void testScanAlwaysAvailable() throws Exception {
+        UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        Boolean currState = null;
+        try {
+            uiAutomation.adoptShellPermissionIdentity();
+            currState = mWifiManager.isScanAlwaysAvailable();
+            boolean newState = !currState;
+            mWifiManager.setScanAlwaysAvailable(newState);
+            PollingCheck.check(
+                    "Wifi settings toggle failed!",
+                    DURATION_SETTINGS_TOGGLE,
+                    () -> mWifiManager.isScanAlwaysAvailable() == newState);
+            assertEquals(newState, mWifiManager.isScanAlwaysAvailable());
+        } finally {
+            if (currState != null) mWifiManager.setScanAlwaysAvailable(currState);
+            uiAutomation.dropShellPermissionIdentity();
+        }
+    }
+
+    /**
+     * Tests {@link WifiManager#setScanThrottleEnabled(boolean)} &
+     * {@link WifiManager#isScanThrottleEnabled()}.
+     */
+    public void testScanThrottleEnabled() throws Exception {
+        UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        Boolean currState = null;
+        try {
+            uiAutomation.adoptShellPermissionIdentity();
+            currState = mWifiManager.isScanThrottleEnabled();
+            boolean newState = !currState;
+            mWifiManager.setScanThrottleEnabled(newState);
+            PollingCheck.check(
+                    "Wifi settings toggle failed!",
+                    DURATION_SETTINGS_TOGGLE,
+                    () -> mWifiManager.isScanThrottleEnabled() == newState);
+            assertEquals(newState, mWifiManager.isScanThrottleEnabled());
+        } finally {
+            if (currState != null) mWifiManager.setScanThrottleEnabled(currState);
+            uiAutomation.dropShellPermissionIdentity();
+        }
+    }
+
+    /**
+     * Tests {@link WifiManager#setAutoWakeupEnabled(boolean)} &
+     * {@link WifiManager#isAutoWakeupEnabled()}.
+     */
+    public void testAutoWakeUpEnabled() throws Exception {
+        UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        Boolean currState = null;
+        try {
+            uiAutomation.adoptShellPermissionIdentity();
+            currState = mWifiManager.isAutoWakeupEnabled();
+            boolean newState = !currState;
+            mWifiManager.setAutoWakeupEnabled(newState);
+            PollingCheck.check(
+                    "Wifi settings toggle failed!",
+                    DURATION_SETTINGS_TOGGLE,
+                    () -> mWifiManager.isAutoWakeupEnabled() == newState);
+            assertEquals(newState, mWifiManager.isAutoWakeupEnabled());
+        } finally {
+            if (currState != null) mWifiManager.setAutoWakeupEnabled(currState);
+            uiAutomation.dropShellPermissionIdentity();
+        }
+    }
+
+    /**
+     * Tests {@link WifiManager#setVerboseLoggingEnabled(boolean)} &
+     * {@link WifiManager#isVerboseLoggingEnabled()}.
+     */
+    public void testVerboseLoggingEnabled() throws Exception {
+        UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        Boolean currState = null;
+        try {
+            uiAutomation.adoptShellPermissionIdentity();
+            currState = mWifiManager.isVerboseLoggingEnabled();
+            boolean newState = !currState;
+            mWifiManager.setVerboseLoggingEnabled(newState);
+            PollingCheck.check(
+                    "Wifi settings toggle failed!",
+                    DURATION_SETTINGS_TOGGLE,
+                    () -> mWifiManager.isVerboseLoggingEnabled() == newState);
+            assertEquals(newState, mWifiManager.isVerboseLoggingEnabled());
+        } finally {
+            if (currState != null) mWifiManager.setVerboseLoggingEnabled(currState);
+            uiAutomation.dropShellPermissionIdentity();
         }
     }
 }
