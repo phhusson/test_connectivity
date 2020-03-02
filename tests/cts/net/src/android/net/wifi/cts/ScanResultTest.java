@@ -16,6 +16,10 @@
 
 package android.net.wifi.cts;
 
+import static com.google.common.truth.Truth.assertThat;
+import static com.google.common.truth.Truth.assertWithMessage;
+
+import java.nio.ByteBuffer;
 import java.util.List;
 
 import android.content.BroadcastReceiver;
@@ -23,12 +27,12 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.wifi.ScanResult;
+import android.net.wifi.ScanResult.InformationElement;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.WifiLock;
 import android.platform.test.annotations.AppModeFull;
 import android.test.AndroidTestCase;
-import android.util.Log;
 
 import com.android.compatibility.common.util.SystemUtil;
 
@@ -57,6 +61,14 @@ public class ScanResultTest extends AndroidTestCase {
     private static final int SCAN_MAX_RETRY_COUNT = 6;
     private static final int SCAN_FIND_BSSID_MAX_RETRY_COUNT = 5;
     private static final long SCAN_FIND_BSSID_WAIT_MSEC = 5_000L;
+
+    private static final String TEST_SSID = "TEST_SSID";
+    public static final String TEST_BSSID = "04:ac:fe:45:34:10";
+    public static final String TEST_CAPS = "CCMP";
+    public static final int TEST_LEVEL = -56;
+    public static final int TEST_FREQUENCY = 2412;
+    public static final long TEST_TIMESTAMP = 4660L;
+
     private IntentFilter mIntentFilter;
     private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
         @Override
@@ -100,13 +112,13 @@ public class ScanResultTest extends AndroidTestCase {
 
         mContext.registerReceiver(mReceiver, mIntentFilter);
         mWifiManager = (WifiManager) getContext().getSystemService(Context.WIFI_SERVICE);
-        assertNotNull(mWifiManager);
+        assertThat(mWifiManager).isNotNull();
         mWifiLock = mWifiManager.createWifiLock(TAG);
         mWifiLock.acquire();
         if (!mWifiManager.isWifiEnabled())
             setWifiEnabled(true);
         Thread.sleep(ENABLE_WAIT_MSEC);
-        assertTrue(mWifiManager.isWifiEnabled());
+        assertThat(mWifiManager.isWifiEnabled()).isTrue();
         mMySync.expectedState = STATE_NULL;
     }
 
@@ -150,12 +162,48 @@ public class ScanResultTest extends AndroidTestCase {
             // skip the test if WiFi is not supported
             return;
         }
-        List<ScanResult> scanResults = mWifiManager.getScanResults();
         // this test case should in Wifi environment
-        for (int i = 0; i < scanResults.size(); i++) {
-            ScanResult mScanResult = scanResults.get(i);
-            assertNotNull(mScanResult.toString());
+        for (ScanResult scanResult : mWifiManager.getScanResults()) {
+            assertThat(scanResult.toString()).isNotNull();
+
+            for (InformationElement ie : scanResult.getInformationElements()) {
+                testInformationElementCopyConstructor(ie);
+                testInformationElementFields(ie);
+            }
+
+            assertThat(scanResult.getWifiStandard()).isAnyOf(
+                    ScanResult.WIFI_STANDARD_UNKNOWN,
+                    ScanResult.WIFI_STANDARD_LEGACY,
+                    ScanResult.WIFI_STANDARD_11N,
+                    ScanResult.WIFI_STANDARD_11AC,
+                    ScanResult.WIFI_STANDARD_11AX
+            );
+
+            scanResult.isPasspointNetwork();
         }
+    }
+
+    private void testInformationElementCopyConstructor(InformationElement ie) {
+        InformationElement copy = new InformationElement(ie);
+
+        assertThat(copy.getId()).isEqualTo(ie.getId());
+        assertThat(copy.getIdExt()).isEqualTo(ie.getIdExt());
+        assertThat(copy.getBytes()).isEqualTo(ie.getBytes());
+    }
+
+    private void testInformationElementFields(InformationElement ie) {
+        // id is 1 octet
+        int id = ie.getId();
+        assertThat(id).isAtLeast(0);
+        assertThat(id).isAtMost(255);
+
+        // idExt is 0 or 1 octet
+        int idExt = ie.getIdExt();
+        assertThat(idExt).isAtLeast(0);
+        assertThat(idExt).isAtMost(255);
+
+        ByteBuffer bytes = ie.getBytes();
+        assertThat(bytes).isNotNull();
     }
 
     /* Multiple scans to ensure bssid is updated */
@@ -186,7 +234,7 @@ public class ScanResultTest extends AndroidTestCase {
         for (ScanResult result : scanResults) {
             BSSID = result.BSSID;
             timestamp = result.timestamp;
-            assertTrue(timestamp != 0);
+            assertThat(timestamp).isNotEqualTo(0);
             break;
         }
 
@@ -196,11 +244,34 @@ public class ScanResultTest extends AndroidTestCase {
         for (ScanResult result : scanResults) {
             if (result.BSSID.equals(BSSID)) {
                 long timeDiff = (result.timestamp - timestamp) / 1000;
-                assertTrue (timeDiff > 0);
-                assertTrue (timeDiff < 6 * SCAN_WAIT_MSEC);
+                assertThat(timeDiff).isGreaterThan(0L);
+                assertThat(timeDiff).isLessThan(6L * SCAN_WAIT_MSEC);
             }
         }
+    }
 
+    /** Test that the copy constructor copies fields correctly. */
+    public void testScanResultConstructors() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+
+        ScanResult scanResult = new ScanResult();
+        scanResult.SSID = TEST_SSID;
+        scanResult.BSSID = TEST_BSSID;
+        scanResult.capabilities = TEST_CAPS;
+        scanResult.level = TEST_LEVEL;
+        scanResult.frequency = TEST_FREQUENCY;
+        scanResult.timestamp = TEST_TIMESTAMP;
+
+        ScanResult scanResult2 = new ScanResult(scanResult);
+        assertThat(scanResult2.SSID).isEqualTo(TEST_SSID);
+        assertThat(scanResult2.BSSID).isEqualTo(TEST_BSSID);
+        assertThat(scanResult2.capabilities).isEqualTo(TEST_CAPS);
+        assertThat(scanResult2.level).isEqualTo(TEST_LEVEL);
+        assertThat(scanResult2.frequency).isEqualTo(TEST_FREQUENCY);
+        assertThat(scanResult2.timestamp).isEqualTo(TEST_TIMESTAMP);
     }
 
     public void testScanResultMatchesWifiInfo() throws Exception {
@@ -211,7 +282,7 @@ public class ScanResultTest extends AndroidTestCase {
 
         // This test case should run while connected to Wifi
         final WifiInfo wifiInfo = mWifiManager.getConnectionInfo();
-        assertNotNull(wifiInfo);
+        assertThat(wifiInfo).isNotNull();
 
         ScanResult currentNetwork = null;
         for (int i = 0; i < SCAN_FIND_BSSID_MAX_RETRY_COUNT; i++) {
@@ -225,16 +296,17 @@ public class ScanResultTest extends AndroidTestCase {
             }
             Thread.sleep(SCAN_FIND_BSSID_WAIT_MSEC);
         }
-        assertNotNull("Current network not found in scan results", currentNetwork);
+        assertWithMessage("Current network not found in scan results")
+                .that(currentNetwork).isNotNull();
 
         String wifiInfoSsidQuoted = wifiInfo.getSSID();
         String scanResultSsidUnquoted = currentNetwork.SSID;
 
-        assertEquals(
+        assertWithMessage(
                 "SSID mismatch: make sure this isn't a hidden network or an SSID containing "
-                        + "non-UTF-8 characters - neither is supported by this CTS test.",
-                wifiInfoSsidQuoted,
-                "\"" + scanResultSsidUnquoted + "\"");
-        assertEquals(wifiInfo.getFrequency(), currentNetwork.frequency);
+                        + "non-UTF-8 characters - neither is supported by this CTS test.")
+                .that("\"" + scanResultSsidUnquoted + "\"")
+                .isEqualTo(wifiInfoSsidQuoted);
+        assertThat(currentNetwork.frequency).isEqualTo(wifiInfo.getFrequency());
     }
 }
