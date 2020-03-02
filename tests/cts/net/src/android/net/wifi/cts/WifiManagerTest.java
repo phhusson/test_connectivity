@@ -16,11 +16,11 @@
 
 package android.net.wifi.cts;
 
-import static com.google.common.truth.Truth.assertWithMessage;
-
 import static android.net.NetworkCapabilitiesProto.TRANSPORT_WIFI;
 import static android.net.wifi.WifiConfiguration.INVALID_NETWORK_ID;
 import static android.net.wifi.WifiManager.TrafficStateCallback.DATA_ACTIVITY_INOUT;
+
+import static com.google.common.truth.Truth.assertWithMessage;
 
 import static org.junit.Assert.assertNotEquals;
 
