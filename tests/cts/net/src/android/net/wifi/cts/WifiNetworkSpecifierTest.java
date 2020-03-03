@@ -102,6 +102,15 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
         assertFalse("Need at least one saved network", savedNetworks.isEmpty());
         // Pick any one of the saved networks on the device (assumes that it is in range)
         mTestNetwork = savedNetworks.get(0);
+        // Disconnect & disable auto-join on the saved network to prevent auto-connect from
+        // interfering with the test.
+        ShellIdentityUtils.invokeWithShellPermissions(
+                () -> mWifiManager.disableNetwork(mTestNetwork.networkId));
+        // wait for Wifi to be disconnected
+        PollingCheck.check(
+                "Wifi not disconnected",
+                20000,
+                () -> mWifiManager.getConnectionInfo().getNetworkId() == -1);
     }
 
     @Override
@@ -113,6 +122,8 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
         }
         if (!mWifiManager.isWifiEnabled()) setWifiEnabled(true);
         turnScreenOff();
+        ShellIdentityUtils.invokeWithShellPermissions(
+                () -> mWifiManager.enableNetwork(mTestNetwork.networkId, false));
         ShellIdentityUtils.invokeWithShellPermissions(
                 () -> mWifiManager.setVerboseLoggingEnabled(mWasVerboseLoggingEnabled));
         super.tearDown();
@@ -139,6 +150,7 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
     private static class TestNetworkCallback extends ConnectivityManager.NetworkCallback {
         private final Object mLock;
         public boolean onAvailableCalled = false;
+        public boolean onUnavailableCalled = false;
         public NetworkCapabilities networkCapabilities;
 
         TestNetworkCallback(Object lock) {
@@ -151,6 +163,14 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
             synchronized (mLock) {
                 onAvailableCalled = true;
                 this.networkCapabilities = networkCapabilities;
+                mLock.notify();
+            }
+        }
+
+        @Override
+        public void onUnavailable() {
+            synchronized (mLock) {
+                onUnavailableCalled = true;
                 mLock.notify();
             }
         }
@@ -218,7 +238,7 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
         }
     }
 
-    private void handleUiInteractions() {
+    private void handleUiInteractions(boolean shouldUserReject) {
         UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
         TestNetworkRequestMatchCallback networkRequestMatchCallback =
                 new TestNetworkRequestMatchCallback(mUiLock);
@@ -250,10 +270,14 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
             assertNotNull(networkRequestMatchCallback.matchedScanResults);
             assertThat(networkRequestMatchCallback.matchedScanResults.size()).isAtLeast(1);
 
-            // 3. Trigger connection to one of the matched networks (should be 1 in all cases).
-            networkRequestMatchCallback.userSelectionCallback.select(mTestNetwork);
+            // 3. Trigger connection to one of the matched networks or reject the request.
+            if (shouldUserReject) {
+                networkRequestMatchCallback.userSelectionCallback.reject();
+            } else {
+                networkRequestMatchCallback.userSelectionCallback.select(mTestNetwork);
+            }
 
-            // 4. Wait for connection success.
+            // 4. Wait for connection success or abort.
             synchronized (mUiLock) {
                 try {
                     // now wait for the registration callback first.
@@ -261,7 +285,11 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
                 } catch (InterruptedException e) {
                 }
             }
-            assertTrue(networkRequestMatchCallback.onConnectSuccessCalled);
+            if (shouldUserReject) {
+                assertTrue(networkRequestMatchCallback.onAbortCalled);
+            } else {
+                assertTrue(networkRequestMatchCallback.onConnectSuccessCalled);
+            }
         } finally {
             mWifiManager.unregisterNetworkRequestMatchCallback(networkRequestMatchCallback);
             uiAutomation.dropShellPermissionIdentity();
@@ -270,10 +298,14 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
 
     /**
      * Tests the entire connection flow using the provided specifier.
+     *
+     * @param specifier Specifier to use for network request.
+     * @param shouldUserReject Whether to simulate user rejection or not.
      */
-    private void testConnectWithSpecifier(WifiNetworkSpecifier specifier) {
+    private void testConnectionFlowWithSpecifier(
+            WifiNetworkSpecifier specifier, boolean shouldUserReject) {
         // Fork a thread to handle the UI interactions.
-        Thread uiThread = new Thread(() -> handleUiInteractions());
+        Thread uiThread = new Thread(() -> handleUiInteractions(shouldUserReject));
 
         // File the network request & wait for the callback.
         TestNetworkCallback networkCallbackListener = new TestNetworkCallback(mLock);
@@ -286,6 +318,9 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
                                 .setNetworkSpecifier(specifier)
                                 .build(),
                         networkCallbackListener);
+                // Wait for the request to reach the wifi stack before kick-starting the UI
+                // interactions.
+                Thread.sleep(100);
                 // Start the UI interactions.
                 uiThread.run();
                 // now wait for callback
@@ -293,7 +328,11 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
             } catch (InterruptedException e) {
             }
         }
-        assertTrue(networkCallbackListener.onAvailableCalled);
+        if (shouldUserReject) {
+            assertTrue(networkCallbackListener.onUnavailableCalled);
+        } else {
+            assertTrue(networkCallbackListener.onAvailableCalled);
+        }
 
         try {
             // Ensure that the UI interaction thread has completed.
@@ -304,6 +343,14 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
 
         // Release the request after the test.
         mConnectivityManager.unregisterNetworkCallback(networkCallbackListener);
+    }
+
+    private void testSuccessfulConnectionWithSpecifier(WifiNetworkSpecifier specifier) {
+        testConnectionFlowWithSpecifier(specifier, false);
+    }
+
+    private void testUserRejectionWithSpecifier(WifiNetworkSpecifier specifier) {
+        testConnectionFlowWithSpecifier(specifier, true);
     }
 
     private WifiNetworkSpecifier.Builder createSpecifierBuilderWithCredentialFromSavedNetwork() {
@@ -325,17 +372,17 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
     /**
      * Tests the entire connection flow using a specific SSID in the specifier.
      */
-    public void testConnectWithSpecificSsid() {
+    public void testConnectionWithSpecificSsid() {
         WifiNetworkSpecifier specifier = createSpecifierBuilderWithCredentialFromSavedNetwork()
                 .setSsid(WifiInfo.sanitizeSsid(mTestNetwork.SSID))
                 .build();
-        testConnectWithSpecifier(specifier);
+        testSuccessfulConnectionWithSpecifier(specifier);
     }
 
     /**
      * Tests the entire connection flow using a SSID pattern in the specifier.
      */
-    public void testConnectWithSsidPattern() {
+    public void testConnectionWithSsidPattern() {
         // Creates a ssid pattern by dropping the last char in the saved network & pass that
         // as a prefix match pattern in the request.
         String ssidUnquoted = WifiInfo.sanitizeSsid(mTestNetwork.SSID);
@@ -347,7 +394,7 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
         WifiNetworkSpecifier specifier = createSpecifierBuilderWithCredentialFromSavedNetwork()
                 .setSsidPattern(new PatternMatcher(ssidPrefix, PatternMatcher.PATTERN_PREFIX))
                 .build();
-        testConnectWithSpecifier(specifier);
+        testSuccessfulConnectionWithSpecifier(specifier);
     }
 
     private static class TestScanResultsCallback extends WifiManager.ScanResultsCallback {
@@ -403,18 +450,18 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
     /**
      * Tests the entire connection flow using a specific BSSID in the specifier.
      */
-    public void testConnectWithSpecificBssid() {
+    public void testConnectionWithSpecificBssid() {
         ScanResult scanResult = findScanResultMatchingSavedNetwork();
         WifiNetworkSpecifier specifier = createSpecifierBuilderWithCredentialFromSavedNetwork()
                 .setBssid(MacAddress.fromString(scanResult.BSSID))
                 .build();
-        testConnectWithSpecifier(specifier);
+        testSuccessfulConnectionWithSpecifier(specifier);
     }
 
     /**
      * Tests the entire connection flow using a BSSID pattern in the specifier.
      */
-    public void testConnectWithBssidPattern() {
+    public void testConnectionWithBssidPattern() {
         ScanResult scanResult = findScanResultMatchingSavedNetwork();
         // Note: The match may return more than 1 network in this case since we use a prefix match,
         // But, we will still ensure that the UI interactions in the test still selects the
@@ -423,6 +470,16 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
                 .setBssidPattern(MacAddress.fromString(scanResult.BSSID),
                         MacAddress.fromString("ff:ff:ff:00:00:00"))
                 .build();
-        testConnectWithSpecifier(specifier);
+        testSuccessfulConnectionWithSpecifier(specifier);
+    }
+
+    /**
+     * Tests the entire connection flow using a BSSID pattern in the specifier.
+     */
+    public void testUserRejectionWithSpecificSsid() {
+        WifiNetworkSpecifier specifier = createSpecifierBuilderWithCredentialFromSavedNetwork()
+                .setSsid(WifiInfo.sanitizeSsid(mTestNetwork.SSID))
+                .build();
+        testUserRejectionWithSpecifier(specifier);
     }
 }
