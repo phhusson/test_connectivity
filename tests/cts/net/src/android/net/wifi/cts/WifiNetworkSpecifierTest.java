@@ -363,9 +363,12 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
             } else {
                 fail("Unsupported security type found in saved networks");
             }
+        } else if (!mTestNetwork.allowedKeyManagement.get(WifiConfiguration.KeyMgmt.OWE)) {
+            specifierBuilder.setIsEnhancedOpen(false);
         } else if (!mTestNetwork.allowedKeyManagement.get(WifiConfiguration.KeyMgmt.NONE)) {
             fail("Unsupported security type found in saved networks");
         }
+        specifierBuilder.setIsHiddenSsid(mTestNetwork.hiddenSSID);
         return specifierBuilder;
     }
 
