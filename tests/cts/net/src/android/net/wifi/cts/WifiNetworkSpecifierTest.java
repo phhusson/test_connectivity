@@ -57,6 +57,7 @@ import java.util.concurrent.Executors;
  * ConnectivityManager.NetworkCallback)}.
  *
  * Assumes that all the saved networks is either open/WPA1/WPA2/WPA3 authenticated network.
+ * TODO(b/150716005): Use assumeTrue for wifi support check.
  */
 @AppModeFull(reason = "Cannot get WifiManager in instant app mode")
 public class WifiNetworkSpecifierTest extends AndroidTestCase {
@@ -376,6 +377,10 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
      * Tests the entire connection flow using a specific SSID in the specifier.
      */
     public void testConnectionWithSpecificSsid() {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         WifiNetworkSpecifier specifier = createSpecifierBuilderWithCredentialFromSavedNetwork()
                 .setSsid(WifiInfo.sanitizeSsid(mTestNetwork.SSID))
                 .build();
@@ -386,6 +391,10 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
      * Tests the entire connection flow using a SSID pattern in the specifier.
      */
     public void testConnectionWithSsidPattern() {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         // Creates a ssid pattern by dropping the last char in the saved network & pass that
         // as a prefix match pattern in the request.
         String ssidUnquoted = WifiInfo.sanitizeSsid(mTestNetwork.SSID);
@@ -454,6 +463,10 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
      * Tests the entire connection flow using a specific BSSID in the specifier.
      */
     public void testConnectionWithSpecificBssid() {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         ScanResult scanResult = findScanResultMatchingSavedNetwork();
         WifiNetworkSpecifier specifier = createSpecifierBuilderWithCredentialFromSavedNetwork()
                 .setBssid(MacAddress.fromString(scanResult.BSSID))
@@ -465,6 +478,10 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
      * Tests the entire connection flow using a BSSID pattern in the specifier.
      */
     public void testConnectionWithBssidPattern() {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         ScanResult scanResult = findScanResultMatchingSavedNetwork();
         // Note: The match may return more than 1 network in this case since we use a prefix match,
         // But, we will still ensure that the UI interactions in the test still selects the
@@ -480,6 +497,10 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
      * Tests the entire connection flow using a BSSID pattern in the specifier.
      */
     public void testUserRejectionWithSpecificSsid() {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         WifiNetworkSpecifier specifier = createSpecifierBuilderWithCredentialFromSavedNetwork()
                 .setSsid(WifiInfo.sanitizeSsid(mTestNetwork.SSID))
                 .build();
