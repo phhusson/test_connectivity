@@ -17,6 +17,7 @@
 package android.net.wifi.cts;
 
 import static android.net.NetworkCapabilitiesProto.TRANSPORT_WIFI;
+import static android.os.Process.myUid;
 
 import static com.google.common.truth.Truth.assertThat;
 
@@ -24,6 +25,7 @@ import android.app.UiAutomation;
 import android.content.Context;
 import android.net.ConnectivityManager;
 import android.net.LinkProperties;
+import android.net.MacAddress;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
@@ -33,9 +35,12 @@ import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.NetworkRequestMatchCallback;
 import android.net.wifi.WifiNetworkSpecifier;
+import android.os.PatternMatcher;
+import android.os.WorkSource;
 import android.platform.test.annotations.AppModeFull;
 import android.support.test.uiautomator.UiDevice;
 import android.test.AndroidTestCase;
+import android.text.TextUtils;
 
 import androidx.test.platform.app.InstrumentationRegistry;
 
@@ -213,23 +218,6 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
         }
     }
 
-    private WifiNetworkSpecifier createSpecifierWithSpecificSsidFromSavedNetwork() {
-        WifiNetworkSpecifier.Builder specifierBuilder = new WifiNetworkSpecifier.Builder()
-                .setSsid(WifiInfo.sanitizeSsid(mTestNetwork.SSID));
-        if (mTestNetwork.preSharedKey != null) {
-            if (mTestNetwork.allowedKeyManagement.get(WifiConfiguration.KeyMgmt.WPA_PSK)) {
-                specifierBuilder.setWpa2Passphrase(mTestNetwork.preSharedKey);
-            } else if (mTestNetwork.allowedKeyManagement.get(WifiConfiguration.KeyMgmt.SAE)) {
-                specifierBuilder.setWpa3Passphrase(mTestNetwork.preSharedKey);
-            } else {
-                fail("Unsupported security type found in saved networks");
-            }
-        } else if (!mTestNetwork.allowedKeyManagement.get(WifiConfiguration.KeyMgmt.NONE)) {
-            fail("Unsupported security type found in saved networks");
-        }
-        return specifierBuilder.build();
-    }
-
     private void handleUiInteractions() {
         UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
         TestNetworkRequestMatchCallback networkRequestMatchCallback =
@@ -281,11 +269,9 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
     }
 
     /**
-     * Tests the entire connection flow using a specific SSID in the specifier.
+     * Tests the entire connection flow using the provided specifier.
      */
-    public void testConnectWithSpecificSsid() {
-        WifiNetworkSpecifier specifier = createSpecifierWithSpecificSsidFromSavedNetwork();
-
+    private void testConnectWithSpecifier(WifiNetworkSpecifier specifier) {
         // Fork a thread to handle the UI interactions.
         Thread uiThread = new Thread(() -> handleUiInteractions());
 
@@ -318,5 +304,125 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
 
         // Release the request after the test.
         mConnectivityManager.unregisterNetworkCallback(networkCallbackListener);
+    }
+
+    private WifiNetworkSpecifier.Builder createSpecifierBuilderWithCredentialFromSavedNetwork() {
+        WifiNetworkSpecifier.Builder specifierBuilder = new WifiNetworkSpecifier.Builder();
+        if (mTestNetwork.preSharedKey != null) {
+            if (mTestNetwork.allowedKeyManagement.get(WifiConfiguration.KeyMgmt.WPA_PSK)) {
+                specifierBuilder.setWpa2Passphrase(mTestNetwork.preSharedKey);
+            } else if (mTestNetwork.allowedKeyManagement.get(WifiConfiguration.KeyMgmt.SAE)) {
+                specifierBuilder.setWpa3Passphrase(mTestNetwork.preSharedKey);
+            } else {
+                fail("Unsupported security type found in saved networks");
+            }
+        } else if (!mTestNetwork.allowedKeyManagement.get(WifiConfiguration.KeyMgmt.NONE)) {
+            fail("Unsupported security type found in saved networks");
+        }
+        return specifierBuilder;
+    }
+
+    /**
+     * Tests the entire connection flow using a specific SSID in the specifier.
+     */
+    public void testConnectWithSpecificSsid() {
+        WifiNetworkSpecifier specifier = createSpecifierBuilderWithCredentialFromSavedNetwork()
+                .setSsid(WifiInfo.sanitizeSsid(mTestNetwork.SSID))
+                .build();
+        testConnectWithSpecifier(specifier);
+    }
+
+    /**
+     * Tests the entire connection flow using a SSID pattern in the specifier.
+     */
+    public void testConnectWithSsidPattern() {
+        // Creates a ssid pattern by dropping the last char in the saved network & pass that
+        // as a prefix match pattern in the request.
+        String ssidUnquoted = WifiInfo.sanitizeSsid(mTestNetwork.SSID);
+        assertThat(ssidUnquoted.length()).isAtLeast(2);
+        String ssidPrefix = ssidUnquoted.substring(0, ssidUnquoted.length() - 1);
+        // Note: The match may return more than 1 network in this case since we use a prefix match,
+        // But, we will still ensure that the UI interactions in the test still selects the
+        // saved network for connection.
+        WifiNetworkSpecifier specifier = createSpecifierBuilderWithCredentialFromSavedNetwork()
+                .setSsidPattern(new PatternMatcher(ssidPrefix, PatternMatcher.PATTERN_PREFIX))
+                .build();
+        testConnectWithSpecifier(specifier);
+    }
+
+    private static class TestScanResultsCallback extends WifiManager.ScanResultsCallback {
+        private final Object mLock;
+        public boolean onAvailableCalled = false;
+
+        TestScanResultsCallback(Object lock) {
+            mLock = lock;
+        }
+
+        @Override
+        public void onScanResultsAvailable() {
+            synchronized (mLock) {
+                onAvailableCalled = true;
+                mLock.notify();
+            }
+        }
+    }
+
+    /**
+     * Loops through all available scan results and finds the first match for the saved network.
+     *
+     * Note:
+     * a) If there are more than 2 networks with the same SSID, but different credential type, then
+     * this matching may pick the wrong one.
+     */
+    private ScanResult findScanResultMatchingSavedNetwork() {
+        // Trigger a scan to get fresh scan results.
+        TestScanResultsCallback scanResultsCallback = new TestScanResultsCallback(mLock);
+        synchronized (mLock) {
+            try {
+                mWifiManager.registerScanResultsCallback(
+                        Executors.newSingleThreadExecutor(), scanResultsCallback);
+                mWifiManager.startScan(new WorkSource(myUid()));
+                // now wait for callback
+                mLock.wait(DURATION_NETWORK_CONNECTION);
+            } catch (InterruptedException e) {
+            } finally {
+                mWifiManager.unregisterScanResultsCallback(scanResultsCallback);
+            }
+        }
+        List<ScanResult> scanResults = mWifiManager.getScanResults();
+        if (scanResults == null || scanResults.isEmpty()) fail("No scan results available");
+        for (ScanResult scanResult : scanResults) {
+            if (TextUtils.equals(scanResult.SSID, WifiInfo.sanitizeSsid(mTestNetwork.SSID))) {
+                return scanResult;
+            }
+        }
+        fail("No matching scan results found");
+        return null;
+    }
+
+    /**
+     * Tests the entire connection flow using a specific BSSID in the specifier.
+     */
+    public void testConnectWithSpecificBssid() {
+        ScanResult scanResult = findScanResultMatchingSavedNetwork();
+        WifiNetworkSpecifier specifier = createSpecifierBuilderWithCredentialFromSavedNetwork()
+                .setBssid(MacAddress.fromString(scanResult.BSSID))
+                .build();
+        testConnectWithSpecifier(specifier);
+    }
+
+    /**
+     * Tests the entire connection flow using a BSSID pattern in the specifier.
+     */
+    public void testConnectWithBssidPattern() {
+        ScanResult scanResult = findScanResultMatchingSavedNetwork();
+        // Note: The match may return more than 1 network in this case since we use a prefix match,
+        // But, we will still ensure that the UI interactions in the test still selects the
+        // saved network for connection.
+        WifiNetworkSpecifier specifier = createSpecifierBuilderWithCredentialFromSavedNetwork()
+                .setBssidPattern(MacAddress.fromString(scanResult.BSSID),
+                        MacAddress.fromString("ff:ff:ff:00:00:00"))
+                .build();
+        testConnectWithSpecifier(specifier);
     }
 }
