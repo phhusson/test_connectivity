@@ -16,10 +16,11 @@
 
 package android.net.wifi.cts;
 
-import static com.google.common.truth.Truth.assertWithMessage;
-
 import static android.net.NetworkCapabilitiesProto.TRANSPORT_WIFI;
+import static android.net.wifi.WifiConfiguration.INVALID_NETWORK_ID;
 import static android.net.wifi.WifiManager.TrafficStateCallback.DATA_ACTIVITY_INOUT;
+
+import static com.google.common.truth.Truth.assertWithMessage;
 
 import static org.junit.Assert.assertNotEquals;
 
@@ -49,6 +50,7 @@ import android.os.UserHandle;
 import android.platform.test.annotations.AppModeFull;
 import android.provider.Settings;
 import android.support.test.uiautomator.UiDevice;
+import android.telephony.TelephonyManager;
 import android.test.AndroidTestCase;
 import android.text.TextUtils;
 import android.util.ArraySet;
@@ -56,12 +58,14 @@ import android.util.Log;
 
 import androidx.test.platform.app.InstrumentationRegistry;
 
+import com.android.compatibility.common.util.PollingCheck;
 import com.android.compatibility.common.util.ShellIdentityUtils;
 import com.android.compatibility.common.util.SystemUtil;
 
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
@@ -83,6 +87,7 @@ public class WifiManagerTest extends AndroidTestCase {
     private NetworkInfo mNetworkInfo;
     private Object mLock = new Object();
     private UiDevice mUiDevice;
+    private boolean mWasVerboseLoggingEnabled;
 
     // Please refer to WifiManager
     private static final int MIN_RSSI = -100;
@@ -105,6 +110,7 @@ public class WifiManagerTest extends AndroidTestCase {
     private static final int WAIT_MSEC = 60;
     private static final int DURATION = 10_000;
     private static final int DURATION_SCREEN_TOGGLE = 2000;
+    private static final int DURATION_SETTINGS_TOGGLE = 1_000;
     private static final int WIFI_SCAN_TEST_INTERVAL_MILLIS = 60 * 1000;
     private static final int WIFI_SCAN_TEST_CACHE_DELAY_MILLIS = 3 * 60 * 1000;
     private static final int WIFI_SCAN_TEST_ITERATIONS = 5;
@@ -182,6 +188,13 @@ public class WifiManagerTest extends AndroidTestCase {
         mWifiManager = (WifiManager) getContext().getSystemService(Context.WIFI_SERVICE);
         mConnectivityManager = getContext().getSystemService(ConnectivityManager.class);
         assertNotNull(mWifiManager);
+
+        // turn on verbose logging for tests
+        mWasVerboseLoggingEnabled = ShellIdentityUtils.invokeWithShellPermissions(
+                () -> mWifiManager.isVerboseLoggingEnabled());
+        ShellIdentityUtils.invokeWithShellPermissions(
+                () -> mWifiManager.setVerboseLoggingEnabled(true));
+
         mWifiLock = mWifiManager.createWifiLock(TAG);
         mWifiLock.acquire();
         if (!mWifiManager.isWifiEnabled())
@@ -210,6 +223,8 @@ public class WifiManagerTest extends AndroidTestCase {
             setWifiEnabled(true);
         mWifiLock.release();
         mContext.unregisterReceiver(mReceiver);
+        ShellIdentityUtils.invokeWithShellPermissions(
+                () -> mWifiManager.setVerboseLoggingEnabled(mWasVerboseLoggingEnabled));
         Thread.sleep(DURATION);
         super.tearDown();
     }
@@ -605,9 +620,9 @@ public class WifiManagerTest extends AndroidTestCase {
         wifiConfiguration.SSID = SSID1;
         wifiConfiguration.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
 
-        assertEquals(WifiConfiguration.INVALID_NETWORK_ID,
+        assertEquals(INVALID_NETWORK_ID,
                 mWifiManager.addNetwork(wifiConfiguration));
-        assertEquals(WifiConfiguration.INVALID_NETWORK_ID,
+        assertEquals(INVALID_NETWORK_ID,
                 mWifiManager.updateNetwork(wifiConfiguration));
         assertFalse(mWifiManager.enableNetwork(0, true));
         assertFalse(mWifiManager.disableNetwork(0));
@@ -989,6 +1004,12 @@ public class WifiManagerTest extends AndroidTestCase {
         Thread.sleep(DURATION_SCREEN_TOGGLE);
     }
 
+    private void assertWifiScanningIsOn() {
+        if (!mWifiManager.isScanAlwaysAvailable()) {
+            fail("Wi-Fi scanning should be on.");
+        }
+    }
+
     /**
      * Verify that Wi-Fi scanning is not turned off when the screen turns off while wifi is disabled
      * but location is on.
@@ -1151,6 +1172,10 @@ public class WifiManagerTest extends AndroidTestCase {
      * network.
      */
     public void testConnectWithNetworkId() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         testConnect(true);
     }
 
@@ -1159,6 +1184,10 @@ public class WifiManagerTest extends AndroidTestCase {
      * existing saved network.
      */
     public void testConnectWithWifiConfiguration() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         testConnect(false);
 
     }
@@ -1208,6 +1237,10 @@ public class WifiManagerTest extends AndroidTestCase {
      * an existing saved network metered.
      */
     public void testSave() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         TestActionListener actionListener = new TestActionListener(mLock);
         UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
         List<WifiConfiguration> savedNetworks = null;
@@ -1256,6 +1289,52 @@ public class WifiManagerTest extends AndroidTestCase {
         }
     }
 
+    /**
+     * Tests {@link WifiManager#forget(int, WifiManager.ActionListener)} by adding/removing a new
+     * network.
+     */
+    public void testForget() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        TestActionListener actionListener = new TestActionListener(mLock);
+        UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        int newNetworkId = INVALID_NETWORK_ID;
+        try {
+            uiAutomation.adoptShellPermissionIdentity();
+            // These below API's only work with privileged permissions (obtained via shell identity
+            // for test)
+            List<WifiConfiguration> savedNetworks = mWifiManager.getConfiguredNetworks();
+
+            WifiConfiguration newOpenNetwork = new WifiConfiguration();
+            newOpenNetwork.SSID = "\"" + TEST_SSID_UNQUOTED + "\"";
+            newNetworkId = mWifiManager.addNetwork(newOpenNetwork);
+            assertNotEquals(INVALID_NETWORK_ID, newNetworkId);
+
+            assertEquals(savedNetworks.size() + 1, mWifiManager.getConfiguredNetworks().size());
+
+            // Now remove the network
+            synchronized (mLock) {
+                try {
+                    mWifiManager.forget(newNetworkId, actionListener);
+                    // now wait for callback
+                    mLock.wait(DURATION);
+                } catch (InterruptedException e) {
+                }
+            }
+            // check if we got the success callback
+            assertTrue(actionListener.onSuccessCalled);
+
+            // Ensure that the new network has been successfully removed.
+            assertEquals(savedNetworks.size(), mWifiManager.getConfiguredNetworks().size());
+        } finally {
+            // For whatever reason, if the forget fails, try removing using the public remove API.
+            if (newNetworkId != INVALID_NETWORK_ID) mWifiManager.removeNetwork(newNetworkId);
+            uiAutomation.dropShellPermissionIdentity();
+        }
+    }
+
     private static class TestTrafficStateCallback implements WifiManager.TrafficStateCallback {
         private final Object mLock;
         public boolean onStateChangedCalled = false;
@@ -1300,6 +1379,10 @@ public class WifiManagerTest extends AndroidTestCase {
      * WifiManager.TrafficStateCallback)} by sending some traffic.
      */
     public void testTrafficStateCallback() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
         TestTrafficStateCallback trafficStateCallback = new TestTrafficStateCallback(mLock);
         UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
         try {
@@ -1331,9 +1414,170 @@ public class WifiManagerTest extends AndroidTestCase {
         }
     }
 
-    private void assertWifiScanningIsOn() {
-        if(!mWifiManager.isScanAlwaysAvailable()) {
-            fail("Wi-Fi scanning should be on.");
+    /**
+     * Tests {@link WifiManager#setScanAlwaysAvailable(boolean)} &
+     * {@link WifiManager#isScanAlwaysAvailable()}.
+     */
+    public void testScanAlwaysAvailable() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
         }
+        UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        Boolean currState = null;
+        try {
+            uiAutomation.adoptShellPermissionIdentity();
+            currState = mWifiManager.isScanAlwaysAvailable();
+            boolean newState = !currState;
+            mWifiManager.setScanAlwaysAvailable(newState);
+            PollingCheck.check(
+                    "Wifi settings toggle failed!",
+                    DURATION_SETTINGS_TOGGLE,
+                    () -> mWifiManager.isScanAlwaysAvailable() == newState);
+            assertEquals(newState, mWifiManager.isScanAlwaysAvailable());
+        } finally {
+            if (currState != null) mWifiManager.setScanAlwaysAvailable(currState);
+            uiAutomation.dropShellPermissionIdentity();
+        }
+    }
+
+    /**
+     * Tests {@link WifiManager#setScanThrottleEnabled(boolean)} &
+     * {@link WifiManager#isScanThrottleEnabled()}.
+     */
+    public void testScanThrottleEnabled() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        Boolean currState = null;
+        try {
+            uiAutomation.adoptShellPermissionIdentity();
+            currState = mWifiManager.isScanThrottleEnabled();
+            boolean newState = !currState;
+            mWifiManager.setScanThrottleEnabled(newState);
+            PollingCheck.check(
+                    "Wifi settings toggle failed!",
+                    DURATION_SETTINGS_TOGGLE,
+                    () -> mWifiManager.isScanThrottleEnabled() == newState);
+            assertEquals(newState, mWifiManager.isScanThrottleEnabled());
+        } finally {
+            if (currState != null) mWifiManager.setScanThrottleEnabled(currState);
+            uiAutomation.dropShellPermissionIdentity();
+        }
+    }
+
+    /**
+     * Tests {@link WifiManager#setAutoWakeupEnabled(boolean)} &
+     * {@link WifiManager#isAutoWakeupEnabled()}.
+     */
+    public void testAutoWakeUpEnabled() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        Boolean currState = null;
+        try {
+            uiAutomation.adoptShellPermissionIdentity();
+            currState = mWifiManager.isAutoWakeupEnabled();
+            boolean newState = !currState;
+            mWifiManager.setAutoWakeupEnabled(newState);
+            PollingCheck.check(
+                    "Wifi settings toggle failed!",
+                    DURATION_SETTINGS_TOGGLE,
+                    () -> mWifiManager.isAutoWakeupEnabled() == newState);
+            assertEquals(newState, mWifiManager.isAutoWakeupEnabled());
+        } finally {
+            if (currState != null) mWifiManager.setAutoWakeupEnabled(currState);
+            uiAutomation.dropShellPermissionIdentity();
+        }
+    }
+
+    /**
+     * Tests {@link WifiManager#setVerboseLoggingEnabled(boolean)} &
+     * {@link WifiManager#isVerboseLoggingEnabled()}.
+     */
+    public void testVerboseLoggingEnabled() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        Boolean currState = null;
+        try {
+            uiAutomation.adoptShellPermissionIdentity();
+            currState = mWifiManager.isVerboseLoggingEnabled();
+            boolean newState = !currState;
+            mWifiManager.setVerboseLoggingEnabled(newState);
+            PollingCheck.check(
+                    "Wifi settings toggle failed!",
+                    DURATION_SETTINGS_TOGGLE,
+                    () -> mWifiManager.isVerboseLoggingEnabled() == newState);
+            assertEquals(newState, mWifiManager.isVerboseLoggingEnabled());
+        } finally {
+            if (currState != null) mWifiManager.setVerboseLoggingEnabled(currState);
+            uiAutomation.dropShellPermissionIdentity();
+        }
+    }
+
+    /**
+     * Tests {@link WifiManager#factoryReset()}.
+     *
+     * Note: This test assumes that the device only has 1 or more saved networks before the test.
+     * The test will restore those when the test exits. But, it does not restore the softap
+     * configuration, suggestions, etc which will also have been lost on factory reset.
+     */
+    public void testFactoryReset() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        List<WifiConfiguration> savedNetworks = null;
+        try {
+            uiAutomation.adoptShellPermissionIdentity();
+            // These below API's only work with privileged permissions (obtained via shell identity
+            // for test)
+            savedNetworks = mWifiManager.getConfiguredNetworks();
+
+            mWifiManager.factoryReset();
+            // Ensure all the saved networks are removed.
+            assertEquals(0, mWifiManager.getConfiguredNetworks().size());
+        } finally {
+            // Restore the original saved networks.
+            if (savedNetworks != null) {
+                for (WifiConfiguration network : savedNetworks) {
+                    mWifiManager.save(network, null);
+                }
+            }
+            uiAutomation.dropShellPermissionIdentity();
+        }
+    }
+
+    /**
+     * Test that the wifi country code is either null, or a length-2 string.
+     */
+    public void testGetCountryCode() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+
+        String wifiCountryCode = ShellIdentityUtils.invokeWithShellPermissions(
+                mWifiManager::getCountryCode);
+
+        if (wifiCountryCode == null) {
+            return;
+        }
+        assertEquals(2, wifiCountryCode.length());
+
+        // assert that the country code is all uppercase
+        assertEquals(wifiCountryCode.toUpperCase(Locale.US), wifiCountryCode);
+
+        String telephonyCountryCode = getContext().getSystemService(TelephonyManager.class)
+                .getNetworkCountryIso();
+        assertEquals(telephonyCountryCode, wifiCountryCode.toLowerCase(Locale.US));
     }
 }
