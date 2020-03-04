@@ -85,6 +85,7 @@ public class WifiManagerTest extends AndroidTestCase {
     private NetworkInfo mNetworkInfo;
     private Object mLock = new Object();
     private UiDevice mUiDevice;
+    private boolean mWasVerboseLoggingEnabled;
 
     // Please refer to WifiManager
     private static final int MIN_RSSI = -100;
@@ -185,6 +186,13 @@ public class WifiManagerTest extends AndroidTestCase {
         mWifiManager = (WifiManager) getContext().getSystemService(Context.WIFI_SERVICE);
         mConnectivityManager = getContext().getSystemService(ConnectivityManager.class);
         assertNotNull(mWifiManager);
+
+        // turn on verbose logging for tests
+        mWasVerboseLoggingEnabled = ShellIdentityUtils.invokeWithShellPermissions(
+                () -> mWifiManager.isVerboseLoggingEnabled());
+        ShellIdentityUtils.invokeWithShellPermissions(
+                () -> mWifiManager.setVerboseLoggingEnabled(true));
+
         mWifiLock = mWifiManager.createWifiLock(TAG);
         mWifiLock.acquire();
         if (!mWifiManager.isWifiEnabled())
@@ -213,6 +221,8 @@ public class WifiManagerTest extends AndroidTestCase {
             setWifiEnabled(true);
         mWifiLock.release();
         mContext.unregisterReceiver(mReceiver);
+        ShellIdentityUtils.invokeWithShellPermissions(
+                () -> mWifiManager.setVerboseLoggingEnabled(mWasVerboseLoggingEnabled));
         Thread.sleep(DURATION);
         super.tearDown();
     }
