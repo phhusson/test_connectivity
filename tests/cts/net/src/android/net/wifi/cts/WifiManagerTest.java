@@ -44,6 +44,7 @@ import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.WifiLock;
+import android.net.wifi.WifiNetworkConnectionStatistics;
 import android.os.Process;
 import android.os.SystemClock;
 import android.os.UserHandle;
@@ -1556,6 +1557,16 @@ public class WifiManagerTest extends AndroidTestCase {
             }
             uiAutomation.dropShellPermissionIdentity();
         }
+    }
+
+    /**
+     * Test {@link WifiNetworkConnectionStatistics} does not crash.
+     * TODO(b/150891569): deprecate it in Android S, this API is not used anywhere.
+     */
+    public void testWifiNetworkConnectionStatistics() {
+        new WifiNetworkConnectionStatistics();
+        WifiNetworkConnectionStatistics stats = new WifiNetworkConnectionStatistics(0, 0);
+        new WifiNetworkConnectionStatistics(stats);
     }
 
     /**
