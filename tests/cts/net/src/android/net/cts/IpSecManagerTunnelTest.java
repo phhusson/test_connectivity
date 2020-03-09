@@ -192,9 +192,8 @@ public class IpSecManagerTunnelTest extends IpSecBaseTest {
         // Build a network request
         NetworkRequest nr =
                 new NetworkRequest.Builder()
+                        .clearCapabilities()
                         .addTransportType(TRANSPORT_TEST)
-                        .removeCapability(NET_CAPABILITY_TRUSTED)
-                        .removeCapability(NET_CAPABILITY_NOT_VPN)
                         .setNetworkSpecifier(ifname)
                         .build();
 
