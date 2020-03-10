@@ -19,6 +19,7 @@ package android.net.wifi.cts;
 import android.content.Context;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.WifiLock;
+import android.os.WorkSource;
 import android.platform.test.annotations.AppModeFull;
 import android.test.AndroidTestCase;
 
@@ -50,6 +51,7 @@ public class WifiLockTest extends AndroidTestCase {
         WifiLock wl = wm.createWifiLock(lockType, WIFI_TAG);
 
         wl.setReferenceCounted(true);
+        wl.setWorkSource(new WorkSource());
         assertFalse(wl.isHeld());
         wl.acquire();
         assertTrue(wl.isHeld());
