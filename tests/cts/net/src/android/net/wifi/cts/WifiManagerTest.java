@@ -32,6 +32,7 @@ import android.content.IntentFilter;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.net.util.MacAddressUtils;
 import android.net.ConnectivityManager;
 import android.net.LinkProperties;
 import android.net.MacAddress;
@@ -42,6 +43,7 @@ import android.net.NetworkRequest;
 import android.net.wifi.ScanResult;
 import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.WifiConfiguration;
+import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.WifiLock;
 import android.net.wifi.WifiNetworkConnectionStatistics;
@@ -1388,6 +1390,34 @@ public class WifiManagerTest extends AndroidTestCase {
         } finally {
             // For whatever reason, if the forget fails, try removing using the public remove API.
             if (newNetworkId != INVALID_NETWORK_ID) mWifiManager.removeNetwork(newNetworkId);
+            uiAutomation.dropShellPermissionIdentity();
+        }
+    }
+
+    /**
+     * Tests {@link WifiManager#getFactoryMacAddresses()} returns at least one valid MAC address.
+     */
+    public void testGetFactoryMacAddresses() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        TestActionListener actionListener = new TestActionListener(mLock);
+        UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        int newNetworkId = INVALID_NETWORK_ID;
+        try {
+            uiAutomation.adoptShellPermissionIdentity();
+            // Obtain the factory MAC address
+            String[] macAddresses = mWifiManager.getFactoryMacAddresses();
+            assertTrue("At list one MAC address should be returned.", macAddresses.length > 0);
+            try {
+                MacAddress mac = MacAddress.fromString(macAddresses[0]);
+                assertNotEquals(WifiInfo.DEFAULT_MAC_ADDRESS, mac);
+                assertFalse(MacAddressUtils.isMulticastAddress(mac));
+            } catch (IllegalArgumentException e) {
+                fail("Factory MAC address is invalid");
+            }
+        } finally {
             uiAutomation.dropShellPermissionIdentity();
         }
     }
