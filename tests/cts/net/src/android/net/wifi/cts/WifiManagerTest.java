@@ -1422,6 +1422,39 @@ public class WifiManagerTest extends AndroidTestCase {
         }
     }
 
+    /**
+     * Tests {@link WifiManager#isApMacRandomizationSupported()} does not crash.
+     */
+    public void testIsApMacRandomizationSupported() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        mWifiManager.isApMacRandomizationSupported();
+    }
+
+    /**
+     * Tests {@link WifiManager#isConnectedMacRandomizationSupported()} does not crash.
+     */
+    public void testIsConnectedMacRandomizationSupported() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        mWifiManager.isConnectedMacRandomizationSupported();
+    }
+
+    /**
+     * Tests {@link WifiManager#isPreferredNetworkOffloadSupported()} does not crash.
+     */
+    public void testIsPreferredNetworkOffloadSupported() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        mWifiManager.isPreferredNetworkOffloadSupported();
+    }
+
     private static class TestTrafficStateCallback implements WifiManager.TrafficStateCallback {
         private final Object mLock;
         public boolean onStateChangedCalled = false;
