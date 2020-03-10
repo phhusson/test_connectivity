@@ -31,6 +31,7 @@ import android.net.NetworkInfo;
 import android.net.NetworkRequest;
 import android.net.wifi.WifiManager;
 import android.net.wifi.p2p.WifiP2pDevice;
+import android.net.wifi.p2p.WifiP2pGroup;
 import android.net.wifi.p2p.WifiP2pGroupList;
 import android.net.wifi.p2p.WifiP2pInfo;
 import android.net.wifi.p2p.WifiP2pManager;
@@ -79,6 +80,7 @@ public class ConcurrencyTest extends AndroidTestCase {
         public WifiP2pInfo p2pInfo;
         public String deviceName;
         public WifiP2pGroupList persistentGroups;
+        public WifiP2pGroup group = new WifiP2pGroup();
     }
 
     private WifiManager mWifiManager;
@@ -267,6 +269,7 @@ public class ConcurrencyTest extends AndroidTestCase {
             responseObj.p2pInfo = null;
             responseObj.deviceName = null;
             responseObj.persistentGroups = null;
+            responseObj.group = null;
         }
     }
 
@@ -480,7 +483,27 @@ public class ConcurrencyTest extends AndroidTestCase {
         assertTrue(mMyResponse.p2pInfo.groupFormed);
         assertTrue(mMyResponse.p2pInfo.isGroupOwner);
 
-        mWifiP2pManager.removeGroup(mWifiP2pChannel, null);
+        resetResponse(mMyResponse);
+        mWifiP2pManager.requestGroupInfo(mWifiP2pChannel,
+                new WifiP2pManager.GroupInfoListener() {
+                    @Override
+                    public void onGroupInfoAvailable(WifiP2pGroup group) {
+                        synchronized (mMyResponse) {
+                            mMyResponse.group = new WifiP2pGroup(group);
+                            mMyResponse.valid = true;
+                            mMyResponse.notify();
+                        }
+                    }
+                });
+        assertTrue(waitForServiceResponse(mMyResponse));
+        assertNotNull(mMyResponse.group);
+        assertNotEquals(0, mMyResponse.group.getFrequency());
+        assertTrue(mMyResponse.group.getNetworkId() >= 0);
+
+        resetResponse(mMyResponse);
+        mWifiP2pManager.removeGroup(mWifiP2pChannel, mActionListener);
+        assertTrue(waitForServiceResponse(mMyResponse));
+        assertTrue(mMyResponse.success);
     }
 
     private String getDeviceName() {
