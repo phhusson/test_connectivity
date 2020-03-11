@@ -28,6 +28,24 @@ public class WifiP2pConfigTest extends AndroidTestCase {
     private static final int TEST_OWNER_FREQ = 2447;
     private static final String TEST_DEVICE_ADDRESS = "aa:bb:cc:dd:ee:ff";
 
+    public void testWifiP2pConfigCopyConstructor() {
+        WifiP2pConfig config = new WifiP2pConfig.Builder()
+                .setNetworkName(TEST_NETWORK_NAME)
+                .setPassphrase(TEST_PASSPHRASE)
+                .setGroupOperatingBand(TEST_OWNER_BAND)
+                .setDeviceAddress(MacAddress.fromString(TEST_DEVICE_ADDRESS))
+                .enablePersistentMode(true)
+                .build();
+
+        WifiP2pConfig copiedConfig = new WifiP2pConfig(config);
+
+        assertEquals(copiedConfig.deviceAddress, TEST_DEVICE_ADDRESS);
+        assertEquals(copiedConfig.getNetworkName(), TEST_NETWORK_NAME);
+        assertEquals(copiedConfig.getPassphrase(), TEST_PASSPHRASE);
+        assertEquals(copiedConfig.getGroupOwnerBand(), TEST_OWNER_BAND);
+        assertEquals(copiedConfig.getNetworkId(), WifiP2pGroup.NETWORK_ID_PERSISTENT);
+    }
+
     public void testWifiP2pConfigBuilderForPersist() {
         WifiP2pConfig config = new WifiP2pConfig.Builder()
                 .setNetworkName(TEST_NETWORK_NAME)
