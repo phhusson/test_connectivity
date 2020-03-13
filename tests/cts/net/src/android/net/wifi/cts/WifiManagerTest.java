@@ -1759,4 +1759,37 @@ public class WifiManagerTest extends AndroidTestCase {
 
         assertNull(ShellIdentityUtils.invokeWithShellPermissions(mWifiManager::getCurrentNetwork));
     }
+
+    /**
+     * Tests {@link WifiManager#isWpa3SaeSupported()} does not crash.
+     */
+    public void testIsWpa3SaeSupported() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        mWifiManager.isWpa3SaeSupported();
+    }
+
+    /**
+     * Tests {@link WifiManager#isWpa3SuiteBSupported()} does not crash.
+     */
+    public void testIsWpa3SuiteBSupported() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        mWifiManager.isWpa3SuiteBSupported();
+    }
+
+    /**
+     * Tests {@link WifiManager#isEnhancedOpenSupported()} does not crash.
+     */
+    public void testIsEnhancedOpenSupported() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        mWifiManager.isEnhancedOpenSupported();
+    }
 }
