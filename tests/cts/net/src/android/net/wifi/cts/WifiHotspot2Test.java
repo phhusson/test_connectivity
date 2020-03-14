@@ -23,11 +23,18 @@ import android.net.wifi.hotspot2.pps.Credential;
 import android.net.wifi.hotspot2.pps.HomeSp;
 import android.test.AndroidTestCase;
 
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
+import java.security.cert.CertificateEncodingException;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
 
 public class WifiHotspot2Test extends AndroidTestCase {
+    static final int SIM_CREDENTIAL = 0;
+    static final int USER_CREDENTIAL = 1;
+    static final int CERT_CREDENTIAL = 2;
+
     @Override
     protected void setUp() throws Exception {
         super.setUp();
@@ -44,7 +51,7 @@ public class WifiHotspot2Test extends AndroidTestCase {
 
     /**
      * Tests {@link PasspointConfiguration#getMeteredOverride()} method.
-     *
+     * <p>
      * Test default value
      */
     public void testGetMeteredOverride() throws Exception {
@@ -58,7 +65,7 @@ public class WifiHotspot2Test extends AndroidTestCase {
 
     /**
      * Tests {@link PasspointConfiguration#getSubscriptionExpirationTimeMillis()} method.
-     *
+     * <p>
      * Test default value
      */
     public void testGetSubscriptionExpirationTimeMillis() throws Exception {
@@ -73,7 +80,7 @@ public class WifiHotspot2Test extends AndroidTestCase {
 
     /**
      * Tests {@link PasspointConfiguration#getUniqueId()} method.
-     *
+     * <p>
      * Test unique identifier is not null
      */
     public void testGetUniqueId() throws Exception {
@@ -81,13 +88,32 @@ public class WifiHotspot2Test extends AndroidTestCase {
             // skip the test if WiFi is not supported
             return;
         }
-        PasspointConfiguration passpointConfiguration = createConfig();
-        assertNotNull(passpointConfiguration.getUniqueId());
+
+        // Create a configuration and make sure the unique ID is not null
+        PasspointConfiguration passpointConfiguration1 = createConfig(SIM_CREDENTIAL, "123456*",
+                18 /* EAP_SIM */);
+        String uniqueId1 = passpointConfiguration1.getUniqueId();
+        assertNotNull(uniqueId1);
+
+        // Create another configuration and make sure the unique ID is not null
+        PasspointConfiguration passpointConfiguration2 = createConfig(SIM_CREDENTIAL, "567890*",
+                23 /* EAP_AKA */);
+        String uniqueId2 = passpointConfiguration2.getUniqueId();
+        assertNotNull(uniqueId2);
+
+        // Make sure the IDs are not equal
+        assertFalse(uniqueId1.equals(uniqueId2));
+
+        passpointConfiguration2 = createConfig(USER_CREDENTIAL);
+        assertFalse(uniqueId1.equals(passpointConfiguration2.getUniqueId()));
+
+        passpointConfiguration2 = createConfig(CERT_CREDENTIAL);
+        assertFalse(uniqueId1.equals(passpointConfiguration2.getUniqueId()));
     }
 
     /**
      * Tests {@link PasspointConfiguration#isAutojoinEnabled()} method.
-     *
+     * <p>
      * Test default value
      */
     public void testIsAutojoinEnabled() throws Exception {
@@ -101,7 +127,7 @@ public class WifiHotspot2Test extends AndroidTestCase {
 
     /**
      * Tests {@link PasspointConfiguration#isMacRandomizationEnabled()} method.
-     *
+     * <p>
      * Test default value
      */
     public void testIsMacRandomizationEnabled() throws Exception {
@@ -115,7 +141,7 @@ public class WifiHotspot2Test extends AndroidTestCase {
 
     /**
      * Tests {@link PasspointConfiguration#isOsuProvisioned()} method.
-     *
+     * <p>
      * Test default value
      */
     public void testIsOsuProvisioned() throws Exception {
@@ -123,13 +149,13 @@ public class WifiHotspot2Test extends AndroidTestCase {
             // skip the test if WiFi is not supported
             return;
         }
-        PasspointConfiguration passpointConfiguration = createConfig();
+        PasspointConfiguration passpointConfiguration = createConfig(USER_CREDENTIAL);
         assertFalse(passpointConfiguration.isOsuProvisioned());
     }
 
     /**
      * Tests {@link PasspointConfiguration#PasspointConfiguration(PasspointConfiguration)} method.
-     *
+     * <p>
      * Test the PasspointConfiguration copy constructor
      */
     public void testPasspointConfigurationCopyConstructor() throws Exception {
@@ -137,7 +163,7 @@ public class WifiHotspot2Test extends AndroidTestCase {
             // skip the test if WiFi is not supported
             return;
         }
-        PasspointConfiguration passpointConfiguration = createConfig();
+        PasspointConfiguration passpointConfiguration = createConfig(USER_CREDENTIAL);
         PasspointConfiguration copyOfPasspointConfiguration =
                 new PasspointConfiguration(passpointConfiguration);
         assertEquals(passpointConfiguration, copyOfPasspointConfiguration);
@@ -145,7 +171,7 @@ public class WifiHotspot2Test extends AndroidTestCase {
 
     /**
      * Tests {@link HomeSp#HomeSp(HomeSp)} method.
-     *
+     * <p>
      * Test the HomeSp copy constructor
      */
     public void testHomeSpCopyConstructor() throws Exception {
@@ -160,7 +186,7 @@ public class WifiHotspot2Test extends AndroidTestCase {
 
     /**
      * Tests {@link Credential#Credential(Credential)} method.
-     *
+     * <p>
      * Test the Credential copy constructor
      */
     public void testCredentialCopyConstructor() throws Exception {
@@ -168,14 +194,14 @@ public class WifiHotspot2Test extends AndroidTestCase {
             // skip the test if WiFi is not supported
             return;
         }
-        Credential credential = createCredential();
+        Credential credential = createCredentialWithSimCredential("123456*", 18 /* EAP_SIM */);
         Credential copyOfCredential = new Credential(credential);
         assertEquals(copyOfCredential, credential);
     }
 
     /**
      * Tests {@link Credential.UserCredential#UserCredential(Credential.UserCredential)} method.
-     *
+     * <p>
      * Test the Credential.UserCredential copy constructor
      */
     public void testUserCredentialCopyConstructor() throws Exception {
@@ -195,9 +221,10 @@ public class WifiHotspot2Test extends AndroidTestCase {
     }
 
     /**
-     * Tests {@link Credential.CertificateCredential#CertificateCredential(Credential.CertificateCredential)}
+     * Tests
+     * {@link Credential.CertificateCredential#CertificateCredential(Credential.CertificateCredential)}
      * method.
-     *
+     * <p>
      * Test the Credential.CertificateCredential copy constructor
      */
     public void testCertCredentialCopyConstructor() throws Exception {
@@ -214,9 +241,8 @@ public class WifiHotspot2Test extends AndroidTestCase {
     }
 
     /**
-     * Tests {@link Credential.SimCredential#SimCredential(Credential.SimCredential)}
-     * method.
-     *
+     * Tests {@link Credential.SimCredential#SimCredential(Credential.SimCredential)} method.
+     * <p>
      * Test the Credential.SimCredential copy constructor
      */
     public void testSimCredentialCopyConstructor() throws Exception {
@@ -234,7 +260,7 @@ public class WifiHotspot2Test extends AndroidTestCase {
 
     /**
      * Tests {@link Credential#getCaCertificate()}  method.
-     *
+     * <p>
      * Test that getting a set certificate produces the same value
      */
     public void testCredentialGetCertificate() throws Exception {
@@ -249,9 +275,9 @@ public class WifiHotspot2Test extends AndroidTestCase {
     }
 
     /**
-     * Tests {@link Credential#getClientCertificateChain()} and
-     * {@link Credential#setCaCertificates(X509Certificate[])} methods.
-     *
+     * Tests {@link Credential#getClientCertificateChain()} and {@link
+     * Credential#setCaCertificates(X509Certificate[])} methods.
+     * <p>
      * Test that getting a set client certificate chain produces the same value
      */
     public void testCredentialClientCertificateChain() throws Exception {
@@ -260,7 +286,7 @@ public class WifiHotspot2Test extends AndroidTestCase {
             return;
         }
         Credential credential = new Credential();
-        X509Certificate[] certificates = new X509Certificate[] {FakeKeys.CLIENT_CERT};
+        X509Certificate[] certificates = new X509Certificate[]{FakeKeys.CLIENT_CERT};
         credential.setClientCertificateChain(certificates);
 
         assertTrue(Arrays.equals(certificates, credential.getClientCertificateChain()));
@@ -268,8 +294,9 @@ public class WifiHotspot2Test extends AndroidTestCase {
 
     /**
      * Tests {@link Credential#getClientPrivateKey()} and
-     * {@link Credential#setClientPrivateKey(PrivateKey)} methods.
-     *
+     * {@link Credential#setClientPrivateKey(PrivateKey)}
+     * methods.
+     * <p>
      * Test that getting a set client private key produces the same value
      */
     public void testCredentialSetGetClientPrivateKey() throws Exception {
@@ -285,8 +312,9 @@ public class WifiHotspot2Test extends AndroidTestCase {
 
     /**
      * Tests {@link Credential#getClientPrivateKey()} and
-     * {@link Credential#setClientPrivateKey(PrivateKey)} methods.
-     *
+     * {@link Credential#setClientPrivateKey(PrivateKey)}
+     * methods.
+     * <p>
      * Test that getting a set client private key produces the same value
      */
     public void testCredentialGetClientPrivateKey() throws Exception {
@@ -300,32 +328,110 @@ public class WifiHotspot2Test extends AndroidTestCase {
         assertEquals(FakeKeys.RSA_KEY1, credential.getClientPrivateKey());
     }
 
-    private static PasspointConfiguration createConfig() {
+    private static PasspointConfiguration createConfig(int type) throws Exception {
+        return createConfig(type, "123456*", 18 /* EAP_SIM */);
+    }
+
+    private static PasspointConfiguration createConfig(int type, String imsi, int eapType)
+            throws Exception {
         PasspointConfiguration config = new PasspointConfiguration();
         config.setHomeSp(createHomeSp());
-        config.setCredential(createCredential());
+        switch (type) {
+            default:
+            case SIM_CREDENTIAL:
+                config.setCredential(
+                        createCredentialWithSimCredential(imsi, eapType));
+                break;
+            case USER_CREDENTIAL:
+                config.setCredential(createCredentialWithUserCredential());
+                break;
+            case CERT_CREDENTIAL:
+                config.setCredential(createCredentialWithCertificateCredential());
+                break;
+        }
+
         return config;
     }
 
+    /**
+     * Helper function for generating HomeSp for testing.
+     *
+     * @return {@link HomeSp}
+     */
     private static HomeSp createHomeSp() {
         HomeSp homeSp = new HomeSp();
         homeSp.setFqdn("test.com");
         homeSp.setFriendlyName("friendly name");
-        homeSp.setRoamingConsortiumOis(new long[] {0x55, 0x66});
+        homeSp.setRoamingConsortiumOis(new long[]{0x55, 0x66});
         return homeSp;
     }
 
-    private static Credential createCredential() {
+    /**
+     * Helper function for generating Credential for testing.
+     *
+     * @param userCred               Instance of UserCredential
+     * @param certCred               Instance of CertificateCredential
+     * @param simCred                Instance of SimCredential
+     * @param clientCertificateChain Chain of client certificates
+     * @param clientPrivateKey       Client private key
+     * @param caCerts                CA certificates
+     * @return {@link Credential}
+     */
+    private static Credential createCredential(Credential.UserCredential userCred,
+            Credential.CertificateCredential certCred,
+            Credential.SimCredential simCred,
+            X509Certificate[] clientCertificateChain, PrivateKey clientPrivateKey,
+            X509Certificate... caCerts) {
         Credential cred = new Credential();
         cred.setRealm("realm");
-        cred.setUserCredential(null);
-        cred.setCertCredential(null);
-        cred.setSimCredential(new Credential.SimCredential());
-        cred.getSimCredential().setImsi("1234*");
-        cred.getSimCredential().setEapType(18/* EAP_SIM */);
-        cred.setCaCertificate(null);
-        cred.setClientCertificateChain(null);
-        cred.setClientPrivateKey(null);
+        cred.setUserCredential(userCred);
+        cred.setCertCredential(certCred);
+        cred.setSimCredential(simCred);
         return cred;
+    }
+
+    /**
+     * Helper function for generating certificate credential for testing.
+     *
+     * @return {@link Credential}
+     */
+    private static Credential createCredentialWithCertificateCredential()
+            throws NoSuchAlgorithmException, CertificateEncodingException {
+        Credential.CertificateCredential certCred = new Credential.CertificateCredential();
+        certCred.setCertType("x509v3");
+        certCred.setCertSha256Fingerprint(
+                MessageDigest.getInstance("SHA-256").digest(
+                        FakeKeys.CLIENT_CERT.getEncoded()));
+        return createCredential(null, certCred, null, new X509Certificate[]{
+                        FakeKeys.CLIENT_CERT},
+                FakeKeys.RSA_KEY1, FakeKeys.CA_CERT0,
+                FakeKeys.CA_CERT1);
+    }
+
+    /**
+     * Helper function for generating SIM credential for testing.
+     *
+     * @return {@link Credential}
+     */
+    private static Credential createCredentialWithSimCredential(String imsi, int eapType) {
+        Credential.SimCredential simCred = new Credential.SimCredential();
+        simCred.setImsi(imsi);
+        simCred.setEapType(eapType);
+        return createCredential(null, null, simCred, null, null, (X509Certificate[]) null);
+    }
+
+    /**
+     * Helper function for generating user credential for testing.
+     *
+     * @return {@link Credential}
+     */
+    private static Credential createCredentialWithUserCredential() {
+        Credential.UserCredential userCred = new Credential.UserCredential();
+        userCred.setUsername("username");
+        userCred.setPassword("password");
+        userCred.setEapType(21 /* EAP_TTLS */);
+        userCred.setNonEapInnerMethod("MS-CHAP");
+        return createCredential(userCred, null, null, null, null,
+                FakeKeys.CA_CERT0);
     }
 }
