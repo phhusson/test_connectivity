@@ -20,12 +20,12 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 
 public class WifiFeature {
-    static boolean isWifiSupported(Context context) {
+    public static boolean isWifiSupported(Context context) {
         PackageManager packageManager = context.getPackageManager();
         return packageManager.hasSystemFeature(PackageManager.FEATURE_WIFI);
     }
 
-    static boolean isP2pSupported(Context context) {
+    public static boolean isP2pSupported(Context context) {
         PackageManager packageManager = context.getPackageManager();
         return packageManager.hasSystemFeature(PackageManager.FEATURE_WIFI_DIRECT);
     }
