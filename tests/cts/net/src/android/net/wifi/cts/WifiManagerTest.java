@@ -1809,4 +1809,135 @@ public class WifiManagerTest extends AndroidTestCase {
         }
         mWifiManager.isEnhancedOpenSupported();
     }
+
+    /**
+     * Test that {@link WifiManager#is5GHzBandSupported()} returns successfully in
+     * both WiFi enabled/disabled states.
+     * Note that the response depends on device support and hence both true/false
+     * are valid responses.
+     */
+    public void testIs5GhzBandSupported() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+
+        // Check for 5GHz support with wifi enabled
+        setWifiEnabled(true);
+        PollingCheck.check(
+                "Wifi not enabled!",
+                20000,
+                () -> mWifiManager.isWifiEnabled());
+        boolean isSupportedEnabled = mWifiManager.is5GHzBandSupported();
+
+        // Check for 5GHz support with wifi disabled
+        setWifiEnabled(false);
+        PollingCheck.check(
+                "Wifi not disabled!",
+                20000,
+                () -> !mWifiManager.isWifiEnabled());
+        boolean isSupportedDisabled = mWifiManager.is5GHzBandSupported();
+
+        // If Support is true when WiFi is disable, then it has to be true when it is enabled.
+        // Note, the reverse is a valid case.
+        if (isSupportedDisabled) {
+            assertTrue(isSupportedEnabled);
+        }
+    }
+
+    /**
+     * Test that {@link WifiManager#is6GHzBandSupported()} returns successfully in
+     * both Wifi enabled/disabled states.
+     * Note that the response depends on device support and hence both true/false
+     * are valid responses.
+     */
+    public void testIs6GhzBandSupported() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+
+        // Check for 6GHz support with wifi enabled
+        setWifiEnabled(true);
+        PollingCheck.check(
+                "Wifi not enabled!",
+                20000,
+                () -> mWifiManager.isWifiEnabled());
+        boolean isSupportedEnabled = mWifiManager.is6GHzBandSupported();
+
+        // Check for 6GHz support with wifi disabled
+        setWifiEnabled(false);
+        PollingCheck.check(
+                "Wifi not disabled!",
+                20000,
+                () -> !mWifiManager.isWifiEnabled());
+        boolean isSupportedDisabled = mWifiManager.is6GHzBandSupported();
+
+        // If Support is true when WiFi is disable, then it has to be true when it is enabled.
+        // Note, the reverse is a valid case.
+        if (isSupportedDisabled) {
+            assertTrue(isSupportedEnabled);
+        }
+    }
+
+    /**
+     * Test that {@link WifiManager#isWifiStandardSupported()} returns successfully in
+     * both Wifi enabled/disabled states. The test is to be performed on
+     * {@link WifiAnnotations}'s {@code WIFI_STANDARD_}
+     * Note that the response depends on device support and hence both true/false
+     * are valid responses.
+     */
+    public void testIsWifiStandardsSupported() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+
+        // Check for WiFi standards support with wifi enabled
+        setWifiEnabled(true);
+        PollingCheck.check(
+                "Wifi not enabled!",
+                20000,
+                () -> mWifiManager.isWifiEnabled());
+        boolean isLegacySupportedEnabled =
+                mWifiManager.isWifiStandardSupported(ScanResult.WIFI_STANDARD_LEGACY);
+        boolean is11nSupporedEnabled =
+                mWifiManager.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11N);
+        boolean is11acSupportedEnabled =
+                mWifiManager.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11AC);
+        boolean is11axSupportedEnabled =
+                mWifiManager.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11AX);
+
+        // Check for WiFi standards support with wifi disabled
+        setWifiEnabled(false);
+        PollingCheck.check(
+                "Wifi not disabled!",
+                20000,
+                () -> !mWifiManager.isWifiEnabled());
+
+        boolean isLegacySupportedDisabled =
+                mWifiManager.isWifiStandardSupported(ScanResult.WIFI_STANDARD_LEGACY);
+        boolean is11nSupportedDisabled =
+                mWifiManager.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11N);
+        boolean is11acSupportedDisabled =
+                mWifiManager.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11AC);
+        boolean is11axSupportedDisabled =
+                mWifiManager.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11AX);
+
+        if (isLegacySupportedDisabled) {
+            assertTrue(isLegacySupportedEnabled);
+        }
+
+        if (is11nSupportedDisabled) {
+            assertTrue(is11nSupporedEnabled);
+        }
+
+        if (is11acSupportedDisabled) {
+            assertTrue(is11acSupportedEnabled);
+        }
+
+        if (is11axSupportedDisabled) {
+            assertTrue(is11axSupportedEnabled);
+        }
+    }
 }
