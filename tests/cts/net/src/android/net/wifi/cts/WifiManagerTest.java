@@ -66,6 +66,7 @@ import androidx.test.platform.app.InstrumentationRegistry;
 import com.android.compatibility.common.util.PollingCheck;
 import com.android.compatibility.common.util.ShellIdentityUtils;
 import com.android.compatibility.common.util.SystemUtil;
+import com.android.compatibility.common.util.ThrowingRunnable;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -76,6 +77,7 @@ import java.net.URL;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -1067,6 +1069,23 @@ public class WifiManagerTest extends AndroidTestCase {
         }
     }
 
+    private void runWithScanningEnabled(ThrowingRunnable r) throws Exception {
+        boolean wasScanEnabledForTest = false;
+        if (!mWifiManager.isScanAlwaysAvailable()) {
+            ShellIdentityUtils.invokeWithShellPermissions(
+                    () -> mWifiManager.setScanAlwaysAvailable(true));
+            wasScanEnabledForTest = true;
+        }
+        try {
+            r.run();
+        } finally {
+            if (wasScanEnabledForTest) {
+                ShellIdentityUtils.invokeWithShellPermissions(
+                        () -> mWifiManager.setScanAlwaysAvailable(false));
+            }
+        }
+    }
+
     /**
      * Verify that Wi-Fi scanning is not turned off when the screen turns off while wifi is disabled
      * but location is on.
@@ -1085,17 +1104,16 @@ public class WifiManagerTest extends AndroidTestCase {
             fail("Please enable location for this test - since Marshmallow WiFi scan results are"
                     + " empty when location is disabled!");
         }
-        if(!mWifiManager.isScanAlwaysAvailable()) {
-            fail("Please enable Wi-Fi scanning for this test!");
-        }
-        setWifiEnabled(false);
-        turnScreenOn();
-        assertWifiScanningIsOn();
-        // Toggle screen and verify Wi-Fi scanning is still on.
-        turnScreenOff();
-        assertWifiScanningIsOn();
-        turnScreenOn();
-        assertWifiScanningIsOn();
+        runWithScanningEnabled(() -> {
+            setWifiEnabled(false);
+            turnScreenOn();
+            assertWifiScanningIsOn();
+            // Toggle screen and verify Wi-Fi scanning is still on.
+            turnScreenOff();
+            assertWifiScanningIsOn();
+            turnScreenOn();
+            assertWifiScanningIsOn();
+        });
     }
 
     /**
@@ -1115,17 +1133,16 @@ public class WifiManagerTest extends AndroidTestCase {
             fail("Please enable location for this test - since Marshmallow WiFi scan results are"
                     + " empty when location is disabled!");
         }
-        if(!mWifiManager.isScanAlwaysAvailable()) {
-            fail("Please enable Wi-Fi scanning for this test!");
-        }
-        setWifiEnabled(true);
-        turnScreenOn();
-        assertWifiScanningIsOn();
-        // Toggle screen and verify Wi-Fi scanning is still on.
-        turnScreenOff();
-        assertWifiScanningIsOn();
-        turnScreenOn();
-        assertWifiScanningIsOn();
+        runWithScanningEnabled(() -> {
+            setWifiEnabled(true);
+            turnScreenOn();
+            assertWifiScanningIsOn();
+            // Toggle screen and verify Wi-Fi scanning is still on.
+            turnScreenOff();
+            assertWifiScanningIsOn();
+            turnScreenOn();
+            assertWifiScanningIsOn();
+        });
     }
 
     /**
@@ -1758,5 +1775,38 @@ public class WifiManagerTest extends AndroidTestCase {
                 () -> mWifiManager.getConnectionInfo().getNetworkId() == -1);
 
         assertNull(ShellIdentityUtils.invokeWithShellPermissions(mWifiManager::getCurrentNetwork));
+    }
+
+    /**
+     * Tests {@link WifiManager#isWpa3SaeSupported()} does not crash.
+     */
+    public void testIsWpa3SaeSupported() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        mWifiManager.isWpa3SaeSupported();
+    }
+
+    /**
+     * Tests {@link WifiManager#isWpa3SuiteBSupported()} does not crash.
+     */
+    public void testIsWpa3SuiteBSupported() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        mWifiManager.isWpa3SuiteBSupported();
+    }
+
+    /**
+     * Tests {@link WifiManager#isEnhancedOpenSupported()} does not crash.
+     */
+    public void testIsEnhancedOpenSupported() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        mWifiManager.isEnhancedOpenSupported();
     }
 }
