@@ -49,6 +49,8 @@ import android.net.wifi.WifiManager.WifiLock;
 import android.net.wifi.WifiNetworkConnectionStatistics;
 import android.net.wifi.hotspot2.ConfigParser;
 import android.net.wifi.hotspot2.PasspointConfiguration;
+import android.net.wifi.hotspot2.pps.Credential;
+import android.net.wifi.hotspot2.pps.HomeSp;
 import android.os.Process;
 import android.os.SystemClock;
 import android.os.UserHandle;
@@ -1939,5 +1941,47 @@ public class WifiManagerTest extends AndroidTestCase {
         if (is11axSupportedDisabled) {
             assertTrue(is11axSupportedEnabled);
         }
+    }
+
+    private static PasspointConfiguration createPasspointConfiguration() {
+        PasspointConfiguration config = new PasspointConfiguration();
+        HomeSp homeSp = new HomeSp();
+        homeSp.setFqdn("test.com");
+        homeSp.setFriendlyName("friendly name");
+        homeSp.setRoamingConsortiumOis(new long[]{0x55, 0x66});
+        config.setHomeSp(homeSp);
+        Credential.SimCredential simCred = new Credential.SimCredential();
+        simCred.setImsi("123456*");
+        simCred.setEapType(23 /* EAP_AKA */);
+        Credential cred = new Credential();
+        cred.setRealm("realm");
+        cred.setSimCredential(simCred);
+        config.setCredential(cred);
+
+        return config;
+    }
+
+    /**
+     * Tests {@link WifiManager#addOrUpdatePasspointConfiguration(PasspointConfiguration)}
+     * adds a Passpoint configuration correctly by getting it once it is added, and comparing it
+     * to the local copy of the configuration.
+     */
+    public void testAddOrUpdatePasspointConfiguration() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+
+        // Create and install a Passpoint configuration
+        PasspointConfiguration passpointConfiguration = createPasspointConfiguration();
+        mWifiManager.addOrUpdatePasspointConfiguration(passpointConfiguration);
+
+        // Compare configurations
+        List<PasspointConfiguration> configurations = mWifiManager.getPasspointConfigurations();
+        assertNotNull(configurations);
+        assertEquals(passpointConfiguration, configurations.get(0));
+
+        // Clean up
+        mWifiManager.removePasspointConfiguration(passpointConfiguration.getHomeSp().getFqdn());
     }
 }
