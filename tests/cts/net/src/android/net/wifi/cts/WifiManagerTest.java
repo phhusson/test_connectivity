@@ -1474,6 +1474,45 @@ public class WifiManagerTest extends AndroidTestCase {
         mWifiManager.isPreferredNetworkOffloadSupported();
     }
 
+    /**
+     * Tests {@link WifiManager#isTdlsSupported()} does not crash.
+     */
+    public void testIsTdlsSupported() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        mWifiManager.isTdlsSupported();
+    }
+
+    /**
+     * Tests {@link WifiManager#isStaApConcurrencySupported().
+     */
+    public void testIsStaApConcurrencySupported() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        // check that softap mode is supported by the device
+        if (!mWifiManager.isPortableHotspotSupported()) {
+            return;
+        }
+        assertTrue(mWifiManager.isWifiEnabled());
+
+        boolean isStaApConcurrencySupported = mWifiManager.isStaApConcurrencySupported();
+        // start local only hotspot.
+        TestLocalOnlyHotspotCallback callback = startLocalOnlyHotspot();
+        if (isStaApConcurrencySupported) {
+            assertTrue(mWifiManager.isWifiEnabled());
+        } else {
+            // no concurrency, wifi should be disabled.
+            assertFalse(mWifiManager.isWifiEnabled());
+        }
+        stopLocalOnlyHotspot(callback, true);
+
+        assertTrue(mWifiManager.isWifiEnabled());
+    }
+
     private static class TestTrafficStateCallback implements WifiManager.TrafficStateCallback {
         private final Object mLock;
         public boolean onStateChangedCalled = false;
