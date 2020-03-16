@@ -17,6 +17,7 @@
 package android.net.wifi.cts;
 
 import static android.net.wifi.WifiEnterpriseConfig.Eap.AKA;
+import static android.net.wifi.WifiEnterpriseConfig.Eap.WAPI_CERT;
 
 import android.net.MacAddress;
 import android.net.wifi.WifiEnterpriseConfig;
@@ -189,6 +190,28 @@ public class WifiNetworkSuggestionTest extends AndroidTestCase {
         WifiNetworkSuggestion suggestion =
                 createBuilderWithCommonParams()
                         .setWpa3EnterpriseConfig(enterpriseConfig)
+                        .build();
+        validateCommonParams(suggestion);
+        assertNull(suggestion.getPassphrase());
+        assertNotNull(suggestion.getEnterpriseConfig());
+        assertEquals(enterpriseConfig.getEapMethod(),
+                suggestion.getEnterpriseConfig().getEapMethod());
+        assertNull(suggestion.getPasspointConfig());
+    }
+
+    /**
+     * Tests {@link android.net.wifi.WifiNetworkSuggestion.Builder} class.
+     */
+    public void testBuilderWithWapiEnterprise() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        WifiEnterpriseConfig enterpriseConfig = new WifiEnterpriseConfig();
+        enterpriseConfig.setEapMethod(WAPI_CERT);
+        WifiNetworkSuggestion suggestion =
+                createBuilderWithCommonParams()
+                        .setWapiEnterpriseConfig(enterpriseConfig)
                         .build();
         validateCommonParams(suggestion);
         assertNull(suggestion.getPassphrase());
