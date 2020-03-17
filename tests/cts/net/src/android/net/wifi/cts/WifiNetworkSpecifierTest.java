@@ -31,6 +31,7 @@ import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
+import android.net.wifi.WifiEnterpriseConfig;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.NetworkRequestMatchCallback;
@@ -505,5 +506,45 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
                 .setSsid(WifiInfo.sanitizeSsid(mTestNetwork.SSID))
                 .build();
         testUserRejectionWithSpecifier(specifier);
+    }
+
+    /**
+     * Tests the builder for WPA2 enterprise networks.
+     * Note: Can't do end to end tests for such networks in CTS environment.
+     */
+    public void testBuilderForWpa2Enterprise() {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        WifiNetworkSpecifier specifier1 = new WifiNetworkSpecifier.Builder()
+                .setSsid(WifiInfo.sanitizeSsid(mTestNetwork.SSID))
+                .setWpa2EnterpriseConfig(new WifiEnterpriseConfig())
+                .build();
+        WifiNetworkSpecifier specifier2 = new WifiNetworkSpecifier.Builder()
+                .setSsid(WifiInfo.sanitizeSsid(mTestNetwork.SSID))
+                .setWpa2EnterpriseConfig(new WifiEnterpriseConfig())
+                .build();
+        assertThat(specifier1.satisfiedBy(specifier2)).isTrue();
+    }
+
+    /**
+     * Tests the builder for WPA3 enterprise networks.
+     * Note: Can't do end to end tests for such networks in CTS environment.
+     */
+    public void testBuilderForWpa3Enterprise() {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        WifiNetworkSpecifier specifier1 = new WifiNetworkSpecifier.Builder()
+                .setSsid(WifiInfo.sanitizeSsid(mTestNetwork.SSID))
+                .setWpa3EnterpriseConfig(new WifiEnterpriseConfig())
+                .build();
+        WifiNetworkSpecifier specifier2 = new WifiNetworkSpecifier.Builder()
+                .setSsid(WifiInfo.sanitizeSsid(mTestNetwork.SSID))
+                .setWpa3EnterpriseConfig(new WifiEnterpriseConfig())
+                .build();
+        assertThat(specifier1.satisfiedBy(specifier2)).isTrue();
     }
 }
