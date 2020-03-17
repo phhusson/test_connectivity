@@ -51,41 +51,6 @@ public class WifiMigrationTest extends AndroidTestCase {
     /**
      * Tests {@link android.net.wifi.WifiMigration.ConfigStoreMigrationData} class.
      */
-    public void testWifiMigrationConfigStoreDataBuilder() throws Exception {
-        if (!WifiFeature.isWifiSupported(getContext())) {
-            // skip the test if WiFi is not supported
-            return;
-        }
-        WifiConfiguration savedNetwork1 = new WifiConfiguration();
-        savedNetwork1.SSID = "\"test1\"";
-        WifiConfiguration savedNetwork2 = new WifiConfiguration();
-        savedNetwork1.SSID = "\"test2\"";
-        List<WifiConfiguration> savedNetworks = Arrays.asList(savedNetwork1, savedNetwork2);
-
-        SoftApConfiguration softApConfiguration = new SoftApConfiguration.Builder()
-                .setSsid("\"test3\"")
-                .build();
-
-        WifiMigration.ConfigStoreMigrationData migrationData =
-                new WifiMigration.ConfigStoreMigrationData.Builder()
-                        .setUserSavedNetworkConfigurations(savedNetworks)
-                        .setUserSoftApConfiguration(softApConfiguration)
-                        .build();
-
-        assertNotNull(migrationData);
-        assertEquals(savedNetworks.size(),
-                migrationData.getUserSavedNetworkConfigurations().size());
-        assertEquals(savedNetwork1.SSID,
-                migrationData.getUserSavedNetworkConfigurations().get(0).SSID);
-        assertEquals(savedNetwork2.SSID,
-                migrationData.getUserSavedNetworkConfigurations().get(1).SSID);
-        assertEquals(softApConfiguration.getSsid(),
-                migrationData.getUserSoftApConfiguration().getSsid());
-    }
-
-    /**
-     * Tests {@link android.net.wifi.WifiMigration.ConfigStoreMigrationData} class.
-     */
     public void testWifiMigrationSettingsDataBuilder() throws Exception {
         if (!WifiFeature.isWifiSupported(getContext())) {
             // skip the test if WiFi is not supported
