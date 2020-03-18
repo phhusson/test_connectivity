@@ -42,11 +42,13 @@ import java.util.Arrays;
 @RunWith(AndroidJUnit4.class)
 public class WifiNl80211ManagerTest {
 
+    private Context mContext;
+
     @Before
     public void setUp() {
-        Context context = InstrumentationRegistry.getInstrumentation().getContext();
+        mContext = InstrumentationRegistry.getInstrumentation().getContext();
         // skip tests if Wifi is not supported
-        assumeTrue(WifiFeature.isWifiSupported(context));
+        assumeTrue(WifiFeature.isWifiSupported(mContext));
     }
 
     @Test
@@ -63,5 +65,20 @@ public class WifiNl80211ManagerTest {
         assertThat(securityType.pairwiseCipher)
                 .isEqualTo(Arrays.asList(ScanResult.CIPHER_NONE, ScanResult.CIPHER_TKIP));
         assertThat(securityType.groupCipher).isEqualTo(ScanResult.CIPHER_CCMP);
+    }
+
+    @Test
+    public void testSendMgmtFrame() {
+        try {
+            WifiNl80211Manager manager = mContext.getSystemService(WifiNl80211Manager.class);
+            manager.sendMgmtFrame("wlan0", new byte[]{}, -1, Runnable::run,
+                    new WifiNl80211Manager.SendMgmtFrameCallback() {
+                        @Override
+                        public void onAck(int elapsedTimeMs) {}
+
+                        @Override
+                        public void onFailure(int reason) {}
+                    });
+        } catch (Exception ignore) {}
     }
 }

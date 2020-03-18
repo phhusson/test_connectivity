@@ -18,23 +18,45 @@ package android.net.wifi.cts;
 
 import static android.net.wifi.WifiConfiguration.METERED_OVERRIDE_NONE;
 
+import android.net.Uri;
+import android.net.wifi.hotspot2.OsuProvider;
 import android.net.wifi.hotspot2.PasspointConfiguration;
 import android.net.wifi.hotspot2.pps.Credential;
 import android.net.wifi.hotspot2.pps.HomeSp;
 import android.test.AndroidTestCase;
+import android.text.TextUtils;
 
+import java.lang.reflect.Constructor;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.cert.CertificateEncodingException;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 public class WifiHotspot2Test extends AndroidTestCase {
     static final int SIM_CREDENTIAL = 0;
     static final int USER_CREDENTIAL = 1;
     static final int CERT_CREDENTIAL = 2;
-
+    private static final String TEST_SSID = "TEST SSID";
+    private static final String TEST_FRIENDLY_NAME = "Friendly Name";
+    private static final Map<String, String> TEST_FRIENDLY_NAMES =
+            new HashMap<String, String>() {
+                {
+                    put("en", TEST_FRIENDLY_NAME);
+                    put("kr", TEST_FRIENDLY_NAME + 2);
+                    put("jp", TEST_FRIENDLY_NAME + 3);
+                }
+            };
+    private static final String TEST_SERVICE_DESCRIPTION = "Dummy Service";
+    private static final Uri TEST_SERVER_URI = Uri.parse("https://test.com");
+    private static final String TEST_NAI = "test.access.com";
+    private static final List<Integer> TEST_METHOD_LIST =
+            Arrays.asList(1 /* METHOD_SOAP_XML_SPP */);
     @Override
     protected void setUp() throws Exception {
         super.setUp();
@@ -433,5 +455,34 @@ public class WifiHotspot2Test extends AndroidTestCase {
         userCred.setNonEapInnerMethod("MS-CHAP");
         return createCredential(userCred, null, null, null, null,
                 FakeKeys.CA_CERT0);
+    }
+
+    /**
+     * Tests {@link OsuProvider#getFriendlyName()} and {@link OsuProvider#getServerUri()} methods.
+     * <p>
+     * Test that getting a set friendly name and server URI produces the same value
+     */
+    public void testOsuProviderGetters() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+
+        // Using Java reflection to construct an OsuProvider instance because its constructor is
+        // hidden and not available to apps.
+        Class<?> osuProviderClass = Class.forName("android.net.wifi.hotspot2.OsuProvider");
+        Constructor<?> osuProviderClassConstructor = osuProviderClass.getConstructor(String.class,
+                Map.class, String.class, Uri.class, String.class, List.class);
+
+        OsuProvider osuProvider = (OsuProvider) osuProviderClassConstructor.newInstance(TEST_SSID,
+                TEST_FRIENDLY_NAMES, TEST_SERVICE_DESCRIPTION, TEST_SERVER_URI, TEST_NAI,
+                TEST_METHOD_LIST);
+        String lang = Locale.getDefault().getLanguage();
+        String friendlyName = TEST_FRIENDLY_NAMES.get(lang);
+        if (TextUtils.isEmpty(friendlyName)) {
+            friendlyName = TEST_FRIENDLY_NAMES.get("en");
+        }
+        assertEquals(friendlyName, osuProvider.getFriendlyName());
+        assertEquals(TEST_SERVER_URI, osuProvider.getServerUri());
     }
 }
