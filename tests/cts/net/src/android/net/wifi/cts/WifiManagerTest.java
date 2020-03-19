@@ -1840,11 +1840,13 @@ public class WifiManagerTest extends AndroidTestCase {
 
     private static class TestTrafficStateCallback implements WifiManager.TrafficStateCallback {
         private final Object mLock;
+        private final int mWaitForState;
         public boolean onStateChangedCalled = false;
         public int state = -1;
 
-        TestTrafficStateCallback(Object lock) {
+        TestTrafficStateCallback(Object lock, int waitForState) {
             mLock = lock;
+            mWaitForState = waitForState;
         }
 
         @Override
@@ -1852,7 +1854,9 @@ public class WifiManagerTest extends AndroidTestCase {
             synchronized (mLock) {
                 onStateChangedCalled = true;
                 this.state = state;
-                mLock.notify();
+                if (mWaitForState == state) { // only notify if we got the expected state.
+                    mLock.notify();
+                }
             }
         }
     }
@@ -1886,7 +1890,8 @@ public class WifiManagerTest extends AndroidTestCase {
             // skip the test if WiFi is not supported
             return;
         }
-        TestTrafficStateCallback trafficStateCallback = new TestTrafficStateCallback(mLock);
+        TestTrafficStateCallback trafficStateCallback =
+                new TestTrafficStateCallback(mLock, DATA_ACTIVITY_INOUT);
         UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
         try {
             uiAutomation.adoptShellPermissionIdentity();
