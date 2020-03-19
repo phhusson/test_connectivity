@@ -81,9 +81,11 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
@@ -1212,8 +1214,12 @@ public class WifiManagerTest extends AndroidTestCase {
         Thread.sleep(DURATION_SCREEN_TOGGLE);
     }
 
-    private void turnScreenOff() throws Exception {
+    private void turnScreenOffNoDelay() throws Exception {
         mUiDevice.executeShellCommand("input keyevent KEYCODE_SLEEP");
+    }
+
+    private void turnScreenOff() throws Exception {
+        turnScreenOffNoDelay();
         // Since the screen on/off intent is ordered, they will not be sent right now.
         Thread.sleep(DURATION_SCREEN_TOGGLE);
     }
@@ -1797,6 +1803,59 @@ public class WifiManagerTest extends AndroidTestCase {
             return;
         }
         mWifiManager.isPreferredNetworkOffloadSupported();
+    }
+
+    /** Test that PNO scans reconnects us when the device is disconnected and the screen is off. */
+    public void testPnoScan() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        if (!mWifiManager.isPreferredNetworkOffloadSupported()) {
+            // skip the test if PNO scanning is not supported
+            return;
+        }
+
+        // make sure we're connected
+        waitForConnection();
+
+        WifiInfo currentNetwork = ShellIdentityUtils.invokeWithShellPermissions(
+                mWifiManager::getConnectionInfo);
+
+        // disable all networks that aren't already disabled
+        List<WifiConfiguration> savedNetworks = ShellIdentityUtils.invokeWithShellPermissions(
+                mWifiManager::getConfiguredNetworks);
+        Set<Integer> disabledNetworkIds = new HashSet<>();
+        for (WifiConfiguration config : savedNetworks) {
+            if (config.getNetworkSelectionStatus().getNetworkSelectionDisableReason()
+                    == WifiConfiguration.NetworkSelectionStatus.DISABLED_NONE) {
+                ShellIdentityUtils.invokeWithShellPermissions(
+                        () -> mWifiManager.disableNetwork(config.networkId));
+                disabledNetworkIds.add(config.networkId);
+            }
+        }
+
+        try {
+            // wait for disconnection from current network
+            waitForDisconnection();
+
+            // turn screen off
+            turnScreenOffNoDelay();
+
+            // re-enable the current network - this will trigger PNO
+            ShellIdentityUtils.invokeWithShellPermissions(
+                    () -> mWifiManager.enableNetwork(currentNetwork.getNetworkId(), false));
+            disabledNetworkIds.remove(currentNetwork.getNetworkId());
+
+            // PNO should reconnect us back to the network we disconnected from
+            waitForConnection();
+        } finally {
+            // re-enable disabled networks
+            for (int disabledNetworkId : disabledNetworkIds) {
+                ShellIdentityUtils.invokeWithShellPermissions(
+                        () -> mWifiManager.enableNetwork(disabledNetworkId, false));
+            }
+        }
     }
 
     /**
