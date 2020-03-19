@@ -180,15 +180,15 @@ public class TetheringManagerTest {
         }
     }
 
-    private class StartTetheringCallback extends TetheringManager.StartTetheringCallback {
+    private class StartTetheringCallback implements TetheringManager.StartTetheringCallback {
         @Override
         public void onTetheringStarted() {
             // Do nothing, TetherChangeReceiver will wait until it receives the broadcast.
         }
 
         @Override
-        public void onTetheringFailed(final int resultCode) {
-            fail("startTethering fail: " + resultCode);
+        public void onTetheringFailed(final int error) {
+            fail("startTethering fail: " + error);
         }
     }
 
