@@ -58,7 +58,7 @@ public class ConnectedNetworkScorerTest extends AndroidTestCase {
             return;
         }
         mWifiManager = getContext().getSystemService(WifiManager.class);
-        assertNotNull(mWifiManager);
+        assertThat(mWifiManager).isNotNull();
 
         // turn on verbose logging for tests
         mWasVerboseLoggingEnabled = ShellIdentityUtils.invokeWithShellPermissions(
@@ -233,4 +233,112 @@ public class ConnectedNetworkScorerTest extends AndroidTestCase {
         }
     }
 
+    private static class TestConnectedNetworkScorer implements
+            WifiManager.WifiConnectedNetworkScorer {
+        private CountDownLatch mCountDownLatch;
+        public int startSessionId;
+        public int stopSessionId;
+        public WifiManager.ScoreUpdateObserver scoreUpdateObserver;
+
+        TestConnectedNetworkScorer(CountDownLatch countDownLatch) {
+            mCountDownLatch = countDownLatch;
+        }
+
+        @Override
+        public void onStart(int sessionId) {
+            synchronized (mCountDownLatch) {
+                this.startSessionId = sessionId;
+                mCountDownLatch.countDown();
+            }
+        }
+
+        @Override
+        public void onStop(int sessionId) {
+            synchronized (mCountDownLatch) {
+                this.stopSessionId = sessionId;
+                mCountDownLatch.countDown();
+            }
+        }
+
+        @Override
+        public void onSetScoreUpdateObserver(WifiManager.ScoreUpdateObserver observerImpl) {
+            this.scoreUpdateObserver = observerImpl;
+        }
+
+        public void resetCountDownLatch(CountDownLatch countDownLatch) {
+            synchronized (mCountDownLatch) {
+                mCountDownLatch = countDownLatch;
+            }
+        }
+    }
+
+    /**
+     * Tests the {@link android.net.wifi.WifiConnectedNetworkScorer} interface.
+     *
+     * Note: We could write more interesting test cases (if the device has a mobile connection), but
+     * that would make the test flaky. The default network/route selection on the device is not just
+     * controlled by the wifi scorer input, but also based on params which are controlled by
+     * other parts of the platform (likely in connectivity service) and hence will behave
+     * differently on OEM devices.
+     */
+    public void testSetWifiConnectedNetworkScorer() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+        CountDownLatch countDownLatchScorer = new CountDownLatch(1);
+        CountDownLatch countDownLatchUsabilityStats = new CountDownLatch(1);
+        UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        TestConnectedNetworkScorer connectedNetworkScorer =
+                new TestConnectedNetworkScorer(countDownLatchScorer);
+        TestUsabilityStatsListener usabilityStatsListener =
+                new TestUsabilityStatsListener(countDownLatchUsabilityStats);
+        try {
+            uiAutomation.adoptShellPermissionIdentity();
+            mWifiManager.setWifiConnectedNetworkScorer(
+                    Executors.newSingleThreadExecutor(), connectedNetworkScorer);
+            // Since we're already connected, wait for onStart to be invoked.
+            assertThat(countDownLatchScorer.await(DURATION, TimeUnit.MILLISECONDS)).isTrue();
+
+            assertThat(connectedNetworkScorer.startSessionId).isAtLeast(0);
+            assertThat(connectedNetworkScorer.scoreUpdateObserver).isNotNull();
+            WifiManager.ScoreUpdateObserver scoreUpdateObserver =
+                    connectedNetworkScorer.scoreUpdateObserver;
+
+            // Now trigger a dummy score update.
+            scoreUpdateObserver.notifyScoreUpdate(connectedNetworkScorer.startSessionId, 50);
+
+            // Register the usability listener
+            mWifiManager.addOnWifiUsabilityStatsListener(
+                    Executors.newSingleThreadExecutor(), usabilityStatsListener);
+            // Trigger a usability stats update.
+            scoreUpdateObserver.triggerUpdateOfWifiUsabilityStats(
+                    connectedNetworkScorer.startSessionId);
+            // Ensure that we got the stats update callback.
+            assertThat(countDownLatchUsabilityStats.await(DURATION, TimeUnit.MILLISECONDS))
+                    .isTrue();
+            assertThat(usabilityStatsListener.seqNum).isAtLeast(0);
+
+            // Reset the scorer countdown latch for onStop
+            countDownLatchScorer = new CountDownLatch(1);
+            connectedNetworkScorer.resetCountDownLatch(countDownLatchScorer);
+            // Now disconnect from the network.
+            mWifiManager.disconnect();
+            // Wait for it to be disconnected.
+            PollingCheck.check(
+                    "Wifi not disconnected",
+                    DURATION,
+                    () -> mWifiManager.getConnectionInfo().getNetworkId() == -1);
+            assertThat(mWifiManager.getConnectionInfo().getNetworkId()).isEqualTo(-1);
+
+            // Wait for stop to be invoked and ensure that the session id matches.
+            assertThat(countDownLatchScorer.await(DURATION, TimeUnit.MILLISECONDS)).isTrue();
+            assertThat(connectedNetworkScorer.stopSessionId)
+                    .isEqualTo(connectedNetworkScorer.startSessionId);
+        } finally {
+            mWifiManager.removeOnWifiUsabilityStatsListener(usabilityStatsListener);
+            mWifiManager.clearWifiConnectedNetworkScorer();
+            uiAutomation.dropShellPermissionIdentity();
+        }
+    }
 }
