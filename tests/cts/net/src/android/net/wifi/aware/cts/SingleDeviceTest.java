@@ -64,6 +64,9 @@ public class SingleDeviceTest extends AndroidTestCase {
 
     // wait for Wi-Fi Aware state changes & network requests callbacks
     static private final int WAIT_FOR_AWARE_CHANGE_SECS = 10; // 10 seconds
+    private static final int MIN_DISTANCE_MM = 1 * 1000;
+    private static final int MAX_DISTANCE_MM = 3 * 1000;
+    private static final byte[] PMK_VALID = "01234567890123456789012345678901".getBytes();
 
     private final Object mLock = new Object();
     private final HandlerThread mHandlerThread = new HandlerThread("SingleDeviceTest");
@@ -741,7 +744,8 @@ public class SingleDeviceTest extends AndroidTestCase {
     }
 
     /**
-     * Request an Aware data-path (encrypted) as a Responder with an arbitrary peer MAC address.
+     * Request an Aware data-path (encrypted with Passphrase) as a Responder with an arbitrary peer
+     * MAC address.
      * Validate that receive an onUnavailable() callback.
      */
     public void testDataPathPassphraseOutOfBandFail() {
@@ -767,6 +771,40 @@ public class SingleDeviceTest extends AndroidTestCase {
                 session.createNetworkSpecifierPassphrase(
                         WifiAwareManager.WIFI_AWARE_DATA_PATH_ROLE_INITIATOR, mac.toByteArray(),
                         "abcdefghihk")).build();
+        mConnectivityManager.requestNetwork(nr, networkCb);
+        assertTrue("OnUnavailable not received", networkCb.waitForOnUnavailable());
+
+        session.close();
+    }
+
+    /**
+     * Request an Aware data-path (encrypted with PMK) as a Responder with an arbitrary peer MAC
+     * address.
+     * Validate that receive an onUnavailable() callback.
+     */
+    public void testDataPathPmkOutOfBandFail() {
+        if (!TestUtils.shouldTestWifiAware(getContext())) {
+            return;
+        }
+        MacAddress mac = MacAddress.fromString("00:01:02:03:04:05");
+
+        // 1. initialize Aware: only purpose is to make sure it is available for OOB data-path
+        WifiAwareSession session = attachAndGetSession();
+
+        PublishConfig publishConfig = new PublishConfig.Builder().setServiceName(
+                "ValidName").build();
+        DiscoverySessionCallbackTest discoveryCb = new DiscoverySessionCallbackTest();
+        session.publish(publishConfig, discoveryCb, mHandler);
+        assertTrue("Publish started",
+                discoveryCb.waitForCallback(DiscoverySessionCallbackTest.ON_PUBLISH_STARTED));
+
+        // 2. request an AWARE network
+        NetworkCallbackTest networkCb = new NetworkCallbackTest();
+        NetworkRequest nr = new NetworkRequest.Builder().addTransportType(
+                NetworkCapabilities.TRANSPORT_WIFI_AWARE).setNetworkSpecifier(
+                session.createNetworkSpecifierPmk(
+                        WifiAwareManager.WIFI_AWARE_DATA_PATH_ROLE_INITIATOR, mac.toByteArray(),
+                        PMK_VALID)).build();
         mConnectivityManager.requestNetwork(nr, networkCb);
         assertTrue("OnUnavailable not received", networkCb.waitForOnUnavailable());
 
