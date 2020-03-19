@@ -618,7 +618,8 @@ public class SingleDeviceTest extends AndroidTestCase {
 
         // 2. update-subscribe
         subscribeConfig = new SubscribeConfig.Builder().setServiceName(
-                serviceName).setServiceSpecificInfo("extras".getBytes()).build();
+                serviceName).setServiceSpecificInfo("extras".getBytes())
+                .setMinDistanceMm(MIN_DISTANCE_MM).build();
         discoverySession.updateSubscribe(subscribeConfig);
         assertTrue("Subscribe update", discoveryCb.waitForCallback(
                 DiscoverySessionCallbackTest.ON_SESSION_CONFIG_UPDATED));
