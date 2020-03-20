@@ -16,15 +16,8 @@
 
 package android.net.wifi.cts;
 
-import static org.junit.Assert.assertNotNull;
-
-import android.net.wifi.SoftApConfiguration;
-import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiMigration;
 import android.test.AndroidTestCase;
-
-import java.util.Arrays;
-import java.util.List;
 
 public class WifiMigrationTest extends AndroidTestCase {
     private static final String TEST_SSID_UNQUOTED = "testSsid1";
@@ -49,7 +42,7 @@ public class WifiMigrationTest extends AndroidTestCase {
     }
 
     /**
-     * Tests {@link android.net.wifi.WifiMigration.ConfigStoreMigrationData} class.
+     * Tests {@link android.net.wifi.WifiMigration.SettingsMigrationData.Builder} class.
      */
     public void testWifiMigrationSettingsDataBuilder() throws Exception {
         if (!WifiFeature.isWifiSupported(getContext())) {
@@ -75,5 +68,16 @@ public class WifiMigrationTest extends AndroidTestCase {
         assertTrue(migrationData.isWakeUpEnabled());
         assertTrue(migrationData.isVerboseLoggingEnabled());
         assertEquals(TEST_SSID_UNQUOTED, migrationData.getP2pDeviceName());
+    }
+
+    /**
+     * Tests {@link android.net.wifi.WifiMigration.SettingsMigrationData} class.
+     */
+    public void testWifiMigrationSettings() throws Exception {
+        try {
+            // ensure that this does not crash.
+            WifiMigration.loadFromSettings(getContext());
+        } catch (Exception ignore) {
+        }
     }
 }
