@@ -1447,11 +1447,11 @@ public class WifiManagerTest extends AndroidTestCase {
      */
     public void testSetGetSoftApConfigurationAndSoftApCapabilityCallback() throws Exception {
         UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        TestExecutor executor = new TestExecutor();
+        TestSoftApCallback callback = new TestSoftApCallback(mLock);
         try {
             uiAutomation.adoptShellPermissionIdentity();
             turnOffWifiAndTetheredHotspotIfEnabled();
-            TestExecutor executor = new TestExecutor();
-            TestSoftApCallback callback = new TestSoftApCallback(mLock);
             verifyRegisterSoftApCallback(executor, callback);
 
             SoftApConfiguration.Builder softApConfigBuilder = new SoftApConfiguration.Builder()
@@ -1490,6 +1490,7 @@ public class WifiManagerTest extends AndroidTestCase {
                 verifySetGetSoftApConfig(softApConfigBuilder.build());
             }
         } finally {
+            mWifiManager.unregisterSoftApCallback(callback);
             uiAutomation.dropShellPermissionIdentity();
         }
     }
@@ -1501,11 +1502,11 @@ public class WifiManagerTest extends AndroidTestCase {
     public void testStartTetheredHotspotWithChannelConfigAndSoftApStateAndInfoCallback()
             throws Exception {
         UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        TestExecutor executor = new TestExecutor();
+        TestSoftApCallback callback = new TestSoftApCallback(mLock);
         try {
             uiAutomation.adoptShellPermissionIdentity();
             turnOffWifiAndTetheredHotspotIfEnabled();
-            TestExecutor executor = new TestExecutor();
-            TestSoftApCallback callback = new TestSoftApCallback(mLock);
             verifyRegisterSoftApCallback(executor, callback);
 
             SoftApConfiguration testSoftApConfig = new SoftApConfiguration.Builder()
@@ -1544,6 +1545,7 @@ public class WifiManagerTest extends AndroidTestCase {
                     0 == callback.getCurrentSoftApInfo().getFrequency();
                     });
         } finally {
+            mWifiManager.unregisterSoftApCallback(callback);
             uiAutomation.dropShellPermissionIdentity();
         }
     }
