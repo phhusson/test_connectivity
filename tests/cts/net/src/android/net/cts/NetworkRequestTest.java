@@ -34,6 +34,7 @@ import android.net.NetworkRequest;
 import android.net.NetworkSpecifier;
 import android.net.wifi.WifiNetworkSpecifier;
 import android.os.Build;
+import android.os.Process;
 import android.os.PatternMatcher;
 
 import androidx.test.runner.AndroidJUnit4;
@@ -159,5 +160,20 @@ public class NetworkRequestTest {
         assertFalse(request.canBeSatisfiedBy(cellCap));
         assertEquals(request.canBeSatisfiedBy(capWithSp),
                 new NetworkCapabilities(capWithSp).satisfiedByNetworkCapabilities(capWithSp));
+    }
+
+    @Test @IgnoreUpTo(Build.VERSION_CODES.Q)
+    public void testRequestorUid() {
+        final NetworkCapabilities nc = new NetworkCapabilities();
+        // Verify default value is INVALID_UID
+        assertEquals(Process.INVALID_UID, new NetworkRequest.Builder()
+                 .setCapabilities(nc).build().getRequestorUid());
+
+        nc.setRequestorUid(1314);
+        final NetworkRequest nr = new NetworkRequest.Builder().setCapabilities(nc).build();
+        assertEquals(1314, nr.getRequestorUid());
+
+        assertEquals(Process.INVALID_UID, new NetworkRequest.Builder()
+                .clearCapabilities().build().getRequestorUid());
     }
 }
