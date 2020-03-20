@@ -32,7 +32,6 @@ import android.content.IntentFilter;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
-import android.net.util.MacAddressUtils;
 import android.net.ConnectivityManager;
 import android.net.LinkProperties;
 import android.net.MacAddress;
@@ -41,6 +40,8 @@ import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
 import android.net.NetworkRequest;
 import android.net.TetheringManager;
+import android.net.Uri;
+import android.net.util.MacAddressUtils;
 import android.net.wifi.ScanResult;
 import android.net.wifi.SoftApCapability;
 import android.net.wifi.SoftApConfiguration;
@@ -52,9 +53,14 @@ import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.WifiLock;
 import android.net.wifi.WifiNetworkConnectionStatistics;
 import android.net.wifi.hotspot2.ConfigParser;
+import android.net.wifi.hotspot2.OsuProvider;
 import android.net.wifi.hotspot2.PasspointConfiguration;
+import android.net.wifi.hotspot2.ProvisioningCallback;
 import android.net.wifi.hotspot2.pps.Credential;
 import android.net.wifi.hotspot2.pps.HomeSp;
+import android.os.Handler;
+import android.os.HandlerExecutor;
+import android.os.HandlerThread;
 import android.os.Process;
 import android.os.SystemClock;
 import android.os.UserHandle;
@@ -78,15 +84,18 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.lang.reflect.Constructor;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -130,7 +139,7 @@ public class WifiManagerTest extends AndroidTestCase {
     private static final int SCAN_TIMEOUT_MSEC = 9000;
     private static final int TIMEOUT_MSEC = 6000;
     private static final int WAIT_MSEC = 60;
-    private static final int DURATION = 10_000;
+    private static final int TEST_WAIT_DURATION_MS = 10_000;
     private static final int DURATION_SCREEN_TOGGLE = 2000;
     private static final int DURATION_SETTINGS_TOGGLE = 1_000;
     private static final int WIFI_SCAN_TEST_INTERVAL_MILLIS = 60 * 1000;
@@ -190,6 +199,54 @@ public class WifiManagerTest extends AndroidTestCase {
             }
         }
     };
+    // Initialize with an invalid status value (0)
+    private int mProvisioningStatus = 0;
+    // Initialize with an invalid status value (0)
+    private int mProvisioningFailureStatus = 0;
+    private boolean mProvisioningComplete = false;
+    private ProvisioningCallback mProvisioningCallback = new ProvisioningCallback() {
+        @Override
+        public void onProvisioningFailure(int status) {
+            synchronized (mLock) {
+                mProvisioningFailureStatus = status;
+                mLock.notify();
+            }
+        }
+
+        @Override
+        public void onProvisioningStatus(int status) {
+            synchronized (mLock) {
+                mProvisioningStatus = status;
+                mLock.notify();
+            }
+        }
+
+        @Override
+        public void onProvisioningComplete() {
+            mProvisioningComplete = true;
+        }
+    };
+    private static final String TEST_SSID = "TEST SSID";
+    private static final String TEST_FRIENDLY_NAME = "Friendly Name";
+    private static final Map<String, String> TEST_FRIENDLY_NAMES =
+            new HashMap<String, String>() {
+                {
+                    put("en", TEST_FRIENDLY_NAME);
+                    put("kr", TEST_FRIENDLY_NAME + 2);
+                    put("jp", TEST_FRIENDLY_NAME + 3);
+                }
+            };
+    private static final String TEST_SERVICE_DESCRIPTION = "Dummy Service";
+    private static final Uri TEST_SERVER_URI = Uri.parse("https://test.com");
+    private static final String TEST_NAI = "test.access.com";
+    private static final List<Integer> TEST_METHOD_LIST =
+            Arrays.asList(1 /* METHOD_SOAP_XML_SPP */);
+    private final HandlerThread mHandlerThread = new HandlerThread("WifiManagerTest");
+    protected final Executor mExecutor;
+    {
+        mHandlerThread.start();
+        mExecutor = new HandlerExecutor(new Handler(mHandlerThread.getLooper()));
+    }
 
     @Override
     protected void setUp() throws Exception {
@@ -228,7 +285,7 @@ public class WifiManagerTest extends AndroidTestCase {
             setWifiEnabled(true);
         mUiDevice = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
         turnScreenOnNoDelay();
-        Thread.sleep(DURATION);
+        Thread.sleep(TEST_WAIT_DURATION_MS);
         assertTrue(mWifiManager.isWifiEnabled());
         synchronized (mMySync) {
             mMySync.expectedState = STATE_NULL;
@@ -259,7 +316,7 @@ public class WifiManagerTest extends AndroidTestCase {
         // restore original softap config
         ShellIdentityUtils.invokeWithShellPermissions(
                 () -> mWifiManager.setSoftApConfiguration(mOriginalSoftApConfig));
-        Thread.sleep(DURATION);
+        Thread.sleep(TEST_WAIT_DURATION_MS);
         super.tearDown();
     }
 
@@ -377,7 +434,7 @@ public class WifiManagerTest extends AndroidTestCase {
                     + " empty when location is disabled!");
         }
         setWifiEnabled(false);
-        Thread.sleep(DURATION);
+        Thread.sleep(TEST_WAIT_DURATION_MS);
         startScan();
         if (mWifiManager.isScanAlwaysAvailable() && isScanCurrentlyAvailable()) {
             // Make sure at least one AP is found.
@@ -712,7 +769,7 @@ public class WifiManagerTest extends AndroidTestCase {
             try {
                 mWifiManager.startLocalOnlyHotspot(callback, null);
                 // now wait for callback
-                mLock.wait(DURATION);
+                mLock.wait(TEST_WAIT_DURATION_MS);
             } catch (InterruptedException e) {
             }
             // check if we got the callback
@@ -806,7 +863,7 @@ public class WifiManagerTest extends AndroidTestCase {
         boolean wifiEnabled = mWifiManager.isWifiEnabled();
         // now we should fail to toggle wifi state.
         assertFalse(mWifiManager.setWifiEnabled(!wifiEnabled));
-        Thread.sleep(DURATION);
+        Thread.sleep(TEST_WAIT_DURATION_MS);
         assertEquals(wifiEnabled, mWifiManager.isWifiEnabled());
     }
 
@@ -1553,7 +1610,7 @@ public class WifiManagerTest extends AndroidTestCase {
                         mWifiManager.connect(savedNetworks.get(0), actionListener);
                     }
                     // now wait for callback
-                    mLock.wait(DURATION);
+                    mLock.wait(TEST_WAIT_DURATION_MS);
                 } catch (InterruptedException e) {
                 }
             }
@@ -1632,7 +1689,7 @@ public class WifiManagerTest extends AndroidTestCase {
                                 .build(),
                         networkCallbackListener);
                 // now wait for callback
-                mLock.wait(DURATION);
+                mLock.wait(TEST_WAIT_DURATION_MS);
             } catch (InterruptedException e) {
             }
         }
@@ -1680,7 +1737,7 @@ public class WifiManagerTest extends AndroidTestCase {
                     modSavedNetwork.meteredOverride = WifiConfiguration.METERED_OVERRIDE_METERED;
                     mWifiManager.save(modSavedNetwork, actionListener);
                     // now wait for callback
-                    mLock.wait(DURATION);
+                    mLock.wait(TEST_WAIT_DURATION_MS);
                 } catch (InterruptedException e) {
                 }
             }
@@ -1728,7 +1785,7 @@ public class WifiManagerTest extends AndroidTestCase {
                 try {
                     mWifiManager.forget(newNetworkId, actionListener);
                     // now wait for callback
-                    mLock.wait(DURATION);
+                    mLock.wait(TEST_WAIT_DURATION_MS);
                 } catch (InterruptedException e) {
                 }
             }
@@ -1899,11 +1956,13 @@ public class WifiManagerTest extends AndroidTestCase {
 
     private static class TestTrafficStateCallback implements WifiManager.TrafficStateCallback {
         private final Object mLock;
+        private final int mWaitForState;
         public boolean onStateChangedCalled = false;
         public int state = -1;
 
-        TestTrafficStateCallback(Object lock) {
+        TestTrafficStateCallback(Object lock, int waitForState) {
             mLock = lock;
+            mWaitForState = waitForState;
         }
 
         @Override
@@ -1911,7 +1970,9 @@ public class WifiManagerTest extends AndroidTestCase {
             synchronized (mLock) {
                 onStateChangedCalled = true;
                 this.state = state;
-                mLock.notify();
+                if (mWaitForState == state) { // only notify if we got the expected state.
+                    mLock.notify();
+                }
             }
         }
     }
@@ -1945,7 +2006,8 @@ public class WifiManagerTest extends AndroidTestCase {
             // skip the test if WiFi is not supported
             return;
         }
-        TestTrafficStateCallback trafficStateCallback = new TestTrafficStateCallback(mLock);
+        TestTrafficStateCallback trafficStateCallback =
+                new TestTrafficStateCallback(mLock, DATA_ACTIVITY_INOUT);
         UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
         try {
             uiAutomation.adoptShellPermissionIdentity();
@@ -1962,7 +2024,7 @@ public class WifiManagerTest extends AndroidTestCase {
                     // Send some traffic to trigger the traffic state change callbacks.
                     sendTraffic();
                     // now wait for callback
-                    mLock.wait(DURATION);
+                    mLock.wait(TEST_WAIT_DURATION_MS);
                 } catch (InterruptedException e) {
                 }
             }
@@ -2185,7 +2247,7 @@ public class WifiManagerTest extends AndroidTestCase {
                                 .build(),
                         networkCallbackListener);
                 // now wait for callback
-                mLock.wait(DURATION);
+                mLock.wait(TEST_WAIT_DURATION_MS);
             } catch (InterruptedException e) {
             }
         }
@@ -2406,5 +2468,47 @@ public class WifiManagerTest extends AndroidTestCase {
 
         // Clean up
         mWifiManager.removePasspointConfiguration(passpointConfiguration.getHomeSp().getFqdn());
+    }
+
+    /**
+     * Tests that
+     * {@link WifiManager#startSubscriptionProvisioning(OsuProvider, Executor, ProvisioningCallback)}
+     * starts a subscription provisioning, and confirm a status callback invoked once.
+     */
+    public void testStartSubscriptionProvisioning() throws Exception {
+        if (!WifiFeature.isWifiSupported(getContext())) {
+            // skip the test if WiFi is not supported
+            return;
+        }
+
+        // Using Java reflection to construct an OsuProvider instance because its constructor is
+        // hidden and not available to apps.
+        Class<?> osuProviderClass = Class.forName("android.net.wifi.hotspot2.OsuProvider");
+        Constructor<?> osuProviderClassConstructor = osuProviderClass.getConstructor(String.class,
+                Map.class, String.class, Uri.class, String.class, List.class);
+
+        OsuProvider osuProvider = (OsuProvider) osuProviderClassConstructor.newInstance(TEST_SSID,
+                TEST_FRIENDLY_NAMES, TEST_SERVICE_DESCRIPTION, TEST_SERVER_URI, TEST_NAI,
+                TEST_METHOD_LIST);
+
+        UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        try {
+            uiAutomation.adoptShellPermissionIdentity();
+            synchronized (mLock) {
+                // Start a subscription provisioning for a non-existent Passpoint R2 AP
+                mWifiManager.startSubscriptionProvisioning(osuProvider, mExecutor,
+                        mProvisioningCallback);
+                mLock.wait(TEST_WAIT_DURATION_MS);
+            }
+        } finally {
+            uiAutomation.dropShellPermissionIdentity();
+        }
+
+        // Expect only a single callback event, connecting. Since AP doesn't exist, it ends here
+        assertEquals(ProvisioningCallback.OSU_STATUS_AP_CONNECTING, mProvisioningStatus);
+        // No failure callbacks expected
+        assertEquals(0, mProvisioningFailureStatus);
+        // No completion callback expected
+        assertFalse(mProvisioningComplete);
     }
 }
