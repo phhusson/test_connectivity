@@ -21,6 +21,7 @@ import static org.mockito.Mockito.mock;
 import android.net.wifi.ScanResult;
 import android.net.wifi.rtt.RangingRequest;
 import android.net.wifi.rtt.RangingResult;
+import android.net.wifi.rtt.ResponderLocation;
 import android.platform.test.annotations.AppModeFull;
 
 import com.android.compatibility.common.util.DeviceReportLog;
@@ -163,7 +164,8 @@ public class WifiRttTest extends TestBase {
 
         // Analyze results
         assertTrue("Wi-Fi RTT failure rate exceeds threshold: FAIL=" + numFailures + ", ITERATIONS="
-                        + NUM_OF_RTT_ITERATIONS + ", AP RSSI=" + testAp.level,
+                        + NUM_OF_RTT_ITERATIONS + ", AP RSSI=" + testAp.level
+                        + ", AP SSID=" + testAp.SSID,
                 numFailures <= NUM_OF_RTT_ITERATIONS * MAX_FAILURE_RATE_PERCENT / 100);
         if (numFailures != NUM_OF_RTT_ITERATIONS) {
             double distanceAvg = distanceSum / (NUM_OF_RTT_ITERATIONS - numFailures);
@@ -212,5 +214,158 @@ public class WifiRttTest extends TestBase {
                 "Did not receive expected IllegalArgumentException when tried to range to too "
                         + "many peers",
                 false);
+    }
+
+    /**
+     * Verify ResponderLocation API
+     */
+    public void testRangingToTestApWithResponderLocation() throws InterruptedException {
+        if (!shouldTestWifiRtt(getContext())) {
+            return;
+        }
+        // Scan for IEEE 802.11mc supporting APs
+        ScanResult testAp = scanForTestAp(NUM_SCANS_SEARCHING_FOR_IEEE80211MC_AP);
+        assertTrue(
+                "Cannot find any test APs which support RTT / IEEE 802.11mc - please verify that "
+                        + "your test setup includes them!",
+                testAp != null);
+
+        // Perform RTT operations
+        RangingRequest request = new RangingRequest.Builder().addAccessPoint(testAp).build();
+        ResultCallback callback = new ResultCallback();
+        mWifiRttManager.startRanging(request, mExecutor, callback);
+        assertTrue("Wi-Fi RTT results: no callback! ",
+                callback.waitForCallback());
+
+        RangingResult result = callback.getResults().get(0);
+        assertEquals("Ranging request not success",
+                result.getStatus(), RangingResult.STATUS_SUCCESS);
+        ResponderLocation responderLocation = result.getUnverifiedResponderLocation();
+        assertNotNull("ResponderLocation should not be null", responderLocation);
+        assertTrue("ResponderLocation is not valid", responderLocation.isLciSubelementValid());
+
+        // Check LCI related APIs
+        int exceptionCount = 0;
+        int apiCount = 0;
+        try {
+            apiCount++;
+            responderLocation.getLatitudeUncertainty();
+        } catch (IllegalStateException e) {
+            exceptionCount++;
+        }
+        try {
+            apiCount++;
+            responderLocation.getLatitude();
+        } catch (IllegalStateException e) {
+            exceptionCount++;
+        }
+        try {
+            apiCount++;
+            responderLocation.getLongitudeUncertainty();
+        } catch (IllegalStateException e) {
+            exceptionCount++;
+        }
+        try {
+            apiCount++;
+            responderLocation.getLongitude();
+        } catch (IllegalStateException e) {
+            exceptionCount++;
+        }
+        try {
+            apiCount++;
+            responderLocation.getAltitudeType();
+        } catch (IllegalStateException e) {
+            exceptionCount++;
+        }
+        try {
+            apiCount++;
+            responderLocation.getAltitudeUncertainty();
+        } catch (IllegalStateException e) {
+            exceptionCount++;
+        }
+        try {
+            apiCount++;
+            responderLocation.getAltitude();
+        } catch (IllegalStateException e) {
+            exceptionCount++;
+        }
+        try {
+            apiCount++;
+            responderLocation.getDatum();
+        } catch (IllegalStateException e) {
+            exceptionCount++;
+        }
+        try {
+            apiCount++;
+            responderLocation.getRegisteredLocationAgreementIndication();
+        } catch (IllegalStateException e) {
+            exceptionCount++;
+        }
+        try {
+            apiCount++;
+            responderLocation.getLciVersion();
+        } catch (IllegalStateException e) {
+            exceptionCount++;
+        }
+        try {
+            apiCount++;
+            assertNotNull(responderLocation.toLocation());
+        } catch (IllegalStateException e) {
+            exceptionCount++;
+        }
+        // If LCI is not valid, all APIs should throw exception, otherwise no exception.
+        assertEquals("Exception number should equal to API number",
+                responderLocation.isLciSubelementValid()? 0 : apiCount, exceptionCount);
+
+        // Verify ZaxisSubelement APIs
+        apiCount = 0;
+        exceptionCount = 0;
+
+        try {
+            apiCount++;
+            responderLocation.getExpectedToMove();
+        } catch (IllegalStateException e) {
+            exceptionCount++;
+        }
+
+        try {
+            apiCount++;
+            responderLocation.getFloorNumber();
+        } catch (IllegalStateException e) {
+            exceptionCount++;
+        }
+
+        try {
+            apiCount++;
+            responderLocation.getHeightAboveFloorMeters();
+        } catch (IllegalStateException e) {
+            exceptionCount++;
+        }
+
+        try {
+            apiCount++;
+            responderLocation.getHeightAboveFloorUncertaintyMeters();
+        } catch (IllegalStateException e) {
+            exceptionCount++;
+        }
+        // If Zaxis is not valid, all APIs should throw exception, otherwise no exception.
+        assertEquals("Exception number should equal to API number",
+                responderLocation.isZaxisSubelementValid() ? 0 : apiCount, exceptionCount);
+        // Verify civic location
+        if (responderLocation.toCivicLocationAddress() == null) {
+            assertNull(responderLocation.toCivicLocationSparseArray());
+        } else {
+            assertNotNull(responderLocation.toCivicLocationSparseArray());
+        }
+        // Verify map image
+        if (responderLocation.getMapImageUri() == null) {
+            assertNull(responderLocation.getMapImageMimeType());
+        } else {
+            assertNotNull(responderLocation.getMapImageMimeType());
+        }
+        boolean extraInfoOnAssociationIndication =
+                responderLocation.getExtraInfoOnAssociationIndication();
+        assertNotNull("ColocatedBSSID list should be nonNull",
+                responderLocation.getColocatedBssids());
     }
 }
