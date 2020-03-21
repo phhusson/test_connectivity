@@ -16,7 +16,10 @@
 
 package android.net.wifi.cts;
 
+import android.app.ActivityManager;
 import android.net.wifi.WifiMigration;
+import android.os.UserHandle;
+import android.os.UserManager;
 import android.test.AndroidTestCase;
 
 public class WifiMigrationTest extends AndroidTestCase {
@@ -75,8 +78,60 @@ public class WifiMigrationTest extends AndroidTestCase {
      */
     public void testWifiMigrationSettings() throws Exception {
         try {
-            // ensure that this does not crash.
             WifiMigration.loadFromSettings(getContext());
+        } catch (Exception ignore) {
+        }
+    }
+
+    /**
+     * Tests {@link WifiMigration#convertAndRetrieveSharedConfigStoreFile(int)},
+     * {@link WifiMigration#convertAndRetrieveUserConfigStoreFile(int, UserHandle)},
+     * {@link WifiMigration#removeSharedConfigStoreFile(int)} and
+     * {@link WifiMigration#removeUserConfigStoreFile(int, UserHandle)}.
+     */
+    public void testWifiMigrationConfigStore() throws Exception {
+        try {
+            WifiMigration.convertAndRetrieveSharedConfigStoreFile(
+                    WifiMigration.STORE_FILE_SHARED_GENERAL);
+        } catch (Exception ignore) {
+        }
+        try {
+            WifiMigration.convertAndRetrieveSharedConfigStoreFile(
+                    WifiMigration.STORE_FILE_SHARED_SOFTAP);
+        } catch (Exception ignore) {
+        }
+        try {
+            WifiMigration.convertAndRetrieveUserConfigStoreFile(
+                    WifiMigration.STORE_FILE_USER_GENERAL,
+                    UserHandle.of(ActivityManager.getCurrentUser()));
+        } catch (Exception ignore) {
+        }
+        try {
+            WifiMigration.convertAndRetrieveUserConfigStoreFile(
+                    WifiMigration.STORE_FILE_USER_NETWORK_SUGGESTIONS,
+                    UserHandle.of(ActivityManager.getCurrentUser()));
+        } catch (Exception ignore) {
+        }
+        try {
+            WifiMigration.removeSharedConfigStoreFile(
+                    WifiMigration.STORE_FILE_SHARED_GENERAL);
+        } catch (Exception ignore) {
+        }
+        try {
+            WifiMigration.removeSharedConfigStoreFile(
+                    WifiMigration.STORE_FILE_SHARED_SOFTAP);
+        } catch (Exception ignore) {
+        }
+        try {
+            WifiMigration.removeUserConfigStoreFile(
+                    WifiMigration.STORE_FILE_USER_GENERAL,
+                    UserHandle.of(ActivityManager.getCurrentUser()));
+        } catch (Exception ignore) {
+        }
+        try {
+            WifiMigration.removeUserConfigStoreFile(
+                    WifiMigration.STORE_FILE_USER_NETWORK_SUGGESTIONS,
+                    UserHandle.of(ActivityManager.getCurrentUser()));
         } catch (Exception ignore) {
         }
     }
