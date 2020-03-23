@@ -2166,7 +2166,7 @@ public class WifiManagerTest extends AndroidTestCase {
             uiAutomation.adoptShellPermissionIdentity();
             // These below API's only work with privileged permissions (obtained via shell identity
             // for test)
-            savedNetworks = mWifiManager.getConfiguredNetworks();
+            savedNetworks = mWifiManager.getPrivilegedConfiguredNetworks();
 
             mWifiManager.factoryReset();
             // Ensure all the saved networks are removed.
