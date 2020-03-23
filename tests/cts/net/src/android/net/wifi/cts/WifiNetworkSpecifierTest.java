@@ -71,6 +71,7 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
     private final Object mUiLock = new Object();
     private WifiConfiguration mTestNetwork;
     private boolean mWasVerboseLoggingEnabled;
+    private boolean mWasScanThrottleEnabled;
 
     private static final int DURATION = 10_000;
     private static final int DURATION_UI_INTERACTION = 15_000;
@@ -93,6 +94,11 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
                 () -> mWifiManager.isVerboseLoggingEnabled());
         ShellIdentityUtils.invokeWithShellPermissions(
                 () -> mWifiManager.setVerboseLoggingEnabled(true));
+        // Disable scan throttling for tests.
+        mWasScanThrottleEnabled = ShellIdentityUtils.invokeWithShellPermissions(
+                () -> mWifiManager.isScanThrottleEnabled());
+        ShellIdentityUtils.invokeWithShellPermissions(
+                () -> mWifiManager.setScanThrottleEnabled(false));
 
         if (!mWifiManager.isWifiEnabled()) setWifiEnabled(true);
         mUiDevice = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
@@ -126,6 +132,8 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
         turnScreenOff();
         ShellIdentityUtils.invokeWithShellPermissions(
                 () -> mWifiManager.enableNetwork(mTestNetwork.networkId, false));
+        ShellIdentityUtils.invokeWithShellPermissions(
+                () -> mWifiManager.setScanThrottleEnabled(mWasScanThrottleEnabled));
         ShellIdentityUtils.invokeWithShellPermissions(
                 () -> mWifiManager.setVerboseLoggingEnabled(mWasVerboseLoggingEnabled));
         super.tearDown();
