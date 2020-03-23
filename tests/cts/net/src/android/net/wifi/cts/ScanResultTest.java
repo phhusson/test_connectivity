@@ -34,6 +34,7 @@ import android.net.wifi.WifiManager.WifiLock;
 import android.platform.test.annotations.AppModeFull;
 import android.test.AndroidTestCase;
 
+import com.android.compatibility.common.util.ShellIdentityUtils;
 import com.android.compatibility.common.util.SystemUtil;
 
 @AppModeFull(reason = "Cannot get WifiManager in instant app mode")
@@ -45,6 +46,8 @@ public class ScanResultTest extends AndroidTestCase {
     private WifiManager mWifiManager;
     private WifiLock mWifiLock;
     private static MySync mMySync;
+    private boolean mWasVerboseLoggingEnabled;
+    private boolean mWasScanThrottleEnabled;
 
     private static final int STATE_NULL = 0;
     private static final int STATE_WIFI_CHANGING = 1;
@@ -113,6 +116,18 @@ public class ScanResultTest extends AndroidTestCase {
         mContext.registerReceiver(mReceiver, mIntentFilter);
         mWifiManager = (WifiManager) getContext().getSystemService(Context.WIFI_SERVICE);
         assertThat(mWifiManager).isNotNull();
+
+        // turn on verbose logging for tests
+        mWasVerboseLoggingEnabled = ShellIdentityUtils.invokeWithShellPermissions(
+                () -> mWifiManager.isVerboseLoggingEnabled());
+        ShellIdentityUtils.invokeWithShellPermissions(
+                () -> mWifiManager.setVerboseLoggingEnabled(true));
+        // Disable scan throttling for tests.
+        mWasScanThrottleEnabled = ShellIdentityUtils.invokeWithShellPermissions(
+                () -> mWifiManager.isScanThrottleEnabled());
+        ShellIdentityUtils.invokeWithShellPermissions(
+                () -> mWifiManager.setScanThrottleEnabled(false));
+
         mWifiLock = mWifiManager.createWifiLock(TAG);
         mWifiLock.acquire();
         if (!mWifiManager.isWifiEnabled())
@@ -133,6 +148,10 @@ public class ScanResultTest extends AndroidTestCase {
         mContext.unregisterReceiver(mReceiver);
         if (!mWifiManager.isWifiEnabled())
             setWifiEnabled(true);
+        ShellIdentityUtils.invokeWithShellPermissions(
+                () -> mWifiManager.setScanThrottleEnabled(mWasScanThrottleEnabled));
+        ShellIdentityUtils.invokeWithShellPermissions(
+                () -> mWifiManager.setVerboseLoggingEnabled(mWasVerboseLoggingEnabled));
         Thread.sleep(ENABLE_WAIT_MSEC);
         super.tearDown();
     }
