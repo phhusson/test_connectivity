@@ -24,6 +24,7 @@ import android.os.SystemProperties;
 import android.platform.test.annotations.AppModeFull;
 import android.test.AndroidTestCase;
 import android.util.Log;
+import android.util.Range;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -35,6 +36,13 @@ import java.util.concurrent.TimeUnit;
 
 public class TrafficStatsTest extends AndroidTestCase {
     private static final String LOG_TAG = "TrafficStatsTest";
+
+    /** Verify the given value is in range [lower, upper] */
+    private void assertInRange(String tag, long value, long lower, long upper) {
+        final Range range = new Range(lower, upper);
+        assertTrue(tag + ": " + value + " is not within range [" + lower + ", " + upper + "]",
+                range.contains(value));
+    }
 
     public void testValidMobileStats() {
         // We can't assume a mobile network is even present in this test, so
@@ -107,12 +115,12 @@ public class TrafficStatsTest extends AndroidTestCase {
             @Override
             public void run() {
                 try {
-                    Socket socket = new Socket("localhost", server.getLocalPort());
+                    final Socket socket = new Socket("localhost", server.getLocalPort());
                     // Make sure that each write()+flush() turns into a packet:
                     // disable Nagle.
                     socket.setTcpNoDelay(true);
-                    OutputStream out = socket.getOutputStream();
-                    byte[] buf = new byte[byteCount];
+                    final OutputStream out = socket.getOutputStream();
+                    final byte[] buf = new byte[byteCount];
                     TrafficStats.setThreadStatsTag(0x42);
                     TrafficStats.tagSocket(socket);
                     for (int i = 0; i < packetCount; i++) {
@@ -135,12 +143,12 @@ public class TrafficStatsTest extends AndroidTestCase {
 
         int read = 0;
         try {
-            Socket socket = server.accept();
+            final Socket socket = server.accept();
             socket.setTcpNoDelay(true);
             TrafficStats.setThreadStatsTag(0x43);
             TrafficStats.tagSocket(socket);
-            InputStream in = socket.getInputStream();
-            byte[] buf = new byte[byteCount];
+            final InputStream in = socket.getInputStream();
+            final byte[] buf = new byte[byteCount];
             while (read < byteCount * packetCount) {
                 int n = in.read(buf);
                 assertTrue("Unexpected EOF", n > 0);
@@ -156,24 +164,24 @@ public class TrafficStatsTest extends AndroidTestCase {
             Thread.sleep(1000);
         } catch (InterruptedException e) {
         }
-        NetworkStats testStats = TrafficStats.stopDataProfiling(null);
+        final NetworkStats testStats = TrafficStats.stopDataProfiling(null);
 
-        long mobileTxPacketsAfter = TrafficStats.getMobileTxPackets();
-        long mobileRxPacketsAfter = TrafficStats.getMobileRxPackets();
-        long mobileTxBytesAfter = TrafficStats.getMobileTxBytes();
-        long mobileRxBytesAfter = TrafficStats.getMobileRxBytes();
-        long totalTxPacketsAfter = TrafficStats.getTotalTxPackets();
-        long totalRxPacketsAfter = TrafficStats.getTotalRxPackets();
-        long totalTxBytesAfter = TrafficStats.getTotalTxBytes();
-        long totalRxBytesAfter = TrafficStats.getTotalRxBytes();
-        long uidTxBytesAfter = TrafficStats.getUidTxBytes(Process.myUid());
-        long uidRxBytesAfter = TrafficStats.getUidRxBytes(Process.myUid());
-        long uidTxPacketsAfter = TrafficStats.getUidTxPackets(Process.myUid());
-        long uidRxPacketsAfter = TrafficStats.getUidRxPackets(Process.myUid());
-        long uidTxDeltaBytes = uidTxBytesAfter - uidTxBytesBefore;
-        long uidTxDeltaPackets = uidTxPacketsAfter - uidTxPacketsBefore;
-        long uidRxDeltaBytes = uidRxBytesAfter - uidRxBytesBefore;
-        long uidRxDeltaPackets = uidRxPacketsAfter - uidRxPacketsBefore;
+        final long mobileTxPacketsAfter = TrafficStats.getMobileTxPackets();
+        final long mobileRxPacketsAfter = TrafficStats.getMobileRxPackets();
+        final long mobileTxBytesAfter = TrafficStats.getMobileTxBytes();
+        final long mobileRxBytesAfter = TrafficStats.getMobileRxBytes();
+        final long totalTxPacketsAfter = TrafficStats.getTotalTxPackets();
+        final long totalRxPacketsAfter = TrafficStats.getTotalRxPackets();
+        final long totalTxBytesAfter = TrafficStats.getTotalTxBytes();
+        final long totalRxBytesAfter = TrafficStats.getTotalRxBytes();
+        final long uidTxBytesAfter = TrafficStats.getUidTxBytes(Process.myUid());
+        final long uidRxBytesAfter = TrafficStats.getUidRxBytes(Process.myUid());
+        final long uidTxPacketsAfter = TrafficStats.getUidTxPackets(Process.myUid());
+        final long uidRxPacketsAfter = TrafficStats.getUidRxPackets(Process.myUid());
+        final long uidTxDeltaBytes = uidTxBytesAfter - uidTxBytesBefore;
+        final long uidTxDeltaPackets = uidTxPacketsAfter - uidTxPacketsBefore;
+        final long uidRxDeltaBytes = uidRxBytesAfter - uidRxBytesBefore;
+        final long uidRxDeltaPackets = uidRxPacketsAfter - uidRxPacketsBefore;
 
         // Localhost traffic *does* count against per-UID stats.
         /*
@@ -192,10 +200,13 @@ public class TrafficStatsTest extends AndroidTestCase {
         // Some other tests don't cleanup connections correctly.
         // They have the same UID, so we discount their lingering traffic
         // which happens only on non-localhost, such as TCP FIN retranmission packets
-        long deltaTxOtherPackets = (totalTxPacketsAfter - totalTxPacketsBefore) - uidTxDeltaPackets;
-        long deltaRxOtherPackets = (totalRxPacketsAfter - totalRxPacketsBefore) - uidRxDeltaPackets;
+        final long deltaTxOtherPackets = (totalTxPacketsAfter - totalTxPacketsBefore)
+                - uidTxDeltaPackets;
+        final long deltaRxOtherPackets = (totalRxPacketsAfter - totalRxPacketsBefore)
+                - uidRxDeltaPackets;
         if (deltaTxOtherPackets > 0 || deltaRxOtherPackets > 0) {
-            Log.i(LOG_TAG, "lingering traffic data: " + deltaTxOtherPackets + "/" + deltaRxOtherPackets);
+            Log.i(LOG_TAG, "lingering traffic data: " + deltaTxOtherPackets + "/"
+                    + deltaRxOtherPackets);
         }
 
         // Check the per uid stats read from data profiling have the stats expected. The data
@@ -203,39 +214,29 @@ public class TrafficStatsTest extends AndroidTestCase {
         // networkStatsService and in this way we can verify the detail networkStats of a given uid
         // is correct.
         NetworkStats.Entry entry = testStats.getTotal(null, Process.myUid());
-        assertTrue("txPackets detail: " + entry.txPackets + " uidTxPackets: " + uidTxDeltaPackets,
-            entry.txPackets >= packetCount + minExpectedExtraPackets
-            && entry.txPackets <= uidTxDeltaPackets);
-        assertTrue("rxPackets detail: " + entry.rxPackets + " uidRxPackets: " + uidRxDeltaPackets,
-            entry.rxPackets >= packetCount + minExpectedExtraPackets
-            && entry.rxPackets <= uidRxDeltaPackets);
-        assertTrue("txBytes detail: " + entry.txBytes + " uidTxDeltaBytes: " + uidTxDeltaBytes,
-            entry.txBytes >= tcpPacketToIpBytes(packetCount, byteCount)
-            + tcpPacketToIpBytes(minExpectedExtraPackets, 0) && entry.txBytes <= uidTxDeltaBytes);
-        assertTrue("rxBytes detail: " + entry.rxBytes + " uidRxDeltaBytes: " + uidRxDeltaBytes,
-            entry.rxBytes >= tcpPacketToIpBytes(packetCount, byteCount)
-            + tcpPacketToIpBytes(minExpectedExtraPackets, 0) && entry.rxBytes <= uidRxDeltaBytes);
+        assertInRange("txPackets detail", entry.txPackets, packetCount + minExpectedExtraPackets,
+                uidTxDeltaPackets);
+        assertInRange("rxPackets detail", entry.rxPackets, packetCount + minExpectedExtraPackets,
+                uidRxDeltaPackets);
+        assertInRange("txBytes detail", entry.txBytes, tcpPacketToIpBytes(packetCount, byteCount)
+                + tcpPacketToIpBytes(minExpectedExtraPackets, 0), uidTxDeltaBytes);
+        assertInRange("rxBytes detail", entry.rxBytes, tcpPacketToIpBytes(packetCount, byteCount)
+                + tcpPacketToIpBytes(minExpectedExtraPackets, 0), uidRxDeltaBytes);
 
-        assertTrue("uidtxp: " + uidTxPacketsBefore + " -> " + uidTxPacketsAfter + " delta=" + uidTxDeltaPackets +
-            " Wanted: " + uidTxDeltaPackets + ">=" + packetCount + "+" + minExpectedExtraPackets + " && " +
-            uidTxDeltaPackets + "<=" + packetCount + "+" + packetCount + "+" + maxExpectedExtraPackets + "+" + deltaTxOtherPackets,
-            uidTxDeltaPackets >= packetCount + minExpectedExtraPackets &&
-            uidTxDeltaPackets <= packetCount + packetCount + maxExpectedExtraPackets + deltaTxOtherPackets);
-        assertTrue("uidrxp: " + uidRxPacketsBefore + " -> " + uidRxPacketsAfter + " delta=" + uidRxDeltaPackets +
-            " Wanted: " + uidRxDeltaPackets + ">=" + packetCount + "+" + minExpectedExtraPackets + " && " +
-            uidRxDeltaPackets + "<=" + packetCount + "+" + packetCount + "+" + maxExpectedExtraPackets,
-            uidRxDeltaPackets >= packetCount + minExpectedExtraPackets &&
-            uidRxDeltaPackets <= packetCount + packetCount + maxExpectedExtraPackets + deltaRxOtherPackets);
-        assertTrue("uidtxb: " + uidTxBytesBefore + " -> " + uidTxBytesAfter + " delta=" + uidTxDeltaBytes +
-            " Wanted: " + uidTxDeltaBytes + ">=" + tcpPacketToIpBytes(packetCount, byteCount) + "+" + tcpPacketToIpBytes(minExpectedExtraPackets, 0) + " && " +
-            uidTxDeltaBytes + "<=" + tcpPacketToIpBytes(packetCount, byteCount) + "+" + tcpPacketToIpBytes(packetCount + maxExpectedExtraPackets, 0),
-            uidTxDeltaBytes >= tcpPacketToIpBytes(packetCount, byteCount) + tcpPacketToIpBytes(minExpectedExtraPackets, 0) &&
-            uidTxDeltaBytes <= tcpPacketToIpBytes(packetCount, byteCount) + tcpPacketToIpBytes(packetCount + maxExpectedExtraPackets + deltaTxOtherPackets, 0));
-        assertTrue("uidrxb: " + uidRxBytesBefore + " -> " + uidRxBytesAfter + " delta=" + uidRxDeltaBytes +
-            " Wanted: " + uidRxDeltaBytes + ">=" + tcpPacketToIpBytes(packetCount, byteCount) + "+" + tcpPacketToIpBytes(minExpectedExtraPackets, 0) + " && " +
-            uidRxDeltaBytes + "<=" + tcpPacketToIpBytes(packetCount, byteCount) + "+" + tcpPacketToIpBytes(packetCount + maxExpectedExtraPackets, 0),
-            uidRxDeltaBytes >= tcpPacketToIpBytes(packetCount, byteCount) + tcpPacketToIpBytes(minExpectedExtraPackets, 0) &&
-            uidRxDeltaBytes <= tcpPacketToIpBytes(packetCount, byteCount) + tcpPacketToIpBytes(packetCount + maxExpectedExtraPackets + deltaRxOtherPackets, 0));
+        assertInRange("uidtxp", uidTxDeltaPackets, packetCount + minExpectedExtraPackets,
+                packetCount + packetCount + maxExpectedExtraPackets + deltaTxOtherPackets);
+        assertInRange("uidrxp", uidRxDeltaPackets, packetCount + minExpectedExtraPackets,
+                packetCount + packetCount + maxExpectedExtraPackets + deltaRxOtherPackets);
+        assertInRange("uidtxb", uidTxDeltaBytes, tcpPacketToIpBytes(packetCount, byteCount)
+                + tcpPacketToIpBytes(minExpectedExtraPackets, 0),
+                tcpPacketToIpBytes(packetCount, byteCount)
+                + tcpPacketToIpBytes(packetCount + maxExpectedExtraPackets
+                + deltaTxOtherPackets, 0));
+        assertInRange("uidrxb", uidRxDeltaBytes, tcpPacketToIpBytes(packetCount, byteCount)
+                + tcpPacketToIpBytes(minExpectedExtraPackets, 0),
+                tcpPacketToIpBytes(packetCount, byteCount)
+                + tcpPacketToIpBytes(packetCount + maxExpectedExtraPackets
+                + deltaRxOtherPackets, 0));
 
         // Localhost traffic *does* count against total stats.
         // Check the total stats increased after test data transfer over localhost has been made.
@@ -272,17 +273,13 @@ public class TrafficStatsTest extends AndroidTestCase {
 
         // Localhost traffic should *not* count against mobile stats,
         // There might be some other traffic, but nowhere near 1MB.
-        assertTrue("mtxp: " + mobileTxPacketsBefore + " -> " + mobileTxPacketsAfter,
-            mobileTxPacketsAfter >= mobileTxPacketsBefore &&
-            mobileTxPacketsAfter <= mobileTxPacketsBefore + 500);
-        assertTrue("mrxp: " + mobileRxPacketsBefore + " -> " + mobileRxPacketsAfter,
-            mobileRxPacketsAfter >= mobileRxPacketsBefore &&
-            mobileRxPacketsAfter <= mobileRxPacketsBefore + 500);
-        assertTrue("mtxb: " + mobileTxBytesBefore + " -> " + mobileTxBytesAfter,
-            mobileTxBytesAfter >= mobileTxBytesBefore &&
-            mobileTxBytesAfter <= mobileTxBytesBefore + 200000);
-        assertTrue("mrxb: " + mobileRxBytesBefore + " -> " + mobileRxBytesAfter,
-            mobileRxBytesAfter >= mobileRxBytesBefore &&
-            mobileRxBytesAfter <= mobileRxBytesBefore + 200000);
+        assertInRange("mtxp", mobileTxPacketsAfter, mobileTxPacketsBefore,
+                mobileTxPacketsBefore + 500);
+        assertInRange("mrxp", mobileRxPacketsAfter, mobileRxPacketsBefore,
+                mobileRxPacketsBefore + 500);
+        assertInRange("mtxb", mobileTxBytesAfter, mobileTxBytesBefore,
+                mobileTxBytesBefore + 200000);
+        assertInRange("mrxb", mobileRxBytesAfter, mobileRxBytesBefore,
+                mobileRxBytesBefore + 200000);
     }
 }
