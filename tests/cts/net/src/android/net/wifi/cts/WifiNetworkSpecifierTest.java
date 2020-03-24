@@ -363,13 +363,17 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
         testConnectionFlowWithSpecifier(specifier, true);
     }
 
+    private static String removeDoubleQuotes(String string) {
+        return WifiInfo.sanitizeSsid(string);
+    }
+
     private WifiNetworkSpecifier.Builder createSpecifierBuilderWithCredentialFromSavedNetwork() {
         WifiNetworkSpecifier.Builder specifierBuilder = new WifiNetworkSpecifier.Builder();
         if (mTestNetwork.preSharedKey != null) {
             if (mTestNetwork.allowedKeyManagement.get(WifiConfiguration.KeyMgmt.WPA_PSK)) {
-                specifierBuilder.setWpa2Passphrase(mTestNetwork.preSharedKey);
+                specifierBuilder.setWpa2Passphrase(removeDoubleQuotes(mTestNetwork.preSharedKey));
             } else if (mTestNetwork.allowedKeyManagement.get(WifiConfiguration.KeyMgmt.SAE)) {
-                specifierBuilder.setWpa3Passphrase(mTestNetwork.preSharedKey);
+                specifierBuilder.setWpa3Passphrase(removeDoubleQuotes(mTestNetwork.preSharedKey));
             } else {
                 fail("Unsupported security type found in saved networks");
             }
@@ -391,7 +395,7 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
             return;
         }
         WifiNetworkSpecifier specifier = createSpecifierBuilderWithCredentialFromSavedNetwork()
-                .setSsid(WifiInfo.sanitizeSsid(mTestNetwork.SSID))
+                .setSsid(removeDoubleQuotes(mTestNetwork.SSID))
                 .build();
         testSuccessfulConnectionWithSpecifier(specifier);
     }
@@ -406,7 +410,7 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
         }
         // Creates a ssid pattern by dropping the last char in the saved network & pass that
         // as a prefix match pattern in the request.
-        String ssidUnquoted = WifiInfo.sanitizeSsid(mTestNetwork.SSID);
+        String ssidUnquoted = removeDoubleQuotes(mTestNetwork.SSID);
         assertThat(ssidUnquoted.length()).isAtLeast(2);
         String ssidPrefix = ssidUnquoted.substring(0, ssidUnquoted.length() - 1);
         // Note: The match may return more than 1 network in this case since we use a prefix match,
@@ -460,7 +464,7 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
         List<ScanResult> scanResults = mWifiManager.getScanResults();
         if (scanResults == null || scanResults.isEmpty()) fail("No scan results available");
         for (ScanResult scanResult : scanResults) {
-            if (TextUtils.equals(scanResult.SSID, WifiInfo.sanitizeSsid(mTestNetwork.SSID))) {
+            if (TextUtils.equals(scanResult.SSID, removeDoubleQuotes(mTestNetwork.SSID))) {
                 return scanResult;
             }
         }
@@ -511,7 +515,7 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
             return;
         }
         WifiNetworkSpecifier specifier = createSpecifierBuilderWithCredentialFromSavedNetwork()
-                .setSsid(WifiInfo.sanitizeSsid(mTestNetwork.SSID))
+                .setSsid(removeDoubleQuotes(mTestNetwork.SSID))
                 .build();
         testUserRejectionWithSpecifier(specifier);
     }
@@ -526,11 +530,11 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
             return;
         }
         WifiNetworkSpecifier specifier1 = new WifiNetworkSpecifier.Builder()
-                .setSsid(WifiInfo.sanitizeSsid(mTestNetwork.SSID))
+                .setSsid(removeDoubleQuotes(mTestNetwork.SSID))
                 .setWpa2EnterpriseConfig(new WifiEnterpriseConfig())
                 .build();
         WifiNetworkSpecifier specifier2 = new WifiNetworkSpecifier.Builder()
-                .setSsid(WifiInfo.sanitizeSsid(mTestNetwork.SSID))
+                .setSsid(removeDoubleQuotes(mTestNetwork.SSID))
                 .setWpa2EnterpriseConfig(new WifiEnterpriseConfig())
                 .build();
         assertThat(specifier1.satisfiedBy(specifier2)).isTrue();
@@ -546,11 +550,11 @@ public class WifiNetworkSpecifierTest extends AndroidTestCase {
             return;
         }
         WifiNetworkSpecifier specifier1 = new WifiNetworkSpecifier.Builder()
-                .setSsid(WifiInfo.sanitizeSsid(mTestNetwork.SSID))
+                .setSsid(removeDoubleQuotes(mTestNetwork.SSID))
                 .setWpa3EnterpriseConfig(new WifiEnterpriseConfig())
                 .build();
         WifiNetworkSpecifier specifier2 = new WifiNetworkSpecifier.Builder()
-                .setSsid(WifiInfo.sanitizeSsid(mTestNetwork.SSID))
+                .setSsid(removeDoubleQuotes(mTestNetwork.SSID))
                 .setWpa3EnterpriseConfig(new WifiEnterpriseConfig())
                 .build();
         assertThat(specifier1.satisfiedBy(specifier2)).isTrue();
