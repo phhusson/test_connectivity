@@ -16,7 +16,9 @@
 
 package android.net.wifi.aware.cts;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
+import static org.mockito.Mockito.mock;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -30,17 +32,21 @@ import android.net.NetworkRequest;
 import android.net.wifi.WifiManager;
 import android.net.wifi.aware.AttachCallback;
 import android.net.wifi.aware.Characteristics;
+import android.net.wifi.aware.DiscoverySession;
 import android.net.wifi.aware.DiscoverySessionCallback;
 import android.net.wifi.aware.IdentityChangedListener;
+import android.net.wifi.aware.ParcelablePeerHandle;
 import android.net.wifi.aware.PeerHandle;
 import android.net.wifi.aware.PublishConfig;
 import android.net.wifi.aware.PublishDiscoverySession;
 import android.net.wifi.aware.SubscribeConfig;
 import android.net.wifi.aware.SubscribeDiscoverySession;
 import android.net.wifi.aware.WifiAwareManager;
+import android.net.wifi.aware.WifiAwareNetworkSpecifier;
 import android.net.wifi.aware.WifiAwareSession;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.Parcel;
 import android.platform.test.annotations.AppModeFull;
 import android.test.AndroidTestCase;
 
@@ -810,6 +816,43 @@ public class SingleDeviceTest extends AndroidTestCase {
         assertTrue("OnUnavailable not received", networkCb.waitForOnUnavailable());
 
         session.close();
+    }
+
+    /**
+     * Test WifiAwareNetworkSpecifier.
+     */
+    public void testWifiAwareNetworkSpecifier() {
+        DiscoverySession session = mock(DiscoverySession.class);
+        PeerHandle handle = mock(PeerHandle.class);
+        WifiAwareNetworkSpecifier networkSpecifier =
+                new WifiAwareNetworkSpecifier.Builder(session, handle).build();
+        assertFalse(networkSpecifier.satisfiedBy(null));
+        assertTrue(networkSpecifier.satisfiedBy(networkSpecifier));
+
+        WifiAwareNetworkSpecifier anotherNetworkSpecifier =
+                new WifiAwareNetworkSpecifier.Builder(session, handle).setPmk(PMK_VALID).build();
+        assertFalse(networkSpecifier.satisfiedBy(anotherNetworkSpecifier));
+    }
+
+    /**
+     * Test ParcelablePeerHandle parcel.
+     */
+    public void testParcelablePeerHandle() {
+        PeerHandle peerHandle = mock(PeerHandle.class);
+        ParcelablePeerHandle parcelablePeerHandle = new ParcelablePeerHandle(peerHandle);
+        Parcel parcelW = Parcel.obtain();
+        parcelablePeerHandle.writeToParcel(parcelW, 0);
+        byte[] bytes = parcelW.marshall();
+        parcelW.recycle();
+
+        Parcel parcelR = Parcel.obtain();
+        parcelR.unmarshall(bytes, 0, bytes.length);
+        parcelR.setDataPosition(0);
+        ParcelablePeerHandle rereadParcelablePeerHandle =
+                ParcelablePeerHandle.CREATOR.createFromParcel(parcelR);
+
+        assertEquals(parcelablePeerHandle, rereadParcelablePeerHandle);
+        assertEquals(parcelablePeerHandle.hashCode(), rereadParcelablePeerHandle.hashCode());
     }
 
     // local utilities
