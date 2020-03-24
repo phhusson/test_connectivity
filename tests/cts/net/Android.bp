@@ -47,6 +47,7 @@ java_defaults {
         "mockwebserver",
         "junit",
         "junit-params",
+        "libnanohttpd",
         "truth-prebuilt",
     ],
 
