@@ -118,6 +118,7 @@ public class WifiManagerTest extends AndroidTestCase {
     private final Object mLock = new Object();
     private UiDevice mUiDevice;
     private boolean mWasVerboseLoggingEnabled;
+    private boolean mWasScanThrottleEnabled;
     private SoftApConfiguration mOriginalSoftApConfig = null;
 
     // Please refer to WifiManager
@@ -278,6 +279,11 @@ public class WifiManagerTest extends AndroidTestCase {
                 () -> mWifiManager.isVerboseLoggingEnabled());
         ShellIdentityUtils.invokeWithShellPermissions(
                 () -> mWifiManager.setVerboseLoggingEnabled(true));
+        // Disable scan throttling for tests.
+        mWasScanThrottleEnabled = ShellIdentityUtils.invokeWithShellPermissions(
+                () -> mWifiManager.isScanThrottleEnabled());
+        ShellIdentityUtils.invokeWithShellPermissions(
+                () -> mWifiManager.setScanThrottleEnabled(false));
 
         mWifiLock = mWifiManager.createWifiLock(TAG);
         mWifiLock.acquire();
@@ -311,6 +317,8 @@ public class WifiManagerTest extends AndroidTestCase {
             setWifiEnabled(true);
         mWifiLock.release();
         mContext.unregisterReceiver(mReceiver);
+        ShellIdentityUtils.invokeWithShellPermissions(
+                () -> mWifiManager.setScanThrottleEnabled(mWasScanThrottleEnabled));
         ShellIdentityUtils.invokeWithShellPermissions(
                 () -> mWifiManager.setVerboseLoggingEnabled(mWasVerboseLoggingEnabled));
         // restore original softap config
@@ -2166,7 +2174,7 @@ public class WifiManagerTest extends AndroidTestCase {
             uiAutomation.adoptShellPermissionIdentity();
             // These below API's only work with privileged permissions (obtained via shell identity
             // for test)
-            savedNetworks = mWifiManager.getConfiguredNetworks();
+            savedNetworks = mWifiManager.getPrivilegedConfiguredNetworks();
 
             mWifiManager.factoryReset();
             // Ensure all the saved networks are removed.
