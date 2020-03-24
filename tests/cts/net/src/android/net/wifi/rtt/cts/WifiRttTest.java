@@ -18,7 +18,9 @@ package android.net.wifi.rtt.cts;
 
 import static org.mockito.Mockito.mock;
 
+import android.net.MacAddress;
 import android.net.wifi.ScanResult;
+import android.net.wifi.aware.PeerHandle;
 import android.net.wifi.rtt.RangingRequest;
 import android.net.wifi.rtt.RangingResult;
 import android.net.wifi.rtt.ResponderLocation;
@@ -51,6 +53,9 @@ public class WifiRttTest extends TestBase {
 
     // Minimum valid RSSI value
     private static final int MIN_VALID_RSSI = -100;
+
+    // Valid Mac Address
+    private static final MacAddress MAC = MacAddress.fromString("00:01:02:03:04:05");
 
     /**
      * Test Wi-Fi RTT ranging operation:
@@ -367,5 +372,37 @@ public class WifiRttTest extends TestBase {
                 responderLocation.getExtraInfoOnAssociationIndication();
         assertNotNull("ColocatedBSSID list should be nonNull",
                 responderLocation.getColocatedBssids());
+    }
+
+    /**
+     * Verify ranging request with aware peer Mac address and peer handle.
+     */
+    public void testAwareRttWithMacAddress() throws InterruptedException {
+        RangingRequest request = new RangingRequest.Builder()
+                .addWifiAwarePeer(MAC).build();
+        ResultCallback callback = new ResultCallback();
+        mWifiRttManager.startRanging(request, mExecutor, callback);
+        assertTrue("Wi-Fi RTT results: no callback",
+                callback.waitForCallback());
+        List<RangingResult> rangingResults = callback.getResults();
+        assertNotNull("Wi-Fi RTT results: null results", rangingResults);
+        assertEquals(1, rangingResults.size());
+        assertEquals(RangingResult.STATUS_FAIL, rangingResults.get(0).getStatus());
+    }
+
+    /**
+     * Verify ranging request with aware peer handle.
+     */
+    public void testAwareRttWithPeerHandle() throws InterruptedException {
+        PeerHandle peerHandle = mock(PeerHandle.class);
+        RangingRequest request = new RangingRequest.Builder()
+                .addWifiAwarePeer(peerHandle).build();
+        ResultCallback callback = new ResultCallback();
+        mWifiRttManager.startRanging(request, mExecutor, callback);
+        assertTrue("Wi-Fi RTT results: no callback",
+                callback.waitForCallback());
+        List<RangingResult> rangingResults = callback.getResults();
+        assertNotNull("Wi-Fi RTT results: null results", rangingResults);
+        assertEquals("Invalid peerHandle should return 0 result", 0, rangingResults.size());
     }
 }
