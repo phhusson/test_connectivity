@@ -16,6 +16,8 @@
 
 package android.net.cts;
 
+import static com.android.testutils.ParcelUtilsKt.assertParcelSane;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 
@@ -37,13 +39,6 @@ import java.util.ArrayList;
 
 @RunWith(AndroidJUnit4.class)
 public final class IpConfigurationTest {
-    private static final int TYPE_IPASSIGNMENT_STATIC = 0;
-    private static final int TYPE_IPASSIGNMENT_DHCP   = 1;
-
-    private static final int TYPE_PROXY_SETTINGS_NONE   = 0;
-    private static final int TYPE_PROXY_SETTINGS_STATIC = 1;
-    private static final int TYPE_PROXY_SETTINGS_PAC    = 2;
-
     private static final LinkAddress LINKADDR = new LinkAddress("192.0.2.2/25");
     private static final InetAddress GATEWAY = InetAddressUtils.parseNumericAddress("192.0.2.1");
     private static final InetAddress DNS1 = InetAddressUtils.parseNumericAddress("8.8.8.8");
@@ -76,24 +71,31 @@ public final class IpConfigurationTest {
         assertIpConfigurationEqual(ipConfig, new IpConfiguration());
         assertIpConfigurationEqual(ipConfig, new IpConfiguration(ipConfig));
 
-        ipConfig = createIpConfiguration(TYPE_IPASSIGNMENT_STATIC,
-                TYPE_PROXY_SETTINGS_PAC);
+        ipConfig.setStaticIpConfiguration(mStaticIpConfig);
+        ipConfig.setHttpProxy(mProxy);
+
+        ipConfig.setIpAssignment(IpConfiguration.IpAssignment.STATIC);
+        ipConfig.setProxySettings(IpConfiguration.ProxySettings.PAC);
         assertIpConfigurationEqual(ipConfig, new IpConfiguration(ipConfig));
 
-        ipConfig = createIpConfiguration(TYPE_IPASSIGNMENT_STATIC,
-                TYPE_PROXY_SETTINGS_STATIC);
+        ipConfig.setIpAssignment(IpConfiguration.IpAssignment.STATIC);
+        ipConfig.setProxySettings(IpConfiguration.ProxySettings.STATIC);
         assertIpConfigurationEqual(ipConfig, new IpConfiguration(ipConfig));
 
-        ipConfig = createIpConfiguration(TYPE_IPASSIGNMENT_DHCP,
-                TYPE_PROXY_SETTINGS_PAC);
+        ipConfig.setIpAssignment(IpConfiguration.IpAssignment.DHCP);
+        ipConfig.setProxySettings(IpConfiguration.ProxySettings.PAC);
         assertIpConfigurationEqual(ipConfig, new IpConfiguration(ipConfig));
 
-        ipConfig = createIpConfiguration(TYPE_IPASSIGNMENT_DHCP,
-                TYPE_PROXY_SETTINGS_STATIC);
+        ipConfig.setIpAssignment(IpConfiguration.IpAssignment.DHCP);
+        ipConfig.setProxySettings(IpConfiguration.ProxySettings.PAC);
         assertIpConfigurationEqual(ipConfig, new IpConfiguration(ipConfig));
 
-        ipConfig = createIpConfiguration(TYPE_IPASSIGNMENT_DHCP,
-                TYPE_PROXY_SETTINGS_NONE);
+        ipConfig.setIpAssignment(IpConfiguration.IpAssignment.DHCP);
+        ipConfig.setProxySettings(IpConfiguration.ProxySettings.STATIC);
+        assertIpConfigurationEqual(ipConfig, new IpConfiguration(ipConfig));
+
+        ipConfig.setIpAssignment(IpConfiguration.IpAssignment.DHCP);
+        ipConfig.setProxySettings(IpConfiguration.ProxySettings.NONE);
         assertIpConfigurationEqual(ipConfig, new IpConfiguration(ipConfig));
     }
 
@@ -106,46 +108,16 @@ public final class IpConfigurationTest {
         assertNull(config.getHttpProxy());
     }
 
-    private IpConfiguration createIpConfiguration(int ipAssignmentType,
-            int proxySettingType) {
-
-        final IpConfiguration ipConfig = new IpConfiguration();
-
-        switch (ipAssignmentType) {
-            case TYPE_IPASSIGNMENT_STATIC:
-                ipConfig.setIpAssignment(IpConfiguration.IpAssignment.STATIC);
-                break;
-            case TYPE_IPASSIGNMENT_DHCP:
-                ipConfig.setIpAssignment(IpConfiguration.IpAssignment.DHCP);
-                break;
-            default:
-                throw new IllegalArgumentException("Unknown ip assignment type.");
-        }
-
-        switch (proxySettingType) {
-            case TYPE_PROXY_SETTINGS_NONE:
-                ipConfig.setProxySettings(IpConfiguration.ProxySettings.NONE);
-                break;
-            case TYPE_PROXY_SETTINGS_STATIC:
-                ipConfig.setProxySettings(IpConfiguration.ProxySettings.STATIC);
-                break;
-            case TYPE_PROXY_SETTINGS_PAC:
-                ipConfig.setProxySettings(IpConfiguration.ProxySettings.PAC);
-                break;
-            default:
-                throw new IllegalArgumentException("Unknown proxy setting type.");
-        }
-
-        ipConfig.setStaticIpConfiguration(mStaticIpConfig);
-        ipConfig.setHttpProxy(mProxy);
-
-        return ipConfig;
-    }
-
     private void assertIpConfigurationEqual(IpConfiguration source, IpConfiguration target) {
         assertEquals(source.getIpAssignment(), target.getIpAssignment());
         assertEquals(source.getProxySettings(), target.getProxySettings());
         assertEquals(source.getHttpProxy(), target.getHttpProxy());
         assertEquals(source.getStaticIpConfiguration(), target.getStaticIpConfiguration());
+    }
+
+    @Test
+    public void testParcel() {
+        final IpConfiguration config = new IpConfiguration();
+        assertParcelSane(config, 4);
     }
 }
