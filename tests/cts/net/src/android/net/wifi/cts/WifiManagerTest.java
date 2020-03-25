@@ -2183,7 +2183,9 @@ public class WifiManagerTest extends AndroidTestCase {
             // Restore the original saved networks.
             if (savedNetworks != null) {
                 for (WifiConfiguration network : savedNetworks) {
-                    mWifiManager.save(network, null);
+                    network.networkId = WifiConfiguration.INVALID_NETWORK_ID;
+                    int networkId = mWifiManager.addNetwork(network);
+                    mWifiManager.enableNetwork(networkId, false);
                 }
             }
             uiAutomation.dropShellPermissionIdentity();
