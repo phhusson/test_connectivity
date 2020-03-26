@@ -72,10 +72,9 @@ public class WifiRttTest extends TestBase {
 
         // Scan for IEEE 802.11mc supporting APs
         ScanResult testAp = scanForTestAp(NUM_SCANS_SEARCHING_FOR_IEEE80211MC_AP);
-        assertTrue(
+        assertNotNull(
                 "Cannot find any test APs which support RTT / IEEE 802.11mc - please verify that "
-                        + "your test setup includes them!",
-                testAp != null);
+                        + "your test setup includes them!", testAp);
 
         // Perform RTT operations
         RangingRequest request = new RangingRequest.Builder().addAccessPoint(testAp).build();
@@ -100,16 +99,15 @@ public class WifiRttTest extends TestBase {
                     callback.waitForCallback());
 
             List<RangingResult> currentResults = callback.getResults();
-            assertTrue("Wi-Fi RTT results: null results (onRangingFailure) on iteration " + i,
-                    currentResults != null);
-            assertTrue("Wi-Fi RTT results: unexpected # of results (expect 1) on iteration " + i,
-                    currentResults.size() == 1);
+            assertNotNull("Wi-Fi RTT results: null results (onRangingFailure) on iteration " + i,
+                    currentResults);
+            assertEquals("Wi-Fi RTT results: unexpected # of results (expect 1) on iteration " + i,
+                    1, currentResults.size());
             RangingResult result = currentResults.get(0);
-            assertTrue("Wi-Fi RTT results: invalid result (wrong BSSID) entry on iteration " + i,
-                    result.getMacAddress().toString().equals(testAp.BSSID));
-            assertEquals(
-                    "Wi-Fi RTT results: invalid result (non-null PeerHandle) entry on iteration "
-                            + i, null, result.getPeerHandle());
+            assertEquals("Wi-Fi RTT results: invalid result (wrong BSSID) entry on iteration " + i,
+                    result.getMacAddress().toString(), testAp.BSSID);
+            assertNull("Wi-Fi RTT results: invalid result (non-null PeerHandle) entry on iteration "
+                    + i, result.getPeerHandle());
 
             allResults.add(result);
             int status = result.getStatus();
@@ -189,23 +187,24 @@ public class WifiRttTest extends TestBase {
      * Validate that when a request contains more range operations than allowed (by API) that we
      * get an exception.
      */
-    public void testRequestTooLarge() {
+    public void testRequestTooLarge() throws InterruptedException {
         if (!shouldTestWifiRtt(getContext())) {
             return;
         }
-
-        ScanResult dummy = mock(ScanResult.class);
-        dummy.BSSID = "00:01:02:03:04:05";
+        ScanResult testAp = scanForTestAp(NUM_SCANS_SEARCHING_FOR_IEEE80211MC_AP);
+        assertNotNull(
+                "Cannot find any test APs which support RTT / IEEE 802.11mc - please verify that "
+                        + "your test setup includes them!", testAp);
 
         RangingRequest.Builder builder = new RangingRequest.Builder();
         for (int i = 0; i < RangingRequest.getMaxPeers() - 2; ++i) {
-            builder.addAccessPoint(dummy);
+            builder.addAccessPoint(testAp);
         }
 
         List<ScanResult> scanResults = new ArrayList<>();
-        scanResults.add(dummy);
-        scanResults.add(dummy);
-        scanResults.add(dummy);
+        scanResults.add(testAp);
+        scanResults.add(testAp);
+        scanResults.add(testAp);
 
         builder.addAccessPoints(scanResults);
 
@@ -215,10 +214,8 @@ public class WifiRttTest extends TestBase {
             return;
         }
 
-        assertTrue(
-                "Did not receive expected IllegalArgumentException when tried to range to too "
-                        + "many peers",
-                false);
+        fail("Did not receive expected IllegalArgumentException when tried to range to too "
+                + "many peers");
     }
 
     /**
@@ -230,10 +227,9 @@ public class WifiRttTest extends TestBase {
         }
         // Scan for IEEE 802.11mc supporting APs
         ScanResult testAp = scanForTestAp(NUM_SCANS_SEARCHING_FOR_IEEE80211MC_AP);
-        assertTrue(
+        assertNotNull(
                 "Cannot find any test APs which support RTT / IEEE 802.11mc - please verify that "
-                        + "your test setup includes them!",
-                testAp != null);
+                        + "your test setup includes them!", testAp);
 
         // Perform RTT operations
         RangingRequest request = new RangingRequest.Builder().addAccessPoint(testAp).build();
