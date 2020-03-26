@@ -174,6 +174,7 @@ public class ConnectedNetworkScorerTest extends AndroidTestCase {
             assertThat(statsEntry.getTotalHotspot2ScanTimeMillis()).isAtLeast(0L);
             assertThat(statsEntry.getTotalCcaBusyFreqTimeMillis()).isAtLeast(0L);
             assertThat(statsEntry.getTotalRadioOnTimeMillis()).isGreaterThan(0L);
+            assertThat(statsEntry.getTotalRadioOnFreqTimeMillis()).isGreaterThan(0L);
             assertThat(statsEntry.getTotalBeaconRx()).isGreaterThan(0L);
             assertThat(statsEntry.getProbeStatusSinceLastUpdate())
                     .isAnyOf(PROBE_STATUS_SUCCESS,
