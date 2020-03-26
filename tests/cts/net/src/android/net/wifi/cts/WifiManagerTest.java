@@ -2471,15 +2471,21 @@ public class WifiManagerTest extends AndroidTestCase {
 
         // Create and install a Passpoint configuration
         PasspointConfiguration passpointConfiguration = createPasspointConfiguration();
-        mWifiManager.addOrUpdatePasspointConfiguration(passpointConfiguration);
+        UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation().getUiAutomation();
+        try {
+            uiAutomation.adoptShellPermissionIdentity();
+            mWifiManager.addOrUpdatePasspointConfiguration(passpointConfiguration);
 
-        // Compare configurations
-        List<PasspointConfiguration> configurations = mWifiManager.getPasspointConfigurations();
-        assertNotNull(configurations);
-        assertEquals(passpointConfiguration, configurations.get(0));
+            // Compare configurations
+            List<PasspointConfiguration> configurations = mWifiManager.getPasspointConfigurations();
+            assertNotNull(configurations);
+            assertEquals(passpointConfiguration, configurations.get(0));
 
-        // Clean up
-        mWifiManager.removePasspointConfiguration(passpointConfiguration.getHomeSp().getFqdn());
+            // Clean up
+            mWifiManager.removePasspointConfiguration(passpointConfiguration.getHomeSp().getFqdn());
+        } finally {
+            uiAutomation.dropShellPermissionIdentity();
+        }
     }
 
     /**
