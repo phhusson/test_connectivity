@@ -62,6 +62,18 @@ public class NetworkRequestTest {
                 .hasCapability(NET_CAPABILITY_MMS));
         assertFalse(new NetworkRequest.Builder().removeCapability(NET_CAPABILITY_MMS).build()
                 .hasCapability(NET_CAPABILITY_MMS));
+
+        final NetworkRequest nr = new NetworkRequest.Builder().clearCapabilities().build();
+        // Verify request has no capabilities
+        verifyNoCapabilities(nr);
+    }
+
+    private void verifyNoCapabilities(NetworkRequest nr) {
+        // NetworkCapabilities.mNetworkCapabilities is defined as type long
+        final int MAX_POSSIBLE_CAPABILITY = Long.SIZE;
+        for(int bit = 0; bit < MAX_POSSIBLE_CAPABILITY; bit++) {
+            assertFalse(nr.hasCapability(bit));
+        }
     }
 
     @Test
@@ -86,6 +98,29 @@ public class NetworkRequestTest {
                 .build()
                 .getNetworkSpecifier();
         assertEquals(obtainedSpecifier, specifier);
+
+        assertNull(new NetworkRequest.Builder()
+                .clearCapabilities()
+                .build()
+                .getNetworkSpecifier());
+    }
+
+    @Test
+    @IgnoreUpTo(Build.VERSION_CODES.Q)
+    public void testRequestorPackageName() {
+        assertNull(new NetworkRequest.Builder().build().getRequestorPackageName());
+        final String pkgName = "android.net.test";
+        final NetworkCapabilities nc = new NetworkCapabilities.Builder()
+                .setRequestorPackageName(pkgName)
+                .build();
+        final NetworkRequest nr = new NetworkRequest.Builder()
+                .setCapabilities(nc)
+                .build();
+        assertEquals(pkgName, nr.getRequestorPackageName());
+        assertNull(new NetworkRequest.Builder()
+                .clearCapabilities()
+                .build()
+                .getRequestorPackageName());
     }
 
     @Test
