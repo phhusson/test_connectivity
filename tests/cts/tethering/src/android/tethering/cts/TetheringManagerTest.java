@@ -15,17 +15,22 @@
  */
 package android.tethering.test;
 
+import static android.net.TetheringManager.TETHERING_USB;
 import static android.net.TetheringManager.TETHERING_WIFI;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.net.LinkAddress;
 import android.net.TetheringManager;
 import android.net.TetheringManager.TetheringRequest;
-import android.os.ConditionVariable;
 
 import androidx.test.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
@@ -37,8 +42,6 @@ import org.junit.runner.RunWith;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Iterator;
-import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
@@ -224,5 +227,28 @@ public class TetheringManagerTest {
 
         mTM.stopTethering(TETHERING_WIFI);
         mTetherChangeReceiver.expectNoActiveTethering(DEFAULT_TIMEOUT_MS);
+    }
+
+    @Test
+    public void testTetheringRequest() {
+        final TetheringRequest tr = new TetheringRequest.Builder(TETHERING_WIFI).build();
+        assertEquals(TETHERING_WIFI, tr.getTetheringType());
+        assertNull(tr.getLocalIpv4Address());
+        assertNull(tr.getClientStaticIpv4Address());
+        assertFalse(tr.isExemptFromEntitlementCheck());
+        assertTrue(tr.getShouldShowEntitlementUi());
+
+        final LinkAddress localAddr = new LinkAddress("192.168.24.5/24");
+        final LinkAddress clientAddr = new LinkAddress("192.168.24.100/24");
+        final TetheringRequest tr2 = new TetheringRequest.Builder(TETHERING_USB)
+                .setStaticIpv4Addresses(localAddr, clientAddr)
+                .setExemptFromEntitlementCheck(true)
+                .setShouldShowEntitlementUi(false).build();
+
+        assertEquals(localAddr, tr2.getLocalIpv4Address());
+        assertEquals(clientAddr, tr2.getClientStaticIpv4Address());
+        assertEquals(TETHERING_USB, tr2.getTetheringType());
+        assertTrue(tr2.isExemptFromEntitlementCheck());
+        assertFalse(tr2.getShouldShowEntitlementUi());
     }
 }
