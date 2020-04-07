@@ -36,6 +36,11 @@
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 
+    <!-- This test also uses signature permissions through adopting the shell identity.
+         The permissions acquired that way include (probably not exhaustive) :
+             android.permission.MANAGE_TEST_NETWORKS
+    -->
+
     <application android:usesCleartextTraffic="true">
         <uses-library android:name="android.test.runner" />
         <uses-library android:name="org.apache.http.legacy" android:required="false" />
