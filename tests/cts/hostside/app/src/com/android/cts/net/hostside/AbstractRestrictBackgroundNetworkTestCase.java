@@ -62,13 +62,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-import androidx.test.platform.app.InstrumentationRegistry;
-import androidx.test.runner.AndroidJUnit4;
-
 /**
  * Superclass for tests related to background network restrictions.
  */
-@RunWith(AndroidJUnit4.class)
+@RunWith(NetworkPolicyTestRunner.class)
 public abstract class AbstractRestrictBackgroundNetworkTestCase {
     public static final String TAG = "RestrictBackgroundNetworkTests";
 
@@ -137,8 +134,7 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     private boolean mIsLocationOn;
 
     @Rule
-    public final RuleChain mRuleChain = RuleChain.outerRule(new DumpOnFailureRule())
-            .around(new RequiredPropertiesRule())
+    public final RuleChain mRuleChain = RuleChain.outerRule(new RequiredPropertiesRule())
             .around(new MeterednessConfigurationRule());
 
     protected void setUp() throws Exception {
