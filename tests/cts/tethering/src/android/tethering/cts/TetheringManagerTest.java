@@ -29,9 +29,14 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.LinkAddress;
+import android.net.Network;
+import android.net.TetheredClient;
 import android.net.TetheringManager;
+import android.net.TetheringManager.TetheringEventCallback;
+import android.net.TetheringManager.TetheringInterfaceRegexps;
 import android.net.TetheringManager.TetheringRequest;
 
+import androidx.annotation.NonNull;
 import androidx.test.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
@@ -42,6 +47,8 @@ import org.junit.runner.RunWith;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
@@ -195,8 +202,12 @@ public class TetheringManagerTest {
         }
     }
 
-    private static boolean isIfaceMatch(final String[] ifaceRegexs,
-            final ArrayList<String> ifaces) {
+    private static boolean isIfaceMatch(final List<String> ifaceRegexs,
+            final List<String> ifaces) {
+        return isIfaceMatch(ifaceRegexs.toArray(new String[0]), ifaces);
+    }
+
+    private static boolean isIfaceMatch(final String[] ifaceRegexs, final List<String> ifaces) {
         if (ifaceRegexs == null) fail("ifaceRegexs should not be null");
 
         if (ifaces == null) return false;
@@ -250,5 +261,171 @@ public class TetheringManagerTest {
         assertEquals(TETHERING_USB, tr2.getTetheringType());
         assertTrue(tr2.isExemptFromEntitlementCheck());
         assertFalse(tr2.getShouldShowEntitlementUi());
+    }
+
+    // Must poll the callback before looking at the member.
+    private static class TestTetheringEventCallback implements TetheringEventCallback {
+        public enum CallbackType {
+            ON_SUPPORTED,
+            ON_UPSTREAM,
+            ON_TETHERABLE_REGEX,
+            ON_TETHERABLE_IFACES,
+            ON_TETHERED_IFACES,
+            ON_ERROR,
+            ON_CLIENTS,
+        };
+
+        public static class CallbackValue {
+            public final CallbackType callbackType;
+            public final Object callbackParam;
+            public final int callbackParam2;
+
+            private CallbackValue(final CallbackType type, final Object param, final int param2) {
+                this.callbackType = type;
+                this.callbackParam = param;
+                this.callbackParam2 = param2;
+            }
+        }
+        private final LinkedBlockingQueue<CallbackValue> mCallbacks = new LinkedBlockingQueue<>();
+
+        private TetheringInterfaceRegexps mTetherableRegex;
+        private List<String> mTetherableIfaces;
+        private List<String> mTetheredIfaces;
+
+        @Override
+        public void onTetheringSupported(boolean supported) {
+            mCallbacks.add(new CallbackValue(CallbackType.ON_SUPPORTED, null, 0));
+        }
+
+        @Override
+        public void onUpstreamChanged(Network network) {
+            mCallbacks.add(new CallbackValue(CallbackType.ON_UPSTREAM, network, 0));
+        }
+
+        @Override
+        public void onTetherableInterfaceRegexpsChanged(TetheringInterfaceRegexps reg) {
+            mTetherableRegex = reg;
+            mCallbacks.add(new CallbackValue(CallbackType.ON_TETHERABLE_REGEX, reg, 0));
+        }
+
+        @Override
+        public void onTetherableInterfacesChanged(List<String> interfaces) {
+            mTetherableIfaces = interfaces;
+            mCallbacks.add(new CallbackValue(CallbackType.ON_TETHERABLE_IFACES, interfaces, 0));
+        }
+
+        @Override
+        public void onTetheredInterfacesChanged(List<String> interfaces) {
+            mTetheredIfaces = interfaces;
+            mCallbacks.add(new CallbackValue(CallbackType.ON_TETHERED_IFACES, interfaces, 0));
+        }
+
+        @Override
+        public void onError(String ifName, int error) {
+            mCallbacks.add(new CallbackValue(CallbackType.ON_ERROR, ifName, error));
+        }
+
+        @Override
+        public void onClientsChanged(Collection<TetheredClient> clients) {
+            mCallbacks.add(new CallbackValue(CallbackType.ON_CLIENTS, clients, 0));
+        }
+
+        public CallbackValue pollCallback() {
+            try {
+                return mCallbacks.poll(DEFAULT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                fail("Callback not seen");
+            }
+            return null;
+        }
+
+        public void expectTetherableInterfacesChanged(@NonNull List<String> regexs) {
+            while (true) {
+                final CallbackValue cv = pollCallback();
+                if (cv == null) fail("No expected tetherable ifaces callback");
+                if (cv.callbackType != CallbackType.ON_TETHERABLE_IFACES) continue;
+
+                final List<String> interfaces = (List<String>) cv.callbackParam;
+                if (isIfaceMatch(regexs, interfaces)) break;
+            }
+        }
+
+        public void expectTetheredInterfacesChanged(@NonNull List<String> regexs) {
+            while (true) {
+                final CallbackValue cv = pollCallback();
+                if (cv == null) fail("No expected tethered ifaces callback");
+                if (cv.callbackType != CallbackType.ON_TETHERED_IFACES) continue;
+
+                final List<String> interfaces = (List<String>) cv.callbackParam;
+
+                // Null regexs means no active tethering.
+                if (regexs == null) {
+                    if (interfaces.size() == 0) break;
+                } else if (isIfaceMatch(regexs, interfaces)) {
+                    break;
+                }
+            }
+        }
+
+        public void expectCallbackStarted() {
+            // The each bit represent a type from CallbackType.ON_*.
+            // Expect all of callbacks except for ON_ERROR.
+            final int expectedBitMap = 0x7f ^ (1 << CallbackType.ON_ERROR.ordinal());
+            int receivedBitMap = 0;
+            while (receivedBitMap != expectedBitMap) {
+                final CallbackValue cv = pollCallback();
+                if (cv == null) {
+                    fail("No expected callbacks, " + "expected bitmap: "
+                            + expectedBitMap + ", actual: " + receivedBitMap);
+                }
+                receivedBitMap = receivedBitMap | (1 << cv.callbackType.ordinal());
+            }
+        }
+
+        public TetheringInterfaceRegexps getTetheringInterfaceRegexps() {
+            return mTetherableRegex;
+        }
+
+        public List<String> getTetherableInterfaces() {
+            return mTetherableIfaces;
+        }
+
+        public List<String> getTetheredInterfaces() {
+            return mTetheredIfaces;
+        }
+    }
+
+    @Test
+    public void testRegisterTetheringEventCallback() throws Exception {
+        if (!mTM.isTetheringSupported()) return;
+
+        final TestTetheringEventCallback tetherEventCallback = new TestTetheringEventCallback();
+
+        mTM.registerTetheringEventCallback(c -> c.run(), tetherEventCallback);
+        tetherEventCallback.expectCallbackStarted();
+
+        final TetheringInterfaceRegexps tetherableRegexs =
+                tetherEventCallback.getTetheringInterfaceRegexps();
+        final List<String> wifiRegexs = tetherableRegexs.getTetherableWifiRegexs();
+        if (wifiRegexs.size() == 0) return;
+
+        final boolean isIfaceAvailWhenNoTethering =
+                isIfaceMatch(wifiRegexs, tetherEventCallback.getTetherableInterfaces());
+
+        mTM.startTethering(new TetheringRequest.Builder(TETHERING_WIFI).build(), c -> c.run(),
+                new StartTetheringCallback());
+
+        // If interface is already available before starting tethering, the available callback may
+        // not be sent after tethering enabled.
+        if (!isIfaceAvailWhenNoTethering) {
+            tetherEventCallback.expectTetherableInterfacesChanged(wifiRegexs);
+        }
+
+        tetherEventCallback.expectTetheredInterfacesChanged(wifiRegexs);
+
+        mTM.stopTethering(TETHERING_WIFI);
+
+        tetherEventCallback.expectTetheredInterfacesChanged(null);
+        mTM.unregisterTetheringEventCallback(tetherEventCallback);
     }
 }
