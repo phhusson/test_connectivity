@@ -61,6 +61,11 @@ public class TrafficStatsTest extends AndroidTestCase {
         assertTrue(TrafficStats.getTotalRxBytes() >= 0);
     }
 
+    public void testValidPacketStats() {
+        assertTrue(TrafficStats.getTxPackets("lo") >= 0);
+        assertTrue(TrafficStats.getRxPackets("lo") >= 0);
+    }
+
     public void testThreadStatsTag() throws Exception {
         TrafficStats.setThreadStatsTag(0xf00d);
         assertTrue("Tag didn't stick", TrafficStats.getThreadStatsTag() == 0xf00d);
@@ -104,6 +109,8 @@ public class TrafficStatsTest extends AndroidTestCase {
         final long uidRxBytesBefore = TrafficStats.getUidRxBytes(Process.myUid());
         final long uidTxPacketsBefore = TrafficStats.getUidTxPackets(Process.myUid());
         final long uidRxPacketsBefore = TrafficStats.getUidRxPackets(Process.myUid());
+        final long ifaceTxPacketsBefore = TrafficStats.getTxPackets("lo");
+        final long ifaceRxPacketsBefore = TrafficStats.getRxPackets("lo");
 
         // Transfer 1MB of data across an explicitly localhost socket.
         final int byteCount = 1024;
@@ -182,6 +189,10 @@ public class TrafficStatsTest extends AndroidTestCase {
         final long uidTxDeltaPackets = uidTxPacketsAfter - uidTxPacketsBefore;
         final long uidRxDeltaBytes = uidRxBytesAfter - uidRxBytesBefore;
         final long uidRxDeltaPackets = uidRxPacketsAfter - uidRxPacketsBefore;
+        final long ifaceTxPacketsAfter = TrafficStats.getTxPackets("lo");
+        final long ifaceRxPacketsAfter = TrafficStats.getRxPackets("lo");
+        final long ifaceTxDeltaPackets = ifaceTxPacketsAfter - ifaceTxPacketsBefore;
+        final long ifaceRxDeltaPackets = ifaceRxPacketsAfter - ifaceRxPacketsBefore;
 
         // Localhost traffic *does* count against per-UID stats.
         /*
@@ -209,34 +220,37 @@ public class TrafficStatsTest extends AndroidTestCase {
                     + deltaRxOtherPackets);
         }
 
-        // Check the per uid stats read from data profiling have the stats expected. The data
-        // profiling snapshot is generated from readNetworkStatsDetail() method in
-        // networkStatsService and in this way we can verify the detail networkStats of a given uid
-        // is correct.
-        NetworkStats.Entry entry = testStats.getTotal(null, Process.myUid());
+        // Check that the per-uid stats obtained from data profiling contain the expected values.
+        // The data profiling snapshot is generated from the readNetworkStatsDetail() method in
+        // networkStatsService, so it's possible to verify that the detailed stats for a given
+        // uid are correct.
+        final NetworkStats.Entry entry = testStats.getTotal(null, Process.myUid());
+        final long pktBytes = tcpPacketToIpBytes(packetCount, byteCount);
+        final long pktWithNoDataBytes = tcpPacketToIpBytes(packetCount, 0);
+        final long minExpExtraPktBytes = tcpPacketToIpBytes(minExpectedExtraPackets, 0);
+        final long maxExpExtraPktBytes = tcpPacketToIpBytes(maxExpectedExtraPackets, 0);
+        final long deltaTxOtherPktBytes = tcpPacketToIpBytes(deltaTxOtherPackets, 0);
+        final long deltaRxOtherPktBytes  = tcpPacketToIpBytes(deltaRxOtherPackets, 0);
         assertInRange("txPackets detail", entry.txPackets, packetCount + minExpectedExtraPackets,
                 uidTxDeltaPackets);
         assertInRange("rxPackets detail", entry.rxPackets, packetCount + minExpectedExtraPackets,
                 uidRxDeltaPackets);
-        assertInRange("txBytes detail", entry.txBytes, tcpPacketToIpBytes(packetCount, byteCount)
-                + tcpPacketToIpBytes(minExpectedExtraPackets, 0), uidTxDeltaBytes);
-        assertInRange("rxBytes detail", entry.rxBytes, tcpPacketToIpBytes(packetCount, byteCount)
-                + tcpPacketToIpBytes(minExpectedExtraPackets, 0), uidRxDeltaBytes);
-
+        assertInRange("txBytes detail", entry.txBytes, pktBytes + minExpExtraPktBytes,
+                uidTxDeltaBytes);
+        assertInRange("rxBytes detail", entry.rxBytes, pktBytes + minExpExtraPktBytes,
+                uidRxDeltaBytes);
         assertInRange("uidtxp", uidTxDeltaPackets, packetCount + minExpectedExtraPackets,
                 packetCount + packetCount + maxExpectedExtraPackets + deltaTxOtherPackets);
         assertInRange("uidrxp", uidRxDeltaPackets, packetCount + minExpectedExtraPackets,
                 packetCount + packetCount + maxExpectedExtraPackets + deltaRxOtherPackets);
-        assertInRange("uidtxb", uidTxDeltaBytes, tcpPacketToIpBytes(packetCount, byteCount)
-                + tcpPacketToIpBytes(minExpectedExtraPackets, 0),
-                tcpPacketToIpBytes(packetCount, byteCount)
-                + tcpPacketToIpBytes(packetCount + maxExpectedExtraPackets
-                + deltaTxOtherPackets, 0));
-        assertInRange("uidrxb", uidRxDeltaBytes, tcpPacketToIpBytes(packetCount, byteCount)
-                + tcpPacketToIpBytes(minExpectedExtraPackets, 0),
-                tcpPacketToIpBytes(packetCount, byteCount)
-                + tcpPacketToIpBytes(packetCount + maxExpectedExtraPackets
-                + deltaRxOtherPackets, 0));
+        assertInRange("uidtxb", uidTxDeltaBytes, pktBytes + minExpExtraPktBytes,
+                pktBytes + pktWithNoDataBytes + maxExpExtraPktBytes + deltaTxOtherPktBytes);
+        assertInRange("uidrxb", uidRxDeltaBytes, pktBytes + minExpExtraPktBytes,
+                pktBytes + pktWithNoDataBytes + maxExpExtraPktBytes + deltaRxOtherPktBytes);
+        assertInRange("iftxp", ifaceTxDeltaPackets, packetCount + minExpectedExtraPackets,
+                packetCount + packetCount + maxExpectedExtraPackets + deltaTxOtherPackets);
+        assertInRange("ifrxp", ifaceRxDeltaPackets, packetCount + minExpectedExtraPackets,
+                packetCount + packetCount + maxExpectedExtraPackets + deltaRxOtherPackets);
 
         // Localhost traffic *does* count against total stats.
         // Check the total stats increased after test data transfer over localhost has been made.
@@ -248,6 +262,10 @@ public class TrafficStatsTest extends AndroidTestCase {
                 totalTxBytesAfter >= totalTxBytesBefore + uidTxDeltaBytes);
         assertTrue("trxb: " + totalRxBytesBefore + " -> " + totalRxBytesAfter,
                 totalRxBytesAfter >= totalRxBytesBefore + uidRxDeltaBytes);
+        assertTrue("iftxp: " + ifaceTxPacketsBefore + " -> " + ifaceTxPacketsAfter,
+                totalTxPacketsAfter >= totalTxPacketsBefore + ifaceTxDeltaPackets);
+        assertTrue("ifrxp: " + ifaceRxPacketsBefore + " -> " + ifaceRxPacketsAfter,
+                totalRxPacketsAfter >= totalRxPacketsBefore + ifaceRxDeltaPackets);
 
         // If the adb TCP port is opened, this test may be run by adb over network.
         // Huge amount of data traffic might go through the network and accounted into total packets
