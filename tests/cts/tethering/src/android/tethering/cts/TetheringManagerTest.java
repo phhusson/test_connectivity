@@ -15,6 +15,9 @@
  */
 package android.tethering.test;
 
+import static android.net.TetheringManager.TETHER_HARDWARE_OFFLOAD_FAILED;
+import static android.net.TetheringManager.TETHER_HARDWARE_OFFLOAD_STARTED;
+import static android.net.TetheringManager.TETHER_HARDWARE_OFFLOAD_STOPPED;
 import static android.net.TetheringManager.TETHERING_USB;
 import static android.net.TetheringManager.TETHERING_WIFI;
 
@@ -273,6 +276,7 @@ public class TetheringManagerTest {
             ON_TETHERED_IFACES,
             ON_ERROR,
             ON_CLIENTS,
+            ON_OFFLOAD_STATUS,
         };
 
         public static class CallbackValue {
@@ -330,6 +334,11 @@ public class TetheringManagerTest {
             mCallbacks.add(new CallbackValue(CallbackType.ON_CLIENTS, clients, 0));
         }
 
+        @Override
+        public void onOffloadStatusChanged(int status) {
+            mCallbacks.add(new CallbackValue(CallbackType.ON_OFFLOAD_STATUS, status, 0));
+        }
+
         public CallbackValue pollCallback() {
             try {
                 return mCallbacks.poll(DEFAULT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
@@ -382,6 +391,17 @@ public class TetheringManagerTest {
             }
         }
 
+        public void expectOneOfOffloadStatusChanged(int... offloadStatuses) {
+            while (true) {
+                final CallbackValue cv = pollCallback();
+                if (cv == null) fail("No expected offload status change callback");
+                if (cv.callbackType != CallbackType.ON_OFFLOAD_STATUS) continue;
+
+                final int status = (int) cv.callbackParam;
+                for (int offloadStatus : offloadStatuses) if (offloadStatus == status) return;
+            }
+        }
+
         public TetheringInterfaceRegexps getTetheringInterfaceRegexps() {
             return mTetherableRegex;
         }
@@ -403,6 +423,7 @@ public class TetheringManagerTest {
 
         mTM.registerTetheringEventCallback(c -> c.run(), tetherEventCallback);
         tetherEventCallback.expectCallbackStarted();
+        tetherEventCallback.expectOneOfOffloadStatusChanged(TETHER_HARDWARE_OFFLOAD_STOPPED);
 
         final TetheringInterfaceRegexps tetherableRegexs =
                 tetherEventCallback.getTetheringInterfaceRegexps();
@@ -422,10 +443,14 @@ public class TetheringManagerTest {
         }
 
         tetherEventCallback.expectTetheredInterfacesChanged(wifiRegexs);
+        tetherEventCallback.expectOneOfOffloadStatusChanged(
+                TETHER_HARDWARE_OFFLOAD_STARTED,
+                TETHER_HARDWARE_OFFLOAD_FAILED);
 
         mTM.stopTethering(TETHERING_WIFI);
 
         tetherEventCallback.expectTetheredInterfacesChanged(null);
+        tetherEventCallback.expectOneOfOffloadStatusChanged(TETHER_HARDWARE_OFFLOAD_STOPPED);
         mTM.unregisterTetheringEventCallback(tetherEventCallback);
     }
 }
