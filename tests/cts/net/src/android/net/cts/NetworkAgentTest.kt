@@ -84,6 +84,7 @@ private const val DEFAULT_TIMEOUT_MS = 5000L
 // requests filed by the test and should never match normal internet requests. 70 is the default
 // score of Ethernet networks, it's as good a value as any other.
 private const val TEST_NETWORK_SCORE = 70
+private const val BETTER_NETWORK_SCORE = 75
 private const val FAKE_NET_ID = 1098
 private val instrumentation: Instrumentation
     get() = InstrumentationRegistry.getInstrumentation()
@@ -170,8 +171,8 @@ class NetworkAgentTest {
 
     private open class TestableNetworkAgent(
         val looper: Looper,
-        nc: NetworkCapabilities,
-        lp: LinkProperties,
+        val nc: NetworkCapabilities,
+        val lp: LinkProperties,
         conf: NetworkAgentConfig
     ) : NetworkAgent(context, looper, TestableNetworkAgent::class.java.simpleName /* tag */,
             nc, lp, TEST_NETWORK_SCORE, conf, Provider(context, looper)) {
@@ -365,6 +366,25 @@ class NetworkAgentTest {
         }
         agent.expectCallback<OnRemoveKeepalivePacketFilter>().let {
             assertEquals(it.slot, slot)
+        }
+    }
+
+    @Test
+    fun testSendUpdates(): Unit = createConnectedNetworkAgent().let { (agent, callback) ->
+        callback.expectAvailableThenValidatedCallbacks(agent.network)
+        agent.expectNoInternetValidationStatus()
+        val ifaceName = "adhocIface"
+        val lp = LinkProperties(agent.lp)
+        lp.setInterfaceName(ifaceName)
+        agent.sendLinkProperties(lp)
+        callback.expectLinkPropertiesThat(agent.network) {
+            it.getInterfaceName() == ifaceName
+        }
+        val nc = NetworkCapabilities(agent.nc)
+        nc.addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+        agent.sendNetworkCapabilities(nc)
+        callback.expectCapabilitiesThat(agent.network) {
+            it.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
         }
     }
 
