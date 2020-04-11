@@ -27,6 +27,7 @@ android_test {
     static_libs: [
         "TetheringIntegrationTestsLib",
         "compatibility-device-util-axt",
+        "net-tests-utils",
         "ctstestrunner-axt",
         "junit",
         "junit-params",
