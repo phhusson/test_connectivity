@@ -24,6 +24,7 @@ import android.net.NetworkAgentConfig
 import android.net.NetworkCapabilities
 import android.net.NetworkProvider
 import android.net.NetworkRequest
+import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnBandwidthUpdateRequested
 import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnNetworkUnwanted
 import android.os.Build
 import android.os.HandlerThread
@@ -88,7 +89,13 @@ class NetworkAgentTest {
         private val history = ArrayTrackRecord<CallbackEntry>().newReadHead()
 
         sealed class CallbackEntry {
+            object OnBandwidthUpdateRequested : CallbackEntry()
             object OnNetworkUnwanted : CallbackEntry()
+        }
+
+        override fun onBandwidthUpdateRequested() {
+            super.onBandwidthUpdateRequested()
+            history.add(OnBandwidthUpdateRequested)
         }
 
         override fun onNetworkUnwanted() {
@@ -138,5 +145,14 @@ class NetworkAgentTest {
         assertFailsWith<IllegalStateException>("Must not be able to register an agent twice") {
             agent.register()
         }
+    }
+
+    @Test
+    fun testOnBandwidthUpdateRequested() {
+        val (agent, callback) = createConnectedNetworkAgent()
+        callback.expectAvailableThenValidatedCallbacks(agent.network)
+        mCM.requestBandwidthUpdate(agent.network)
+        agent.expectCallback<OnBandwidthUpdateRequested>()
+        agent.unregister()
     }
 }
