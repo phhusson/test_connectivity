@@ -428,4 +428,30 @@ public class TetheringManagerTest {
         tetherEventCallback.expectTetheredInterfacesChanged(null);
         mTM.unregisterTetheringEventCallback(tetherEventCallback);
     }
+
+    @Test
+    public void testGetTetherableInterfaceRegexps() {
+        if (!mTM.isTetheringSupported()) return;
+
+        final TestTetheringEventCallback tetherEventCallback = new TestTetheringEventCallback();
+        mTM.registerTetheringEventCallback(c -> c.run(), tetherEventCallback);
+        tetherEventCallback.expectCallbackStarted();
+
+        final TetheringInterfaceRegexps tetherableRegexs =
+                tetherEventCallback.getTetheringInterfaceRegexps();
+        final List<String> wifiRegexs = tetherableRegexs.getTetherableWifiRegexs();
+        final List<String> usbRegexs = tetherableRegexs.getTetherableUsbRegexs();
+        final List<String> btRegexs = tetherableRegexs.getTetherableBluetoothRegexs();
+
+        assertEquals(wifiRegexs, Arrays.asList(mTM.getTetherableWifiRegexs()));
+        assertEquals(usbRegexs, Arrays.asList(mTM.getTetherableUsbRegexs()));
+        assertEquals(btRegexs, Arrays.asList(mTM.getTetherableBluetoothRegexs()));
+
+        //Verify that any of interface name should only contain in one array.
+        wifiRegexs.forEach(s -> assertFalse(usbRegexs.contains(s)));
+        wifiRegexs.forEach(s -> assertFalse(btRegexs.contains(s)));
+        usbRegexs.forEach(s -> assertFalse(btRegexs.contains(s)));
+
+        mTM.unregisterTetheringEventCallback(tetherEventCallback);
+    }
 }
