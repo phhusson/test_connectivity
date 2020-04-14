@@ -281,7 +281,8 @@ class NetworkAgentTest {
         }
 
         fun assertNoCallback() {
-            assertTrue(waitForIdle(DEFAULT_TIMEOUT_MS), "Handler never became idle")
+            assertTrue(waitForIdle(DEFAULT_TIMEOUT_MS),
+                    "Handler didn't became idle after ${DEFAULT_TIMEOUT_MS}ms")
             assertNull(history.peek())
         }
     }
@@ -536,6 +537,10 @@ class NetworkAgentTest {
             }
             agent.assertNoCallback()
         }
+    }
+
+    @Test
+    fun testSetAcceptUnvalidatedPreventAutomaticReconnect() {
         createNetworkAgentWithFakeCS().let { agent ->
             mFakeConnectivityService.sendMessage(CMD_SAVE_ACCEPT_UNVALIDATED, 0)
             mFakeConnectivityService.sendMessage(CMD_PREVENT_AUTOMATIC_RECONNECT)
@@ -552,6 +557,10 @@ class NetworkAgentTest {
             mFakeConnectivityService.expectMessage(AsyncChannel.CMD_CHANNEL_DISCONNECTED)
             agent.expectCallback<OnNetworkUnwanted>()
         }
+    }
+
+    @Test
+    fun testPreventAutomaticReconnect() {
         createNetworkAgentWithFakeCS().let { agent ->
             mFakeConnectivityService.sendMessage(CMD_PREVENT_AUTOMATIC_RECONNECT)
             agent.expectCallback<OnAutomaticReconnectDisabled>()
