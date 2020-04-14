@@ -26,15 +26,20 @@ import android.net.NetworkAgent
 import android.net.NetworkAgent.CMD_ADD_KEEPALIVE_PACKET_FILTER
 import android.net.NetworkAgent.CMD_PREVENT_AUTOMATIC_RECONNECT
 import android.net.NetworkAgent.CMD_REMOVE_KEEPALIVE_PACKET_FILTER
+import android.net.NetworkAgent.CMD_REPORT_NETWORK_STATUS
 import android.net.NetworkAgent.CMD_SAVE_ACCEPT_UNVALIDATED
 import android.net.NetworkAgent.CMD_START_SOCKET_KEEPALIVE
 import android.net.NetworkAgent.CMD_STOP_SOCKET_KEEPALIVE
+import android.net.NetworkAgent.INVALID_NETWORK
+import android.net.NetworkAgent.VALID_NETWORK
 import android.net.NetworkAgentConfig
 import android.net.NetworkCapabilities
 import android.net.NetworkProvider
 import android.net.NetworkRequest
 import android.net.SocketKeepalive
+import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
@@ -48,6 +53,7 @@ import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnRem
 import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnSaveAcceptUnvalidated
 import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnStartSocketKeepalive
 import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnStopSocketKeepalive
+import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnValidationStatus
 import androidx.test.InstrumentationRegistry
 import androidx.test.runner.AndroidJUnit4
 import com.android.internal.util.AsyncChannel
@@ -187,6 +193,7 @@ class NetworkAgentTest {
             data class OnStopSocketKeepalive(val slot: Int) : CallbackEntry()
             data class OnSaveAcceptUnvalidated(val accept: Boolean) : CallbackEntry()
             object OnAutomaticReconnectDisabled : CallbackEntry()
+            data class OnValidationStatus(val status: Int, val uri: Uri?) : CallbackEntry()
         }
 
         override fun onBandwidthUpdateRequested() {
@@ -223,6 +230,23 @@ class NetworkAgentTest {
 
         override fun onAutomaticReconnectDisabled() {
             history.add(OnAutomaticReconnectDisabled)
+        }
+
+        override fun onValidationStatus(status: Int, uri: Uri?) {
+            history.add(OnValidationStatus(status, uri))
+        }
+
+        // Expects the initial validation event that always occurs immediately after registering
+        // a NetworkAgent whose network does not require validation (which test networks do
+        // not, since they lack the INTERNET capability). It always contains the default argument
+        // for the URI.
+        fun expectNoInternetValidationStatus() = expectCallback<OnValidationStatus>().let {
+            assertEquals(it.status, VALID_NETWORK)
+            // The returned Uri is parsed from the empty string, which means it's an
+            // instance of the (private) Uri.StringUri. There are no real good ways
+            // to check this, the least bad is to just convert it to a string and
+            // make sure it's empty.
+            assertEquals("", it.uri.toString())
         }
 
         inline fun <reified T : CallbackEntry> expectCallback(): T {
@@ -281,6 +305,7 @@ class NetworkAgentTest {
     fun testConnectAndUnregister() {
         val (agent, callback) = createConnectedNetworkAgent()
         callback.expectAvailableThenValidatedCallbacks(agent.network)
+        agent.expectNoInternetValidationStatus()
         agent.unregister()
         callback.expectCallback<Lost>(agent.network)
         agent.expectCallback<OnNetworkUnwanted>()
@@ -293,6 +318,7 @@ class NetworkAgentTest {
     fun testOnBandwidthUpdateRequested() {
         val (agent, callback) = createConnectedNetworkAgent()
         callback.expectAvailableThenValidatedCallbacks(agent.network)
+        agent.expectNoInternetValidationStatus()
         mCM.requestBandwidthUpdate(agent.network)
         agent.expectCallback<OnBandwidthUpdateRequested>()
         agent.unregister()
@@ -375,6 +401,27 @@ class NetworkAgentTest {
             mFakeConnectivityService.disconnect()
             mFakeConnectivityService.expectMessage(AsyncChannel.CMD_CHANNEL_DISCONNECTED)
             agent.expectCallback<OnNetworkUnwanted>()
+        }
+    }
+
+    @Test
+    fun testValidationStatus() = createNetworkAgentWithFakeCS().let { agent ->
+        val uri = Uri.parse("http://www.google.com")
+        val bundle = Bundle().apply {
+            putString(NetworkAgent.REDIRECT_URL_KEY, uri.toString())
+        }
+        mFakeConnectivityService.sendMessage(CMD_REPORT_NETWORK_STATUS,
+                arg1 = VALID_NETWORK, obj = bundle)
+        agent.expectCallback<OnValidationStatus>().let {
+            assertEquals(it.status, VALID_NETWORK)
+            assertEquals(it.uri, uri)
+        }
+
+        mFakeConnectivityService.sendMessage(CMD_REPORT_NETWORK_STATUS,
+                arg1 = INVALID_NETWORK, obj = Bundle())
+        agent.expectCallback<OnValidationStatus>().let {
+            assertEquals(it.status, INVALID_NETWORK)
+            assertNull(it.uri)
         }
     }
 }
