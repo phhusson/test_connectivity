@@ -20,6 +20,8 @@ import static android.net.TetheringManager.TETHER_HARDWARE_OFFLOAD_STARTED;
 import static android.net.TetheringManager.TETHER_HARDWARE_OFFLOAD_STOPPED;
 import static android.net.TetheringManager.TETHERING_USB;
 import static android.net.TetheringManager.TETHERING_WIFI;
+import static android.net.TetheringManager.TETHERING_WIFI_P2P;
+import static android.net.TetheringManager.TETHER_ERROR_ENTITLEMENT_UNKNOWN;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -35,9 +37,12 @@ import android.net.LinkAddress;
 import android.net.Network;
 import android.net.TetheredClient;
 import android.net.TetheringManager;
+import android.net.TetheringManager.OnTetheringEntitlementResultListener;
 import android.net.TetheringManager.TetheringEventCallback;
 import android.net.TetheringManager.TetheringInterfaceRegexps;
 import android.net.TetheringManager.TetheringRequest;
+import android.os.Bundle;
+import android.os.ResultReceiver;
 
 import androidx.annotation.NonNull;
 import androidx.test.InstrumentationRegistry;
@@ -52,8 +57,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
 
 @RunWith(AndroidJUnit4.class)
 public class TetheringManagerTest {
@@ -472,11 +481,60 @@ public class TetheringManagerTest {
         assertEquals(usbRegexs, Arrays.asList(mTM.getTetherableUsbRegexs()));
         assertEquals(btRegexs, Arrays.asList(mTM.getTetherableBluetoothRegexs()));
 
-        //Verify that any of interface name should only contain in one array.
+        //Verify that any regex name should only contain in one array.
         wifiRegexs.forEach(s -> assertFalse(usbRegexs.contains(s)));
         wifiRegexs.forEach(s -> assertFalse(btRegexs.contains(s)));
         usbRegexs.forEach(s -> assertFalse(btRegexs.contains(s)));
 
         mTM.unregisterTetheringEventCallback(tetherEventCallback);
+    }
+
+    private class EntitlementResultListener implements OnTetheringEntitlementResultListener {
+        private final CompletableFuture<Integer> future = new CompletableFuture<>();
+
+        @Override
+        public void onTetheringEntitlementResult(int result) {
+            future.complete(result);
+        }
+
+        public int get(long timeout, TimeUnit unit) throws Exception {
+            return future.get(timeout, unit);
+        }
+
+    }
+
+    private void assertEntitlementResult(final Consumer<EntitlementResultListener> functor,
+            final int expect) throws Exception {
+        final EntitlementResultListener listener = new EntitlementResultListener();
+        functor.accept(listener);
+
+        assertEquals(expect, listener.get(DEFAULT_TIMEOUT_MS, TimeUnit.MILLISECONDS));
+    }
+
+    @Test
+    public void testRequestLatestEntitlementResult() throws Exception {
+        // Verify that requestLatestTetheringEntitlementResult() can get entitlement
+        // result(TETHER_ERROR_ENTITLEMENT_UNKNOWN due to invalid downstream type) via listener.
+        assertEntitlementResult(listener -> mTM.requestLatestTetheringEntitlementResult(
+                TETHERING_WIFI_P2P, false, c -> c.run(), listener),
+                TETHER_ERROR_ENTITLEMENT_UNKNOWN);
+
+        // Verify that requestLatestTetheringEntitlementResult() can get entitlement
+        // result(TETHER_ERROR_ENTITLEMENT_UNKNOWN due to invalid downstream type) via receiver.
+        assertEntitlementResult(listener -> mTM.requestLatestTetheringEntitlementResult(
+                TETHERING_WIFI_P2P,
+                new ResultReceiver(null /* handler */) {
+                    @Override
+                    public void onReceiveResult(int resultCode, Bundle resultData) {
+                        listener.onTetheringEntitlementResult(resultCode);
+                    }
+                }, false),
+                TETHER_ERROR_ENTITLEMENT_UNKNOWN);
+
+        // Verify that null listener will cause IllegalArgumentException.
+        try {
+            mTM.requestLatestTetheringEntitlementResult(
+                    TETHERING_WIFI, false, c -> c.run(), null);
+        } catch (IllegalArgumentException expect) { }
     }
 }
