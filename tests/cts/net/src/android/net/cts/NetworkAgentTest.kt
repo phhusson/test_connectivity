@@ -52,6 +52,7 @@ import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnBan
 import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnNetworkUnwanted
 import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnRemoveKeepalivePacketFilter
 import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnSaveAcceptUnvalidated
+import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnSignalStrengthThresholdsUpdated
 import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnStartSocketKeepalive
 import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnStopSocketKeepalive
 import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnValidationStatus
@@ -65,6 +66,7 @@ import com.android.testutils.RecorderCallback.CallbackEntry.Lost
 import com.android.testutils.TestableNetworkCallback
 import java.util.UUID
 import org.junit.After
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Rule
@@ -83,6 +85,11 @@ import kotlin.test.assertTrue
 // going to fail, it will simply wait forever, so setting a high timeout lowers the flake ratio
 // without affecting the run time of successful runs. Thus, set a very high timeout.
 private const val DEFAULT_TIMEOUT_MS = 5000L
+// When waiting for a NetworkCallback to determine there was no timeout, waiting is the
+// only possible thing (the relevant handler is the one in the real ConnectivityService,
+// and then there is the Binder call), so have a short timeout for this as it will be
+// exhausted every time.
+private const val NO_CALLBACK_TIMEOUT = 200L
 // Any legal score (0~99) for the test network would do, as it is going to be kept up by the
 // requests filed by the test and should never match normal internet requests. 70 is the default
 // score of Ethernet networks, it's as good a value as any other.
@@ -198,6 +205,7 @@ class NetworkAgentTest {
             data class OnSaveAcceptUnvalidated(val accept: Boolean) : CallbackEntry()
             object OnAutomaticReconnectDisabled : CallbackEntry()
             data class OnValidationStatus(val status: Int, val uri: Uri?) : CallbackEntry()
+            data class OnSignalStrengthThresholdsUpdated(val thresholds: IntArray) : CallbackEntry()
         }
 
         fun getName(): String? = (nc.getNetworkSpecifier() as? StringNetworkSpecifier)?.specifier
@@ -238,6 +246,17 @@ class NetworkAgentTest {
             history.add(OnAutomaticReconnectDisabled)
         }
 
+        override fun onSignalStrengthThresholdsUpdated(thresholds: IntArray) {
+            history.add(OnSignalStrengthThresholdsUpdated(thresholds))
+        }
+
+        fun expectEmptySignalStrengths() {
+            expectCallback<OnSignalStrengthThresholdsUpdated>().let {
+                // intArrayOf() without arguments makes an empty array
+                assertArrayEquals(intArrayOf(), it.thresholds)
+            }
+        }
+
         override fun onValidationStatus(status: Int, uri: Uri?) {
             history.add(OnValidationStatus(status, uri))
         }
@@ -269,6 +288,14 @@ class NetworkAgentTest {
 
     private fun requestNetwork(request: NetworkRequest, callback: TestableNetworkCallback) {
         mCM.requestNetwork(request, callback)
+        callbacksToCleanUp.add(callback)
+    }
+
+    private fun registerNetworkCallback(
+        request: NetworkRequest,
+        callback: TestableNetworkCallback
+    ) {
+        mCM.registerNetworkCallback(request, callback)
         callbacksToCleanUp.add(callback)
     }
 
@@ -315,6 +342,7 @@ class NetworkAgentTest {
     fun testConnectAndUnregister() {
         val (agent, callback) = createConnectedNetworkAgent()
         callback.expectAvailableThenValidatedCallbacks(agent.network)
+        agent.expectEmptySignalStrengths()
         agent.expectNoInternetValidationStatus()
         agent.unregister()
         callback.expectCallback<Lost>(agent.network)
@@ -328,10 +356,60 @@ class NetworkAgentTest {
     fun testOnBandwidthUpdateRequested() {
         val (agent, callback) = createConnectedNetworkAgent()
         callback.expectAvailableThenValidatedCallbacks(agent.network)
+        agent.expectEmptySignalStrengths()
         agent.expectNoInternetValidationStatus()
         mCM.requestBandwidthUpdate(agent.network)
         agent.expectCallback<OnBandwidthUpdateRequested>()
         agent.unregister()
+    }
+
+    @Test
+    fun testSignalStrengthThresholds() {
+        val thresholds = intArrayOf(30, 50, 65)
+        val callbacks = thresholds.map { strength ->
+            val request = NetworkRequest.Builder()
+                    .clearCapabilities()
+                    .addTransportType(NetworkCapabilities.TRANSPORT_TEST)
+                    .setSignalStrength(strength)
+                    .build()
+            TestableNetworkCallback(DEFAULT_TIMEOUT_MS).also {
+                registerNetworkCallback(request, it)
+            }
+        }
+        createConnectedNetworkAgent().let { (agent, callback) ->
+            callback.expectAvailableThenValidatedCallbacks(agent.network)
+            agent.expectCallback<OnSignalStrengthThresholdsUpdated>().let {
+                assertArrayEquals(it.thresholds, thresholds)
+            }
+            agent.expectNoInternetValidationStatus()
+
+            // Send signal strength and check that the callbacks are called appropriately.
+            val nc = NetworkCapabilities(agent.nc)
+            nc.setSignalStrength(20)
+            agent.sendNetworkCapabilities(nc)
+            callbacks.forEach { it.assertNoCallback(NO_CALLBACK_TIMEOUT) }
+
+            nc.setSignalStrength(40)
+            agent.sendNetworkCapabilities(nc)
+            callbacks[0].expectAvailableCallbacks(agent.network)
+            callbacks[1].assertNoCallback(NO_CALLBACK_TIMEOUT)
+            callbacks[2].assertNoCallback(NO_CALLBACK_TIMEOUT)
+
+            nc.setSignalStrength(80)
+            agent.sendNetworkCapabilities(nc)
+            callbacks[0].expectCapabilitiesThat(agent.network) { it.signalStrength == 80 }
+            callbacks[1].expectAvailableCallbacks(agent.network)
+            callbacks[2].expectAvailableCallbacks(agent.network)
+
+            nc.setSignalStrength(55)
+            agent.sendNetworkCapabilities(nc)
+            callbacks[0].expectCapabilitiesThat(agent.network) { it.signalStrength == 55 }
+            callbacks[1].expectCapabilitiesThat(agent.network) { it.signalStrength == 55 }
+            callbacks[2].expectCallback<Lost>(agent.network)
+        }
+        callbacks.forEach {
+            mCM.unregisterNetworkCallback(it)
+        }
     }
 
     @Test
@@ -381,6 +459,7 @@ class NetworkAgentTest {
     @Test
     fun testSendUpdates(): Unit = createConnectedNetworkAgent().let { (agent, callback) ->
         callback.expectAvailableThenValidatedCallbacks(agent.network)
+        agent.expectEmptySignalStrengths()
         agent.expectNoInternetValidationStatus()
         val ifaceName = "adhocIface"
         val lp = LinkProperties(agent.lp)
@@ -438,7 +517,7 @@ class NetworkAgentTest {
             createConnectedNetworkAgent(name2).let { (agent2, _) ->
                 agent2.markConnected()
                 // The callback should not see anything yet
-                callback.assertNoCallback(200)
+                callback.assertNoCallback(NO_CALLBACK_TIMEOUT)
                 // Now update the score and expect the callback now prefers agent2
                 agent2.sendNetworkScore(BETTER_NETWORK_SCORE)
                 callback.expectCallback<Available>(agent2.network)
