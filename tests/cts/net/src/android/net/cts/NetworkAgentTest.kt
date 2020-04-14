@@ -37,6 +37,7 @@ import android.net.NetworkCapabilities
 import android.net.NetworkProvider
 import android.net.NetworkRequest
 import android.net.SocketKeepalive
+import android.net.StringNetworkSpecifier
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -59,8 +60,10 @@ import androidx.test.runner.AndroidJUnit4
 import com.android.internal.util.AsyncChannel
 import com.android.testutils.ArrayTrackRecord
 import com.android.testutils.DevSdkIgnoreRule
+import com.android.testutils.RecorderCallback.CallbackEntry.Available
 import com.android.testutils.RecorderCallback.CallbackEntry.Lost
 import com.android.testutils.TestableNetworkCallback
+import java.util.UUID
 import org.junit.After
 import org.junit.Assert.fail
 import org.junit.Before
@@ -197,6 +200,8 @@ class NetworkAgentTest {
             data class OnValidationStatus(val status: Int, val uri: Uri?) : CallbackEntry()
         }
 
+        fun getName(): String? = (nc.getNetworkSpecifier() as? StringNetworkSpecifier)?.specifier
+
         override fun onBandwidthUpdateRequested() {
             history.add(OnBandwidthUpdateRequested)
         }
@@ -267,7 +272,7 @@ class NetworkAgentTest {
         callbacksToCleanUp.add(callback)
     }
 
-    private fun createNetworkAgent(): TestableNetworkAgent {
+    private fun createNetworkAgent(name: String? = null): TestableNetworkAgent {
         val nc = NetworkCapabilities().apply {
             addTransportType(NetworkCapabilities.TRANSPORT_TEST)
             removeCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)
@@ -275,6 +280,9 @@ class NetworkAgentTest {
             addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_SUSPENDED)
             addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING)
             addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            if (null != name) {
+                setNetworkSpecifier(StringNetworkSpecifier(name))
+            }
         }
         val lp = LinkProperties().apply {
             addLinkAddress(LinkAddress(LOCAL_IPV4_ADDRESS, 0))
@@ -285,14 +293,15 @@ class NetworkAgentTest {
         }
     }
 
-    private fun createConnectedNetworkAgent(): Pair<TestableNetworkAgent, TestableNetworkCallback> {
+    private fun createConnectedNetworkAgent(name: String? = null):
+            Pair<TestableNetworkAgent, TestableNetworkCallback> {
         val request: NetworkRequest = NetworkRequest.Builder()
                 .clearCapabilities()
                 .addTransportType(NetworkCapabilities.TRANSPORT_TEST)
                 .build()
         val callback = TestableNetworkCallback(timeoutMs = DEFAULT_TIMEOUT_MS)
         requestNetwork(request, callback)
-        val agent = createNetworkAgent()
+        val agent = createNetworkAgent(name)
         agent.register()
         agent.markConnected()
         return agent to callback
@@ -386,6 +395,57 @@ class NetworkAgentTest {
         callback.expectCapabilitiesThat(agent.network) {
             it.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
         }
+    }
+
+    @Test
+    fun testSendScore() {
+        // This test will create two networks and check that the one with the stronger
+        // score wins out for a request that matches them both.
+        // First create requests to make sure both networks are kept up, using the
+        // specifier so they are specific to each network
+        val name1 = UUID.randomUUID().toString()
+        val name2 = UUID.randomUUID().toString()
+        val request1 = NetworkRequest.Builder()
+                .clearCapabilities()
+                .addTransportType(NetworkCapabilities.TRANSPORT_TEST)
+                .setNetworkSpecifier(StringNetworkSpecifier(name1))
+                .build()
+        val request2 = NetworkRequest.Builder()
+                .clearCapabilities()
+                .addTransportType(NetworkCapabilities.TRANSPORT_TEST)
+                .setNetworkSpecifier(StringNetworkSpecifier(name2))
+                .build()
+        val callback1 = TestableNetworkCallback()
+        val callback2 = TestableNetworkCallback()
+        requestNetwork(request1, callback1)
+        requestNetwork(request2, callback2)
+
+        // Then file the interesting request
+        val request = NetworkRequest.Builder()
+                .clearCapabilities()
+                .addTransportType(NetworkCapabilities.TRANSPORT_TEST)
+                .build()
+        val callback = TestableNetworkCallback()
+        requestNetwork(request, callback)
+
+        // Connect the first Network
+        createConnectedNetworkAgent(name1).let { (agent1, _) ->
+            callback.expectAvailableThenValidatedCallbacks(agent1.network)
+            // Upgrade agent1 to a better score so that there is no ambiguity when
+            // agent2 connects that agent1 is still better
+            agent1.sendNetworkScore(BETTER_NETWORK_SCORE - 1)
+            // Connect the second agent
+            createConnectedNetworkAgent(name2).let { (agent2, _) ->
+                agent2.markConnected()
+                // The callback should not see anything yet
+                callback.assertNoCallback(200)
+                // Now update the score and expect the callback now prefers agent2
+                agent2.sendNetworkScore(BETTER_NETWORK_SCORE)
+                callback.expectCallback<Available>(agent2.network)
+            }
+        }
+
+        // tearDown() will unregister the requests and agents
     }
 
     @Test
