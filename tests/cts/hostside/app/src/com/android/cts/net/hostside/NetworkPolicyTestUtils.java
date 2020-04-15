@@ -27,17 +27,20 @@ import static com.android.cts.net.hostside.AbstractRestrictBackgroundNetworkTest
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import android.app.ActivityManager;
 import android.app.Instrumentation;
 import android.content.Context;
+import android.location.LocationManager;
 import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.NetworkCallback;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.wifi.WifiManager;
+import android.os.Process;
 import android.text.TextUtils;
 import android.util.Log;
 import android.util.Pair;
@@ -113,6 +116,20 @@ public class NetworkPolicyTestUtils {
         return am.isLowRamDevice();
     }
 
+    public static boolean isLocationEnabled() {
+        final LocationManager lm = (LocationManager) getContext().getSystemService(
+                Context.LOCATION_SERVICE);
+        return lm.isLocationEnabled();
+    }
+
+    public static void setLocationEnabled(boolean enabled) {
+        final LocationManager lm = (LocationManager) getContext().getSystemService(
+                Context.LOCATION_SERVICE);
+        lm.setLocationEnabledForUser(enabled, Process.myUserHandle());
+        assertEquals("Couldn't change location enabled state", lm.isLocationEnabled(), enabled);
+        Log.d(TAG, "Changed location enabled state to " + enabled);
+    }
+
     public static boolean isActiveNetworkMetered(boolean metered) {
         return getConnectivityManager().isActiveNetworkMetered() == metered;
     }
@@ -128,9 +145,21 @@ public class NetworkPolicyTestUtils {
         if (isActiveNetworkMetered(metered)) {
             return null;
         }
-        final String ssid = unquoteSSID(getWifiManager().getConnectionInfo().getSSID());
-        setWifiMeteredStatus(ssid, metered);
-        return Pair.create(ssid, !metered);
+        final boolean isLocationEnabled = isLocationEnabled();
+        try {
+            if (!isLocationEnabled) {
+                setLocationEnabled(true);
+            }
+            final String ssid = unquoteSSID(getWifiManager().getConnectionInfo().getSSID());
+            assertNotEquals(WifiManager.UNKNOWN_SSID, ssid);
+            setWifiMeteredStatus(ssid, metered);
+            return Pair.create(ssid, !metered);
+        } finally {
+            // Reset the location enabled state
+            if (!isLocationEnabled) {
+                setLocationEnabled(false);
+            }
+        }
     }
 
     public static void resetMeteredNetwork(String ssid, boolean metered) throws Exception {
