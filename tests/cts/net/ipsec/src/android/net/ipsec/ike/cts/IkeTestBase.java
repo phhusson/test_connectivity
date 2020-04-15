@@ -16,11 +16,17 @@
 
 package android.net.ipsec.ike.cts;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
+
 import android.net.InetAddresses;
 import android.net.ipsec.ike.IkeTrafficSelector;
 
 import java.net.Inet4Address;
 import java.net.Inet6Address;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /** Shared parameters and util methods for testing different components of IKE */
 abstract class IkeTestBase {
@@ -80,4 +86,35 @@ abstract class IkeTestBase {
                     OUTBOUND_TS_END_PORT,
                     InetAddresses.parseNumericAddress("2001:db8:255::64"),
                     InetAddresses.parseNumericAddress("2001:db8:255::255"));
+
+    // Verify Config requests in TunnelModeChildSessionParams and IkeSessionParams
+    <T> void verifyConfigRequestTypes(
+            Map<Class<? extends T>, Integer> expectedReqCntMap, List<? extends T> resultReqList) {
+        Map<Class<? extends T>, Integer> resultReqCntMap = new HashMap<>();
+
+        // Verify that every config request type in resultReqList is expected, and build
+        // resultReqCntMap at the same time
+        for (T resultReq : resultReqList) {
+            boolean isResultReqExpected = false;
+
+            for (Class<? extends T> expectedReqInterface : expectedReqCntMap.keySet()) {
+                if (expectedReqInterface.isInstance(resultReq)) {
+                    isResultReqExpected = true;
+
+                    resultReqCntMap.put(
+                            expectedReqInterface,
+                            resultReqCntMap.getOrDefault(expectedReqInterface, 0) + 1);
+                }
+            }
+
+            if (!isResultReqExpected) {
+                fail("Failed due to unexpected config request " + resultReq);
+            }
+        }
+
+        assertEquals(expectedReqCntMap, resultReqCntMap);
+
+        // TODO: Think of a neat way to validate both counts and values in this method. Probably can
+        // build Runnables as validators for count and values.
+    }
 }
