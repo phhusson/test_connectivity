@@ -16,20 +16,36 @@
 
 package android.net.ipsec.ike.cts;
 
+import static android.system.OsConstants.AF_INET;
+import static android.system.OsConstants.AF_INET6;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+import android.net.LinkAddress;
 import android.net.ipsec.ike.ChildSaProposal;
 import android.net.ipsec.ike.ChildSessionParams;
 import android.net.ipsec.ike.TransportModeChildSessionParams;
 import android.net.ipsec.ike.TunnelModeChildSessionParams;
+import android.net.ipsec.ike.TunnelModeChildSessionParams.ConfigRequestIpv4Address;
+import android.net.ipsec.ike.TunnelModeChildSessionParams.ConfigRequestIpv4DhcpServer;
+import android.net.ipsec.ike.TunnelModeChildSessionParams.ConfigRequestIpv4DnsServer;
+import android.net.ipsec.ike.TunnelModeChildSessionParams.ConfigRequestIpv4Netmask;
+import android.net.ipsec.ike.TunnelModeChildSessionParams.ConfigRequestIpv6Address;
+import android.net.ipsec.ike.TunnelModeChildSessionParams.ConfigRequestIpv6DnsServer;
+import android.net.ipsec.ike.TunnelModeChildSessionParams.TunnelModeChildConfigRequest;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import java.net.Inet4Address;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 @RunWith(AndroidJUnit4.class)
@@ -136,5 +152,79 @@ public class ChildSessionParamsTest extends IkeTestBase {
                         .build();
 
         verifyTunnelModeChildParamsWithCustomizedValues(childParams);
+    }
+
+    @Test
+    public void testBuildChildSessionParamsWithConfigReq() {
+        TunnelModeChildSessionParams childParams =
+                new TunnelModeChildSessionParams.Builder()
+                        .addSaProposal(mSaProposal)
+                        .addInternalAddressRequest(AF_INET)
+                        .addInternalAddressRequest(AF_INET6)
+                        .addInternalAddressRequest(AF_INET6)
+                        .addInternalAddressRequest(IPV4_ADDRESS_REMOTE)
+                        .addInternalAddressRequest(IPV6_ADDRESS_REMOTE, IP6_PREFIX_LEN)
+                        .addInternalDnsServerRequest(AF_INET)
+                        .addInternalDnsServerRequest(AF_INET6)
+                        .addInternalDhcpServerRequest(AF_INET)
+                        .addInternalDhcpServerRequest(AF_INET)
+                        .build();
+
+        verifyTunnelModeChildParamsWithDefaultValues(childParams);
+
+        // Verify config request types and number of requests for each type
+        Map<Class<? extends TunnelModeChildConfigRequest>, Integer> expectedAttributeCounts =
+                new HashMap<>();
+        expectedAttributeCounts.put(ConfigRequestIpv4Address.class, 2);
+        expectedAttributeCounts.put(ConfigRequestIpv6Address.class, 3);
+        expectedAttributeCounts.put(ConfigRequestIpv4Netmask.class, 1);
+        expectedAttributeCounts.put(ConfigRequestIpv4DnsServer.class, 1);
+        expectedAttributeCounts.put(ConfigRequestIpv6DnsServer.class, 1);
+        expectedAttributeCounts.put(ConfigRequestIpv4DhcpServer.class, 2);
+        verifyConfigRequestTypes(expectedAttributeCounts, childParams.getConfigurationRequests());
+
+        // Verify specific IPv4 address request
+        Set<Inet4Address> expectedV4Addresses = new HashSet<>();
+        expectedV4Addresses.add(IPV4_ADDRESS_REMOTE);
+        verifySpecificV4AddrConfigReq(expectedV4Addresses, childParams);
+
+        // Verify specific IPv6 address request
+        Set<LinkAddress> expectedV6Addresses = new HashSet<>();
+        expectedV6Addresses.add(new LinkAddress(IPV6_ADDRESS_REMOTE, IP6_PREFIX_LEN));
+        verifySpecificV6AddrConfigReq(expectedV6Addresses, childParams);
+    }
+
+    protected void verifySpecificV4AddrConfigReq(
+            Set<Inet4Address> expectedAddresses, TunnelModeChildSessionParams childParams) {
+        for (TunnelModeChildConfigRequest req : childParams.getConfigurationRequests()) {
+            if (req instanceof ConfigRequestIpv4Address
+                    && ((ConfigRequestIpv4Address) req).getAddress() != null) {
+                Inet4Address address = ((ConfigRequestIpv4Address) req).getAddress();
+
+                // Fail if expectedAddresses does not contain this address
+                assertTrue(expectedAddresses.remove(address));
+            }
+        }
+
+        // Fail if any expected address is not found in result
+        assertTrue(expectedAddresses.isEmpty());
+    }
+
+    protected void verifySpecificV6AddrConfigReq(
+            Set<LinkAddress> expectedAddresses, TunnelModeChildSessionParams childParams) {
+        for (TunnelModeChildConfigRequest req : childParams.getConfigurationRequests()) {
+            if (req instanceof ConfigRequestIpv6Address
+                    && ((ConfigRequestIpv6Address) req).getAddress() != null) {
+                ConfigRequestIpv6Address ipv6AddrReq = (ConfigRequestIpv6Address) req;
+
+                // Fail if expectedAddresses does not contain this address
+                LinkAddress address =
+                        new LinkAddress(ipv6AddrReq.getAddress(), ipv6AddrReq.getPrefixLength());
+                assertTrue(expectedAddresses.remove(address));
+            }
+        }
+
+        // Fail if any expected address is not found in result
+        assertTrue(expectedAddresses.isEmpty());
     }
 }
