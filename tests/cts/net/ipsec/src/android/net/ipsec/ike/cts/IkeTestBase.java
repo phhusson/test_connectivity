@@ -46,6 +46,12 @@ abstract class IkeTestBase {
     static final String LOCAL_HOSTNAME = "client.test.ike.android.net";
     static final String REMOTE_HOSTNAME = "server.test.ike.android.net";
 
+    static final int SUB_ID = 1;
+    static final byte[] EAP_IDENTITY = "test@android.net".getBytes();
+    static final String NETWORK_NAME = "android.net";
+    static final String EAP_MSCHAPV2_USERNAME = "username";
+    static final String EAP_MSCHAPV2_PASSWORD = "password";
+
     static final Inet4Address IPV4_ADDRESS_LOCAL =
             (Inet4Address) (InetAddresses.parseNumericAddress("192.0.2.100"));
     static final Inet4Address IPV4_ADDRESS_REMOTE =
