@@ -16,8 +16,11 @@
 
 package android.net.cts;
 
+import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_MMS;
 import static android.net.NetworkCapabilities.TRANSPORT_BLUETOOTH;
+import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
+import static android.net.NetworkCapabilities.TRANSPORT_VPN;
 import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
 
 import static org.junit.Assert.assertEquals;
@@ -26,13 +29,12 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import android.net.MacAddress;
+import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.net.NetworkSpecifier;
-import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiNetworkSpecifier;
 import android.os.Build;
 import android.os.PatternMatcher;
-import android.util.Pair;
 
 import androidx.test.runner.AndroidJUnit4;
 
@@ -49,6 +51,7 @@ public class NetworkRequestTest {
     public final DevSdkIgnoreRule ignoreRule = new DevSdkIgnoreRule();
 
     private static final String TEST_SSID = "TestSSID";
+    private static final String OTHER_SSID = "OtherSSID";
     private static final int TEST_UID = 2097;
     private static final String TEST_PACKAGE_NAME = "test.package.name";
     private static final MacAddress ARBITRARY_ADDRESS = MacAddress.fromString("3:5:8:12:9:2");
@@ -83,5 +86,43 @@ public class NetworkRequestTest {
                 .build()
                 .getNetworkSpecifier();
         assertEquals(obtainedSpecifier, specifier);
+    }
+
+    @Test
+    @IgnoreUpTo(Build.VERSION_CODES.Q)
+    public void testCanBeSatisfiedBy() {
+        final WifiNetworkSpecifier specifier1 = new WifiNetworkSpecifier.Builder()
+                .setSsidPattern(new PatternMatcher(TEST_SSID, PatternMatcher.PATTERN_LITERAL))
+                .setBssidPattern(ARBITRARY_ADDRESS, ARBITRARY_ADDRESS)
+                .build();
+        final WifiNetworkSpecifier specifier2 = new WifiNetworkSpecifier.Builder()
+                .setSsidPattern(new PatternMatcher(OTHER_SSID, PatternMatcher.PATTERN_LITERAL))
+                .setBssidPattern(ARBITRARY_ADDRESS, ARBITRARY_ADDRESS)
+                .build();
+        final NetworkCapabilities cap = new NetworkCapabilities()
+                .addTransportType(TRANSPORT_WIFI)
+                .addCapability(NET_CAPABILITY_INTERNET);
+        final NetworkCapabilities capWithSp =
+                new NetworkCapabilities(cap).setNetworkSpecifier(specifier1);
+        final NetworkCapabilities cellCap = new NetworkCapabilities()
+                .addTransportType(TRANSPORT_CELLULAR)
+                .addCapability(NET_CAPABILITY_MMS)
+                .addCapability(NET_CAPABILITY_INTERNET);
+        final NetworkRequest request = new NetworkRequest.Builder()
+                .addTransportType(TRANSPORT_WIFI)
+                .addCapability(NET_CAPABILITY_INTERNET)
+                .setNetworkSpecifier(specifier1)
+                .build();
+        assertFalse(request.canBeSatisfiedBy(null));
+        assertFalse(request.canBeSatisfiedBy(new NetworkCapabilities()));
+        assertTrue(request.canBeSatisfiedBy(cap));
+        assertTrue(request.canBeSatisfiedBy(
+                new NetworkCapabilities(cap).addTransportType(TRANSPORT_VPN)));
+        assertTrue(request.canBeSatisfiedBy(capWithSp));
+        assertFalse(request.canBeSatisfiedBy(
+                new NetworkCapabilities(cap).setNetworkSpecifier(specifier2)));
+        assertFalse(request.canBeSatisfiedBy(cellCap));
+        assertEquals(request.canBeSatisfiedBy(capWithSp),
+                new NetworkCapabilities(capWithSp).satisfiedByNetworkCapabilities(capWithSp));
     }
 }
