@@ -16,13 +16,14 @@
 
 package android.net.cts;
 
-import java.util.List;
-import java.util.Set;
 import android.net.UrlQuerySanitizer;
 import android.net.UrlQuerySanitizer.IllegalCharacterValueSanitizer;
 import android.net.UrlQuerySanitizer.ParameterValuePair;
 import android.net.UrlQuerySanitizer.ValueSanitizer;
 import android.test.AndroidTestCase;
+
+import java.util.List;
+import java.util.Set;
 
 public class UrlQuerySanitizerTest extends AndroidTestCase {
     private static final int ALL_OK = IllegalCharacterValueSanitizer.ALL_OK;
@@ -207,6 +208,17 @@ public class UrlQuerySanitizerTest extends AndroidTestCase {
         uq.parseQuery("http://www.google.com/question?answer=13&answer=42");
         assertEquals("42", uq.getValue(PARA_ANSWER));
 
+    }
+
+    public void testScriptUrlOk_73822755() {
+        ValueSanitizer sanitizer = new UrlQuerySanitizer.IllegalCharacterValueSanitizer(
+                UrlQuerySanitizer.IllegalCharacterValueSanitizer.SCRIPT_URL_OK);
+        assertEquals("javascript:alert()", sanitizer.sanitize("javascript:alert()"));
+    }
+
+    public void testScriptUrlBlocked_73822755() {
+        ValueSanitizer sanitizer = UrlQuerySanitizer.getUrlAndSpaceLegal();
+        assertEquals("", sanitizer.sanitize("javascript:alert()"));
     }
 
     private static class MockValueSanitizer implements ValueSanitizer{
