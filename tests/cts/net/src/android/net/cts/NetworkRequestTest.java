@@ -34,6 +34,7 @@ import android.net.NetworkRequest;
 import android.net.NetworkSpecifier;
 import android.net.wifi.WifiNetworkSpecifier;
 import android.os.Build;
+import android.os.Process;
 import android.os.PatternMatcher;
 
 import androidx.test.runner.AndroidJUnit4;
@@ -62,6 +63,18 @@ public class NetworkRequestTest {
                 .hasCapability(NET_CAPABILITY_MMS));
         assertFalse(new NetworkRequest.Builder().removeCapability(NET_CAPABILITY_MMS).build()
                 .hasCapability(NET_CAPABILITY_MMS));
+
+        final NetworkRequest nr = new NetworkRequest.Builder().clearCapabilities().build();
+        // Verify request has no capabilities
+        verifyNoCapabilities(nr);
+    }
+
+    private void verifyNoCapabilities(NetworkRequest nr) {
+        // NetworkCapabilities.mNetworkCapabilities is defined as type long
+        final int MAX_POSSIBLE_CAPABILITY = Long.SIZE;
+        for(int bit = 0; bit < MAX_POSSIBLE_CAPABILITY; bit++) {
+            assertFalse(nr.hasCapability(bit));
+        }
     }
 
     @Test
@@ -86,6 +99,29 @@ public class NetworkRequestTest {
                 .build()
                 .getNetworkSpecifier();
         assertEquals(obtainedSpecifier, specifier);
+
+        assertNull(new NetworkRequest.Builder()
+                .clearCapabilities()
+                .build()
+                .getNetworkSpecifier());
+    }
+
+    @Test
+    @IgnoreUpTo(Build.VERSION_CODES.Q)
+    public void testRequestorPackageName() {
+        assertNull(new NetworkRequest.Builder().build().getRequestorPackageName());
+        final String pkgName = "android.net.test";
+        final NetworkCapabilities nc = new NetworkCapabilities.Builder()
+                .setRequestorPackageName(pkgName)
+                .build();
+        final NetworkRequest nr = new NetworkRequest.Builder()
+                .setCapabilities(nc)
+                .build();
+        assertEquals(pkgName, nr.getRequestorPackageName());
+        assertNull(new NetworkRequest.Builder()
+                .clearCapabilities()
+                .build()
+                .getRequestorPackageName());
     }
 
     @Test
@@ -124,5 +160,20 @@ public class NetworkRequestTest {
         assertFalse(request.canBeSatisfiedBy(cellCap));
         assertEquals(request.canBeSatisfiedBy(capWithSp),
                 new NetworkCapabilities(capWithSp).satisfiedByNetworkCapabilities(capWithSp));
+    }
+
+    @Test @IgnoreUpTo(Build.VERSION_CODES.Q)
+    public void testRequestorUid() {
+        final NetworkCapabilities nc = new NetworkCapabilities();
+        // Verify default value is INVALID_UID
+        assertEquals(Process.INVALID_UID, new NetworkRequest.Builder()
+                 .setCapabilities(nc).build().getRequestorUid());
+
+        nc.setRequestorUid(1314);
+        final NetworkRequest nr = new NetworkRequest.Builder().setCapabilities(nc).build();
+        assertEquals(1314, nr.getRequestorUid());
+
+        assertEquals(Process.INVALID_UID, new NetworkRequest.Builder()
+                .clearCapabilities().build().getRequestorUid());
     }
 }
