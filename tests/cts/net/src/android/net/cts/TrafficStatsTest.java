@@ -16,11 +16,9 @@
 
 package android.net.cts;
 
-import android.content.pm.PackageManager;
 import android.net.NetworkStats;
 import android.net.TrafficStats;
 import android.os.Process;
-import android.os.SystemProperties;
 import android.platform.test.annotations.AppModeFull;
 import android.test.AndroidTestCase;
 import android.util.Log;
@@ -266,28 +264,6 @@ public class TrafficStatsTest extends AndroidTestCase {
                 totalTxPacketsAfter >= totalTxPacketsBefore + ifaceTxDeltaPackets);
         assertTrue("ifrxp: " + ifaceRxPacketsBefore + " -> " + ifaceRxPacketsAfter,
                 totalRxPacketsAfter >= totalRxPacketsBefore + ifaceRxDeltaPackets);
-
-        // If the adb TCP port is opened, this test may be run by adb over network.
-        // Huge amount of data traffic might go through the network and accounted into total packets
-        // stats. The upper bound check would be meaningless.
-        // TODO: Consider precisely calculate the traffic accounted due to adb over network and
-        //       subtract it when checking upper bound instead of skip checking.
-        final PackageManager pm = mContext.getPackageManager();
-        if (SystemProperties.getInt("persist.adb.tcp.port", -1) > -1
-                || SystemProperties.getInt("service.adb.tcp.port", -1) > -1
-                || !pm.hasSystemFeature(PackageManager.FEATURE_USB_ACCESSORY)) {
-            Log.i(LOG_TAG, "adb is running over the network, skip the upper bound check");
-        } else {
-            // Fudge by 132 packets of 1500 bytes not related to the test.
-            assertTrue("ttxp: " + totalTxPacketsBefore + " -> " + totalTxPacketsAfter,
-                    totalTxPacketsAfter <= totalTxPacketsBefore + uidTxDeltaPackets + 132);
-            assertTrue("trxp: " + totalRxPacketsBefore + " -> " + totalRxPacketsAfter,
-                    totalRxPacketsAfter <= totalRxPacketsBefore + uidRxDeltaPackets + 132);
-            assertTrue("ttxb: " + totalTxBytesBefore + " -> " + totalTxBytesAfter,
-                    totalTxBytesAfter <= totalTxBytesBefore + uidTxDeltaBytes + 132 * 1500);
-            assertTrue("trxb: " + totalRxBytesBefore + " -> " + totalRxBytesAfter,
-                    totalRxBytesAfter <= totalRxBytesBefore + uidRxDeltaBytes + 132 * 1500);
-        }
 
         // Localhost traffic should *not* count against mobile stats,
         // There might be some other traffic, but nowhere near 1MB.
