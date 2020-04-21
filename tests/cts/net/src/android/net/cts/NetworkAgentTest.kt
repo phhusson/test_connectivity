@@ -180,7 +180,7 @@ class NetworkAgentTest {
     }
 
     private open class TestableNetworkAgent(
-        val looper: Looper,
+        looper: Looper,
         val nc: NetworkCapabilities,
         val lp: LinkProperties,
         conf: NetworkAgentConfig
