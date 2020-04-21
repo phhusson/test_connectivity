@@ -16,7 +16,6 @@
 
 
 #define LOG_TAG "MultinetworkApiTest"
-#include <utils/Log.h>
 
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
@@ -34,8 +33,12 @@
 
 #include <string>
 
+#include <android/log.h>
 #include <android/multinetwork.h>
 #include <nativehelper/JNIHelp.h>
+
+#define LOGD(fmt, ...) \
+        __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, fmt, ##__VA_ARGS__)
 
 #define EXPECT_GE(env, actual, expected, msg)                        \
     do {                                                             \
@@ -138,7 +141,7 @@ int expectAnswersNotValid(JNIEnv* env, int fd, int expectedErrno) {
     uint8_t buf[MAXPACKET] = {};
     int res = getAsyncResponse(env, fd, TIMEOUT_MS, &rcode, buf, MAXPACKET);
     if (res != expectedErrno) {
-        ALOGD("res:%d, expectedErrno = %d", res, expectedErrno);
+        LOGD("res:%d, expectedErrno = %d", res, expectedErrno);
         return (res > 0) ? -EREMOTEIO : res;
     }
     return 0;
@@ -326,7 +329,7 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runGetaddrinfoCheck(
     const int saved_errno = errno;
     freeaddrinfo(res);
 
-    ALOGD("android_getaddrinfofornetwork(%" PRIu64 ", %s) returned rval=%d errno=%d",
+    LOGD("android_getaddrinfofornetwork(%" PRIu64 ", %s) returned rval=%d errno=%d",
           handle, kHostname, rval, saved_errno);
     return rval == 0 ? 0 : -saved_errno;
 }
@@ -339,7 +342,7 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runSetprocnetwork(
     errno = 0;
     int rval = android_setprocnetwork(handle);
     const int saved_errno = errno;
-    ALOGD("android_setprocnetwork(%" PRIu64 ") returned rval=%d errno=%d",
+    LOGD("android_setprocnetwork(%" PRIu64 ") returned rval=%d errno=%d",
           handle, rval, saved_errno);
     return rval == 0 ? 0 : -saved_errno;
 }
@@ -352,14 +355,14 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runSetsocknetwork(
     errno = 0;
     int fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
     if (fd < 0) {
-        ALOGD("socket() failed, errno=%d", errno);
+        LOGD("socket() failed, errno=%d", errno);
         return -errno;
     }
 
     errno = 0;
     int rval = android_setsocknetwork(handle, fd);
     const int saved_errno = errno;
-    ALOGD("android_setprocnetwork(%" PRIu64 ", %d) returned rval=%d errno=%d",
+    LOGD("android_setprocnetwork(%" PRIu64 ", %d) returned rval=%d errno=%d",
           handle, fd, rval, saved_errno);
     close(fd);
     return rval == 0 ? 0 : -saved_errno;
@@ -404,7 +407,7 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runDatagramCheck(
     static const char kPort[] = "443";
     int rval = android_getaddrinfofornetwork(handle, kHostname, kPort, &kHints, &res);
     if (rval != 0) {
-        ALOGD("android_getaddrinfofornetwork(%llu, %s) returned rval=%d errno=%d",
+        LOGD("android_getaddrinfofornetwork(%llu, %s) returned rval=%d errno=%d",
               handle, kHostname, rval, errno);
         freeaddrinfo(res);
         return -errno;
@@ -413,14 +416,14 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runDatagramCheck(
     // Rely upon getaddrinfo sorting the best destination to the front.
     int fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if (fd < 0) {
-        ALOGD("socket(%d, %d, %d) failed, errno=%d",
+        LOGD("socket(%d, %d, %d) failed, errno=%d",
               res->ai_family, res->ai_socktype, res->ai_protocol, errno);
         freeaddrinfo(res);
         return -errno;
     }
 
     rval = android_setsocknetwork(handle, fd);
-    ALOGD("android_setprocnetwork(%llu, %d) returned rval=%d errno=%d",
+    LOGD("android_setprocnetwork(%llu, %d) returned rval=%d errno=%d",
           handle, fd, rval, errno);
     if (rval != 0) {
         close(fd);
@@ -430,7 +433,7 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runDatagramCheck(
 
     char addrstr[kSockaddrStrLen+1];
     sockaddr_ntop(res->ai_addr, res->ai_addrlen, addrstr, sizeof(addrstr));
-    ALOGD("Attempting connect() to %s ...", addrstr);
+    LOGD("Attempting connect() to %s ...", addrstr);
 
     rval = connect(fd, res->ai_addr, res->ai_addrlen);
     if (rval != 0) {
@@ -447,7 +450,7 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runDatagramCheck(
         return -errno;
     }
     sockaddr_ntop((const struct sockaddr *)&src_addr, sizeof(src_addr), addrstr, sizeof(addrstr));
-    ALOGD("... from %s", addrstr);
+    LOGD("... from %s", addrstr);
 
     // Don't let reads or writes block indefinitely.
     const struct timeval timeo = { 2, 0 };  // 2 seconds
@@ -479,7 +482,7 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runDatagramCheck(
         sent = send(fd, quic_packet, sizeof(quic_packet), 0);
         if (sent < (ssize_t)sizeof(quic_packet)) {
             errnum = errno;
-            ALOGD("send(QUIC packet) returned sent=%zd, errno=%d", sent, errnum);
+            LOGD("send(QUIC packet) returned sent=%zd, errno=%d", sent, errnum);
             close(fd);
             return -errnum;
         }
@@ -489,14 +492,14 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runDatagramCheck(
             break;
         } else {
             errnum = errno;
-            ALOGD("[%d/%d] recv(QUIC response) returned rcvd=%zd, errno=%d",
+            LOGD("[%d/%d] recv(QUIC response) returned rcvd=%zd, errno=%d",
                   i + 1, MAX_RETRIES, rcvd, errnum);
         }
     }
     if (rcvd < 9) {
-        ALOGD("QUIC UDP %s: sent=%zd but rcvd=%zd, errno=%d", kPort, sent, rcvd, errnum);
+        LOGD("QUIC UDP %s: sent=%zd but rcvd=%zd, errno=%d", kPort, sent, rcvd, errnum);
         if (rcvd <= 0) {
-            ALOGD("Does this network block UDP port %s?", kPort);
+            LOGD("Does this network block UDP port %s?", kPort);
         }
         close(fd);
         return -EPROTO;
@@ -504,7 +507,7 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runDatagramCheck(
 
     int conn_id_cmp = memcmp(quic_packet + 1, response + 1, 8);
     if (conn_id_cmp != 0) {
-        ALOGD("sent and received connection IDs do not match");
+        LOGD("sent and received connection IDs do not match");
         close(fd);
         return -EPROTO;
     }
