@@ -17,22 +17,14 @@
 package com.android.cts.net.hostside;
 
 import static android.net.ConnectivityManager.ACTION_RESTRICT_BACKGROUND_CHANGED;
+import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_DISABLED;
+import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED;
+import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_WHITELISTED;
 import static android.os.BatteryManager.BATTERY_PLUGGED_AC;
 import static android.os.BatteryManager.BATTERY_PLUGGED_USB;
 import static android.os.BatteryManager.BATTERY_PLUGGED_WIRELESS;
 
-import static com.android.cts.net.hostside.NetworkPolicyTestUtils.executeShellCommand;
-import static com.android.cts.net.hostside.NetworkPolicyTestUtils.getConnectivityManager;
-import static com.android.cts.net.hostside.NetworkPolicyTestUtils.getContext;
-import static com.android.cts.net.hostside.NetworkPolicyTestUtils.getInstrumentation;
-import static com.android.cts.net.hostside.NetworkPolicyTestUtils.getWifiManager;
-import static com.android.cts.net.hostside.NetworkPolicyTestUtils.isDozeModeSupported;
-import static com.android.cts.net.hostside.NetworkPolicyTestUtils.restrictBackgroundValueToString;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static com.android.compatibility.common.util.SystemUtil.runShellCommand;
 
 import android.app.ActivityManager;
 import android.app.Instrumentation;
@@ -42,7 +34,9 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.net.NetworkInfo.DetailedState;
 import android.net.NetworkInfo.State;
 import android.net.wifi.WifiManager;
@@ -50,27 +44,24 @@ import android.os.BatteryManager;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.os.SystemProperties;
 import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
+import android.test.InstrumentationTestCase;
+import android.text.TextUtils;
 import android.util.Log;
 
-import org.junit.Rule;
-import org.junit.rules.RuleChain;
-import org.junit.runner.RunWith;
+import com.android.compatibility.common.util.BatteryUtils;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-import androidx.test.platform.app.InstrumentationRegistry;
-import androidx.test.runner.AndroidJUnit4;
-
 /**
  * Superclass for tests related to background network restrictions.
  */
-@RunWith(AndroidJUnit4.class)
-public abstract class AbstractRestrictBackgroundNetworkTestCase {
-    public static final String TAG = "RestrictBackgroundNetworkTests";
+abstract class AbstractRestrictBackgroundNetworkTestCase extends InstrumentationTestCase {
+    protected static final String TAG = "RestrictBackgroundNetworkTests";
 
     protected static final String TEST_PKG = "com.android.cts.net.hostside";
     protected static final String TEST_APP2_PKG = "com.android.cts.net.hostside.app2";
@@ -107,6 +98,8 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     static final int NETWORK_TIMEOUT_MS = 15 * SECOND_IN_MS;
     private static int PROCESS_STATE_FOREGROUND_SERVICE;
 
+    private static final int PROCESS_STATE_TOP = 2;
+
     private static final String KEY_NETWORK_STATE_OBSERVER = TEST_PKG + ".observer";
 
     protected static final int TYPE_COMPONENT_ACTIVTIY = 0;
@@ -133,23 +126,22 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     protected WifiManager mWfm;
     protected int mUid;
     private int mMyUid;
+    private String mMeteredWifi;
     private MyServiceClient mServiceClient;
     private String mDeviceIdleConstantsSetting;
+    private boolean mSupported;
     private boolean mIsLocationOn;
 
-    @Rule
-    public final RuleChain mRuleChain = RuleChain.outerRule(new DumpOnFailureRule())
-            .around(new RequiredPropertiesRule())
-            .around(new MeterednessConfigurationRule());
-
+    @Override
     protected void setUp() throws Exception {
+        super.setUp();
 
         PROCESS_STATE_FOREGROUND_SERVICE = (Integer) ActivityManager.class
                 .getDeclaredField("PROCESS_STATE_FOREGROUND_SERVICE").get(null);
         mInstrumentation = getInstrumentation();
-        mContext = getContext();
-        mCm = getConnectivityManager();
-        mWfm = getWifiManager();
+        mContext = mInstrumentation.getContext();
+        mCm = (ConnectivityManager) mContext.getSystemService(Context.CONNECTIVITY_SERVICE);
+        mWfm = (WifiManager) mContext.getSystemService(Context.WIFI_SERVICE);
         mUid = getUid(TEST_APP2_PKG);
         mMyUid = getUid(mContext.getPackageName());
         mServiceClient = new MyServiceClient(mContext);
@@ -159,9 +151,10 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         if (!mIsLocationOn) {
             enableLocation();
         }
+        mSupported = setUpActiveNetworkMeteringState();
         setAppIdle(false);
 
-        Log.i(TAG, "Apps status:\n"
+        Log.i(TAG, "Apps status on " + getName() + ":\n"
                 + "\ttest app: uid=" + mMyUid + ", state=" + getProcessStateByUid(mMyUid) + "\n"
                 + "\tapp2: uid=" + mUid + ", state=" + getProcessStateByUid(mUid));
 
@@ -172,13 +165,16 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         final String currentConstants =
                 executeShellCommand("settings get global app_idle_constants");
         assertEquals(appIdleConstants, currentConstants);
-    }
+   }
 
+    @Override
     protected void tearDown() throws Exception {
         if (!mIsLocationOn) {
             disableLocation();
         }
         mServiceClient.unbind();
+
+        super.tearDown();
     }
 
     private void enableLocation() throws Exception {
@@ -263,8 +259,23 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     protected void assertRestrictBackgroundStatus(int expectedStatus) throws Exception {
         final String status = mServiceClient.getRestrictBackgroundStatus();
         assertNotNull("didn't get API status from app2", status);
-        assertEquals(restrictBackgroundValueToString(expectedStatus),
-                restrictBackgroundValueToString(Integer.parseInt(status)));
+        final String actualStatus = toString(Integer.parseInt(status));
+        assertEquals("wrong status", toString(expectedStatus), actualStatus);
+    }
+
+    protected void assertMyRestrictBackgroundStatus(int expectedStatus) throws Exception {
+        final int actualStatus = mCm.getRestrictBackgroundStatus();
+        assertEquals("Wrong status", toString(expectedStatus), toString(actualStatus));
+    }
+
+    protected boolean isMyRestrictBackgroundStatus(int expectedStatus) throws Exception {
+        final int actualStatus = mCm.getRestrictBackgroundStatus();
+        if (expectedStatus != actualStatus) {
+            Log.d(TAG, "Expected: " + toString(expectedStatus)
+                    + " but actual: " + toString(actualStatus));
+            return false;
+        }
+        return true;
     }
 
     protected void assertBackgroundNetworkAccess(boolean expectAllowed) throws Exception {
@@ -284,6 +295,28 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     protected void assertForegroundServiceNetworkAccess() throws Exception {
         assertForegroundServiceState(); // Sanity check.
         assertNetworkAccess(true /* expectAvailable */, false /* needScreenOn */);
+    }
+
+    /**
+     * Whether this device suport this type of test.
+     *
+     * <p>Should be overridden when necessary (but always calling
+     * {@code super.isSupported()} first), and explicitly used before each test
+     * Example:
+     *
+     * <pre><code>
+     * public void testSomething() {
+     *    if (!isSupported()) return;
+     * </code></pre>
+     *
+     * @return {@code true} by default.
+     */
+    protected boolean isSupported() throws Exception {
+        return mSupported;
+    }
+
+    protected boolean isBatterySaverSupported() {
+        return BatteryUtils.isBatterySaverSupported();
     }
 
     /**
@@ -355,6 +388,23 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     }
 
     /**
+     * As per CDD requirements, if the device doesn't support data saver mode then
+     * ConnectivityManager.getRestrictBackgroundStatus() will always return
+     * RESTRICT_BACKGROUND_STATUS_DISABLED. So, enable the data saver mode and check if
+     * ConnectivityManager.getRestrictBackgroundStatus() for an app in background returns
+     * RESTRICT_BACKGROUND_STATUS_DISABLED or not.
+     */
+    protected boolean isDataSaverSupported() throws Exception {
+        assertMyRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
+        try {
+            setRestrictBackground(true);
+            return !isMyRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
+        } finally {
+            setRestrictBackground(false);
+        }
+    }
+
+    /**
      * Returns whether an app state should be considered "background" for restriction purposes.
      */
     protected boolean isBackground(int state) {
@@ -393,8 +443,38 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
             // Exponential back-off.
             timeoutMs = Math.min(timeoutMs*2, NETWORK_TIMEOUT_MS);
         }
+        dumpOnFailure();
         fail("Invalid state for expectAvailable=" + expectAvailable + " after " + maxTries
                 + " attempts.\nLast error: " + error);
+    }
+
+    private void dumpOnFailure() throws Exception {
+        dumpAllNetworkRules();
+        Log.d(TAG, "Usagestats dump: " + getUsageStatsDump());
+        executeShellCommand("settings get global app_idle_constants");
+    }
+
+    private void dumpAllNetworkRules() throws Exception {
+        final String networkManagementDump = runShellCommand(mInstrumentation,
+                "dumpsys network_management").trim();
+        final String networkPolicyDump = runShellCommand(mInstrumentation,
+                "dumpsys netpolicy").trim();
+        TextUtils.SimpleStringSplitter splitter = new TextUtils.SimpleStringSplitter('\n');
+        splitter.setString(networkManagementDump);
+        String next;
+        Log.d(TAG, ">>> Begin network_management dump");
+        while (splitter.hasNext()) {
+            next = splitter.next();
+            Log.d(TAG, next);
+        }
+        Log.d(TAG, "<<< End network_management dump");
+        splitter.setString(networkPolicyDump);
+        Log.d(TAG, ">>> Begin netpolicy dump");
+        while (splitter.hasNext()) {
+            next = splitter.next();
+            Log.d(TAG, next);
+        }
+        Log.d(TAG, "<<< End netpolicy dump");
     }
 
     /**
@@ -448,10 +528,22 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         return errors.toString();
     }
 
+    protected boolean isLowRamDevice() {
+        final ActivityManager am = (ActivityManager) mContext.getSystemService(
+            Context.ACTIVITY_SERVICE);
+        return am.isLowRamDevice();
+    }
+
+    protected String executeShellCommand(String command) throws Exception {
+        final String result = runShellCommand(mInstrumentation, command).trim();
+        if (DEBUG) Log.d(TAG, "Command '" + command + "' returned '" + result + "'");
+        return result;
+    }
+
     /**
      * Runs a Shell command which is not expected to generate output.
      */
-    protected void executeSilentShellCommand(String command) {
+    protected void executeSilentShellCommand(String command) throws Exception {
         final String result = executeShellCommand(command);
         assertTrue("Command '" + command + "' failed: " + result, result.trim().isEmpty());
     }
@@ -480,6 +572,10 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         });
     }
 
+    protected void assertDelayedShellCommand(String command, ExpectResultChecker checker)
+            throws Exception {
+        assertDelayedShellCommand(command, 5, 1, checker);
+    }
     protected void assertDelayedShellCommand(String command, int maxTries, int napTimeSeconds,
             ExpectResultChecker checker) throws Exception {
         String result = "";
@@ -495,6 +591,159 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
                 + maxTries
                 + " attempts. Last result: '" + result + "'");
     }
+
+    /**
+     * Sets the initial metering state for the active network.
+     *
+     * <p>It's called on setup and by default does nothing - it's up to the
+     * subclasses to override.
+     *
+     * @return whether the tests in the subclass are supported on this device.
+     */
+    protected boolean setUpActiveNetworkMeteringState() throws Exception {
+        return true;
+    }
+
+    /**
+     * Makes sure the active network is not metered.
+     *
+     * <p>If the device does not supoprt un-metered networks (for example if it
+     * only has cellular data but not wi-fi), it should return {@code false};
+     * otherwise, it should return {@code true} (or fail if the un-metered
+     * network could not be set).
+     *
+     * @return {@code true} if the network is now unmetered.
+     */
+    protected boolean setUnmeteredNetwork() throws Exception {
+        final NetworkInfo info = mCm.getActiveNetworkInfo();
+        assertNotNull("Could not get active network", info);
+        if (!mCm.isActiveNetworkMetered()) {
+            Log.d(TAG, "Active network is not metered: " + info);
+        } else if (info.getType() == ConnectivityManager.TYPE_WIFI) {
+            Log.i(TAG, "Setting active WI-FI network as not metered: " + info );
+            setWifiMeteredStatus(false);
+        } else {
+            Log.d(TAG, "Active network cannot be set to un-metered: " + info);
+            return false;
+        }
+        assertActiveNetworkMetered(false); // Sanity check.
+        return true;
+    }
+
+    /**
+     * Enables metering on the active network if supported.
+     *
+     * <p>If the device does not support metered networks it should return
+     * {@code false}; otherwise, it should return {@code true} (or fail if the
+     * metered network could not be set).
+     *
+     * @return {@code true} if the network is now metered.
+     */
+    protected boolean setMeteredNetwork() throws Exception {
+        final NetworkInfo info = mCm.getActiveNetworkInfo();
+        final boolean metered = mCm.isActiveNetworkMetered();
+        if (metered) {
+            Log.d(TAG, "Active network already metered: " + info);
+            return true;
+        } else if (info.getType() != ConnectivityManager.TYPE_WIFI) {
+            Log.w(TAG, "Active network does not support metering: " + info);
+            return false;
+        } else {
+            Log.w(TAG, "Active network not metered: " + info);
+        }
+        final String netId = setWifiMeteredStatus(true);
+
+        // Set flag so status is reverted on resetMeteredNetwork();
+        mMeteredWifi = netId;
+        // Sanity check.
+        assertWifiMeteredStatus(netId, true);
+        assertActiveNetworkMetered(true);
+        return true;
+    }
+
+    /**
+     * Resets the device metering state to what it was before the test started.
+     *
+     * <p>This reverts any metering changes made by {@code setMeteredNetwork}.
+     */
+    protected void resetMeteredNetwork() throws Exception {
+        if (mMeteredWifi != null) {
+            Log.i(TAG, "resetMeteredNetwork(): SID '" + mMeteredWifi
+                    + "' was set as metered by test case; resetting it");
+            setWifiMeteredStatus(mMeteredWifi, false);
+            assertActiveNetworkMetered(false); // Sanity check.
+        }
+    }
+
+    private void assertActiveNetworkMetered(boolean expected) throws Exception {
+        final int maxTries = 5;
+        NetworkInfo info = null;
+        for (int i = 1; i <= maxTries; i++) {
+            info = mCm.getActiveNetworkInfo();
+            if (info == null) {
+                Log.v(TAG, "No active network info on attempt #" + i
+                        + "; sleeping 1s before polling again");
+            } else if (mCm.isActiveNetworkMetered() != expected) {
+                Log.v(TAG, "Wrong metered status for active network " + info + "; expected="
+                        + expected + "; sleeping 1s before polling again");
+            } else {
+                break;
+            }
+            Thread.sleep(SECOND_IN_MS);
+        }
+        assertNotNull("No active network after " + maxTries + " attempts", info);
+        assertEquals("Wrong metered status for active network " + info, expected,
+                mCm.isActiveNetworkMetered());
+    }
+
+    private String setWifiMeteredStatus(boolean metered) throws Exception {
+        // We could call setWifiEnabled() here, but it might take sometime to be in a consistent
+        // state (for example, if one of the saved network is not properly authenticated), so it's
+        // better to let the hostside test take care of that.
+        assertTrue("wi-fi is disabled", mWfm.isWifiEnabled());
+        // TODO: if it's not guaranteed the device has wi-fi, we need to change the tests
+        // to make the actual verification of restrictions optional.
+        final String ssid = mWfm.getConnectionInfo().getSSID();
+        return setWifiMeteredStatus(ssid, metered);
+    }
+
+    private String setWifiMeteredStatus(String ssid, boolean metered) throws Exception {
+        assertNotNull("null SSID", ssid);
+        final String netId = ssid.trim().replaceAll("\"", ""); // remove quotes, if any.
+        assertFalse("empty SSID", ssid.isEmpty());
+
+        Log.i(TAG, "Setting wi-fi network " + netId + " metered status to " + metered);
+        final String setCommand = "cmd netpolicy set metered-network " + netId + " " + metered;
+        assertDelayedShellCommand(setCommand, "");
+
+        return netId;
+    }
+
+    private void assertWifiMeteredStatus(String netId, boolean status) throws Exception {
+        final String command = "cmd netpolicy list wifi-networks";
+        final String expectedLine = netId + ";" + status;
+        assertDelayedShellCommand(command, new ExpectResultChecker() {
+
+            @Override
+            public boolean isExpected(String result) {
+                return result.contains(expectedLine);
+            }
+
+            @Override
+            public String getExpected() {
+                return "line containing " + expectedLine;
+            }
+        });
+    }
+
+    protected void setRestrictBackground(boolean enabled) throws Exception {
+        executeShellCommand("cmd netpolicy set restrict-background " + enabled);
+        final String output = executeShellCommand("cmd netpolicy get restrict-background ");
+        final String expectedSuffix = enabled ? "enabled" : "disabled";
+        // TODO: use MoreAsserts?
+        assertTrue("output '" + output + "' should end with '" + expectedSuffix + "'",
+                output.endsWith(expectedSuffix));
+      }
 
     protected void addRestrictBackgroundWhitelist(int uid) throws Exception {
         executeShellCommand("cmd netpolicy add restrict-background-whitelist " + uid);
@@ -675,7 +924,7 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
 
     protected void setDozeMode(boolean enabled) throws Exception {
         // Sanity check, since tests should check beforehand....
-        assertTrue("Device does not support Doze Mode", isDozeModeSupported());
+        assertTrue("Device does not support Doze Mode", isDozeModeEnabled());
 
         Log.i(TAG, "Setting Doze Mode to " + enabled);
         if (enabled) {
@@ -695,16 +944,43 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         assertDelayedShellCommand("dumpsys deviceidle get deep", enabled ? "IDLE" : "ACTIVE");
     }
 
+    protected boolean isDozeModeEnabled() throws Exception {
+        final String result = executeShellCommand("cmd deviceidle enabled deep").trim();
+        return result.equals("1");
+    }
+
     protected void setAppIdle(boolean enabled) throws Exception {
         Log.i(TAG, "Setting app idle to " + enabled);
         executeSilentShellCommand("am set-inactive " + TEST_APP2_PKG + " " + enabled );
         assertAppIdle(enabled); // Sanity check
     }
 
+    private String getUsageStatsDump() throws Exception {
+        final String output = runShellCommand(mInstrumentation, "dumpsys usagestats").trim();
+        final StringBuilder sb = new StringBuilder();
+        final TextUtils.SimpleStringSplitter splitter = new TextUtils.SimpleStringSplitter('\n');
+        splitter.setString(output);
+        String str;
+        while (splitter.hasNext()) {
+            str = splitter.next();
+            if (str.contains("package=")
+                    && !str.contains(TEST_PKG) && !str.contains(TEST_APP2_PKG)) {
+                continue;
+            }
+            if (str.trim().startsWith("config=") || str.trim().startsWith("time=")) {
+                continue;
+            }
+            sb.append(str).append('\n');
+        }
+        return sb.toString();
+    }
+
     protected void assertAppIdle(boolean enabled) throws Exception {
         try {
             assertDelayedShellCommand("am get-inactive " + TEST_APP2_PKG, 15, 2, "Idle=" + enabled);
         } catch (Throwable e) {
+            Log.d(TAG, "UsageStats dump:\n" + getUsageStatsDump());
+            executeShellCommand("settings get global app_idle_constants");
             throw e;
         }
     }
@@ -785,10 +1061,12 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
                         // App didn't come to foreground when the activity is started, so try again.
                         assertForegroundNetworkAccess();
                     } else {
+                        dumpOnFailure();
                         fail("Network is not available for app2 (" + mUid + "): " + errors[0]);
                     }
                 }
             } else {
+                dumpOnFailure();
                 fail("Timed out waiting for network availability status from app2 (" + mUid + ")");
             }
         } else {
@@ -869,6 +1147,19 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
             return sendOrderedBroadcast(intent, 3 * SECOND_IN_MS);
         } catch (Exception e) {
             return "";
+        }
+    }
+
+    private String toString(int status) {
+        switch (status) {
+            case RESTRICT_BACKGROUND_STATUS_DISABLED:
+                return "DISABLED";
+            case RESTRICT_BACKGROUND_STATUS_WHITELISTED:
+                return "WHITELISTED";
+            case RESTRICT_BACKGROUND_STATUS_ENABLED:
+                return "ENABLED";
+            default:
+                return "UNKNOWN_STATUS_" + status;
         }
     }
 

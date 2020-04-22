@@ -16,26 +16,19 @@
 
 package com.android.cts.net.hostside;
 
-import static com.android.cts.net.hostside.Property.APP_STANDBY_MODE;
-import static com.android.cts.net.hostside.Property.BATTERY_SAVER_MODE;
-
-import static org.junit.Assert.assertEquals;
-
 import android.os.SystemClock;
-
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import android.util.Log;
 
 /**
  * Base class for metered and non-metered tests on idle apps.
  */
-@RequiredProperties({APP_STANDBY_MODE})
 abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetworkTestCase {
 
-    @Before
-    public final void setUp() throws Exception {
+    @Override
+    protected final void setUp() throws Exception {
         super.setUp();
+
+        if (!isSupported()) return;
 
         // Set initial state.
         removePowerSaveModeWhitelist(TEST_APP2_PKG);
@@ -46,16 +39,41 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
         registerBroadcastReceiver();
     }
 
-    @After
-    public final void tearDown() throws Exception {
+    @Override
+    protected final void tearDown() throws Exception {
         super.tearDown();
 
-        turnBatteryOff();
-        setAppIdle(false);
+        if (!isSupported()) return;
+
+        try {
+            tearDownMeteredNetwork();
+        } finally {
+            turnBatteryOff();
+            setAppIdle(false);
+        }
     }
 
-    @Test
+    @Override
+    protected boolean isSupported() throws Exception {
+        boolean supported = isDozeModeEnabled();
+        if (!supported) {
+            Log.i(TAG, "Skipping " + getClass() + "." + getName()
+                    + "() because device does not support Doze Mode");
+        }
+        return supported;
+    }
+
+    /**
+     * Resets the (non) metered network state.
+     *
+     * <p>By default is empty - it's up to subclasses to override.
+     */
+    protected void tearDownMeteredNetwork() throws Exception {
+    }
+
     public void testBackgroundNetworkAccess_enabled() throws Exception {
+        if (!isSupported()) return;
+
         setAppIdle(true);
         assertBackgroundNetworkAccess(false);
 
@@ -80,8 +98,9 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
         assertBackgroundNetworkAccess(false);
     }
 
-    @Test
     public void testBackgroundNetworkAccess_whitelisted() throws Exception {
+        if (!isSupported()) return;
+
         setAppIdle(true);
         assertBackgroundNetworkAccess(false);
 
@@ -108,8 +127,9 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
         assertBackgroundNetworkAccess(false);
     }
 
-    @Test
     public void testBackgroundNetworkAccess_tempWhitelisted() throws Exception {
+        if (!isSupported()) return;
+
         setAppIdle(true);
         assertBackgroundNetworkAccess(false);
 
@@ -120,17 +140,23 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
         assertBackgroundNetworkAccess(false);
     }
 
-    @Test
     public void testBackgroundNetworkAccess_disabled() throws Exception {
+        if (!isSupported()) return;
+
         assertBackgroundNetworkAccess(true);
 
         assertsForegroundAlwaysHasNetworkAccess();
         assertBackgroundNetworkAccess(true);
     }
 
-    @RequiredProperties({BATTERY_SAVER_MODE})
-    @Test
     public void testAppIdleNetworkAccess_whenCharging() throws Exception {
+        if (!isBatterySaverSupported()) {
+            Log.i(TAG, "Skipping " + getClass() + "." + getName()
+                    + "() because device does not support Battery saver mode");
+            return;
+        }
+        if (!isSupported()) return;
+
         // Check that app is paroled when charging
         setAppIdle(true);
         assertBackgroundNetworkAccess(false);
@@ -154,8 +180,9 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
         assertBackgroundNetworkAccess(true);
     }
 
-    @Test
     public void testAppIdleNetworkAccess_idleWhitelisted() throws Exception {
+        if (!isSupported()) return;
+
         setAppIdle(true);
         assertAppIdle(true);
         assertBackgroundNetworkAccess(false);
@@ -172,8 +199,9 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
         removeAppIdleWhitelist(mUid + 1);
     }
 
-    @Test
     public void testAppIdle_toast() throws Exception {
+        if (!isSupported()) return;
+
         setAppIdle(true);
         assertAppIdle(true);
         assertEquals("Shown", showToast());
