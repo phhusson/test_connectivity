@@ -20,32 +20,23 @@ import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_DISABLE
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED;
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_WHITELISTED;
 
-import static com.android.cts.net.hostside.NetworkPolicyTestUtils.setRestrictBackground;
-import static com.android.cts.net.hostside.Property.DATA_SAVER_MODE;
-import static com.android.cts.net.hostside.Property.METERED_NETWORK;
-import static com.android.cts.net.hostside.Property.NO_DATA_SAVER_MODE;
-
-import static org.junit.Assert.fail;
+import android.util.Log;
 
 import com.android.compatibility.common.util.CddTest;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-
-import androidx.test.filters.LargeTest;
-
-@RequiredProperties({DATA_SAVER_MODE, METERED_NETWORK})
-@LargeTest
 public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase {
 
     private static final String[] REQUIRED_WHITELISTED_PACKAGES = {
         "com.android.providers.downloads"
     };
 
-    @Before
+    private boolean mIsDataSaverSupported;
+
+    @Override
     public void setUp() throws Exception {
         super.setUp();
+
+        mIsDataSaverSupported = isDataSaverSupported();
 
         // Set initial state.
         setRestrictBackground(false);
@@ -56,15 +47,36 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
         assertRestrictBackgroundChangedReceived(0);
    }
 
-    @After
-    public void tearDown() throws Exception {
+    @Override
+    protected void tearDown() throws Exception {
         super.tearDown();
 
-        setRestrictBackground(false);
+        if (!isSupported()) return;
+
+        try {
+            resetMeteredNetwork();
+        } finally {
+            setRestrictBackground(false);
+        }
     }
 
-    @Test
+    @Override
+    protected boolean setUpActiveNetworkMeteringState() throws Exception {
+        return setMeteredNetwork();
+    }
+
+    @Override
+    protected boolean isSupported() throws Exception {
+        if (!mIsDataSaverSupported) {
+            Log.i(TAG, "Skipping " + getClass() + "." + getName()
+                    + "() because device does not support Data Saver Mode");
+        }
+        return mIsDataSaverSupported && super.isSupported();
+    }
+
     public void testGetRestrictBackgroundStatus_disabled() throws Exception {
+        if (!isSupported()) return;
+
         assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_DISABLED);
 
         // Sanity check: make sure status is always disabled, never whitelisted
@@ -76,8 +88,9 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
         assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_DISABLED);
     }
 
-    @Test
     public void testGetRestrictBackgroundStatus_whitelisted() throws Exception {
+        if (!isSupported()) return;
+
         setRestrictBackground(true);
         assertRestrictBackgroundChangedReceived(1);
         assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_ENABLED);
@@ -94,8 +107,9 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
         assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_ENABLED);
     }
 
-    @Test
     public void testGetRestrictBackgroundStatus_enabled() throws Exception {
+        if (!isSupported()) return;
+
         setRestrictBackground(true);
         assertRestrictBackgroundChangedReceived(1);
         assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_ENABLED);
@@ -128,8 +142,9 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
         assertBackgroundNetworkAccess(false);
     }
 
-    @Test
     public void testGetRestrictBackgroundStatus_blacklisted() throws Exception {
+        if (!isSupported()) return;
+
         addRestrictBackgroundBlacklist(mUid);
         assertRestrictBackgroundChangedReceived(1);
         assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_ENABLED);
@@ -165,8 +180,9 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
         assertsForegroundAlwaysHasNetworkAccess();
     }
 
-    @Test
     public void testGetRestrictBackgroundStatus_requiredWhitelistedPackages() throws Exception {
+        if (!isSupported()) return;
+
         final StringBuilder error = new StringBuilder();
         for (String packageName : REQUIRED_WHITELISTED_PACKAGES) {
             int uid = -1;
@@ -186,10 +202,10 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
         }
     }
 
-    @RequiredProperties({NO_DATA_SAVER_MODE})
     @CddTest(requirement="7.4.7/C-2-2")
-    @Test
     public void testBroadcastNotSentOnUnsupportedDevices() throws Exception {
+        if (isSupported()) return;
+
         setRestrictBackground(true);
         assertRestrictBackgroundChangedReceived(0);
 
