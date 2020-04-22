@@ -16,7 +16,19 @@
 
 package com.android.cts.net.hostside;
 
+import static com.android.cts.net.hostside.NetworkPolicyTestUtils.setRestrictBackground;
+import static com.android.cts.net.hostside.Property.BATTERY_SAVER_MODE;
+import static com.android.cts.net.hostside.Property.DATA_SAVER_MODE;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.fail;
+
 import android.net.Network;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
 
 import java.util.Objects;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -24,7 +36,6 @@ import java.util.concurrent.TimeUnit;
 
 public class NetworkCallbackTest extends AbstractRestrictBackgroundNetworkTestCase {
 
-    private boolean mIsDataSaverSupported;
     private Network mNetwork;
     private final TestNetworkCallback mTestNetworkCallback = new TestNetworkCallback();
 
@@ -132,108 +143,122 @@ public class NetworkCallbackTest extends AbstractRestrictBackgroundNetworkTestCa
         }
     }
 
-    @Override
+    @Before
     public void setUp() throws Exception {
         super.setUp();
 
-        mIsDataSaverSupported = isDataSaverSupported();
-
         mNetwork = mCm.getActiveNetwork();
 
-        // Set initial state.
-        setBatterySaverMode(false);
         registerBroadcastReceiver();
 
-        if (!mIsDataSaverSupported) return;
-        setRestrictBackground(false);
         removeRestrictBackgroundWhitelist(mUid);
         removeRestrictBackgroundBlacklist(mUid);
         assertRestrictBackgroundChangedReceived(0);
     }
 
-    @Override
-    protected void tearDown() throws Exception {
+    @After
+    public void tearDown() throws Exception {
         super.tearDown();
 
-        if (!mIsDataSaverSupported) return;
+        setRestrictBackground(false);
+        setBatterySaverMode(false);
+    }
 
+    @RequiredProperties({DATA_SAVER_MODE})
+    @Test
+    public void testOnBlockedStatusChanged_dataSaver() throws Exception {
+        // Initial state
+        setBatterySaverMode(false);
+        setRestrictBackground(false);
+
+        final MeterednessConfigurationRule meterednessConfiguration
+                = new MeterednessConfigurationRule();
+        meterednessConfiguration.configureNetworkMeteredness(true);
         try {
-            resetMeteredNetwork();
+            // Register callback
+            registerNetworkCallback((INetworkCallback.Stub) mTestNetworkCallback);
+            mTestNetworkCallback.expectAvailableCallback(mNetwork);
+            mTestNetworkCallback.expectBlockedStatusCallback(mNetwork, false);
+
+            // Enable restrict background
+            setRestrictBackground(true);
+            assertBackgroundNetworkAccess(false);
+            mTestNetworkCallback.expectBlockedStatusCallback(mNetwork, true);
+
+            // Add to whitelist
+            addRestrictBackgroundWhitelist(mUid);
+            assertBackgroundNetworkAccess(true);
+            mTestNetworkCallback.expectBlockedStatusCallback(mNetwork, false);
+
+            // Remove from whitelist
+            removeRestrictBackgroundWhitelist(mUid);
+            assertBackgroundNetworkAccess(false);
+            mTestNetworkCallback.expectBlockedStatusCallback(mNetwork, true);
         } finally {
+            meterednessConfiguration.resetNetworkMeteredness();
+        }
+
+        // Set to non-metered network
+        meterednessConfiguration.configureNetworkMeteredness(false);
+        try {
+            assertBackgroundNetworkAccess(true);
+            mTestNetworkCallback.expectBlockedStatusCallback(mNetwork, false);
+
+            // Disable restrict background, should not trigger callback
             setRestrictBackground(false);
+            assertBackgroundNetworkAccess(true);
+            mTestNetworkCallback.assertNoCallback();
+        } finally {
+            meterednessConfiguration.resetNetworkMeteredness();
         }
     }
 
-    public void testOnBlockedStatusChanged_data_saver() throws Exception {
-        if (!mIsDataSaverSupported) return;
-
-        // Prepare metered wifi
-        if (!setMeteredNetwork()) return;
-
-        // Register callback
-        registerNetworkCallback((INetworkCallback.Stub) mTestNetworkCallback);
-        mTestNetworkCallback.expectAvailableCallback(mNetwork);
-        mTestNetworkCallback.expectBlockedStatusCallback(mNetwork, false);
-
-        // Enable restrict background
-        setRestrictBackground(true);
-        assertBackgroundNetworkAccess(false);
-        mTestNetworkCallback.expectBlockedStatusCallback(mNetwork, true);
-
-        // Add to whitelist
-        addRestrictBackgroundWhitelist(mUid);
-        assertBackgroundNetworkAccess(true);
-        mTestNetworkCallback.expectBlockedStatusCallback(mNetwork, false);
-
-        // Remove from whitelist
-        removeRestrictBackgroundWhitelist(mUid);
-        assertBackgroundNetworkAccess(false);
-        mTestNetworkCallback.expectBlockedStatusCallback(mNetwork, true);
-
-        // Set to non-metered network
-        setUnmeteredNetwork();
-        assertBackgroundNetworkAccess(true);
-        mTestNetworkCallback.expectBlockedStatusCallback(mNetwork, false);
-
-        // Disable restrict background, should not trigger callback
+    @RequiredProperties({BATTERY_SAVER_MODE})
+    @Test
+    public void testOnBlockedStatusChanged_powerSaver() throws Exception {
+        // Set initial state.
+        setBatterySaverMode(false);
         setRestrictBackground(false);
-        assertBackgroundNetworkAccess(true);
-        mTestNetworkCallback.assertNoCallback();
-    }
 
+        final MeterednessConfigurationRule meterednessConfiguration
+                = new MeterednessConfigurationRule();
+        meterednessConfiguration.configureNetworkMeteredness(true);
+        try {
+            // Register callback
+            registerNetworkCallback((INetworkCallback.Stub) mTestNetworkCallback);
+            mTestNetworkCallback.expectAvailableCallback(mNetwork);
+            mTestNetworkCallback.expectBlockedStatusCallback(mNetwork, false);
 
-    public void testOnBlockedStatusChanged_power_saver() throws Exception {
-        // Prepare metered wifi
-        if (!setMeteredNetwork()) return;
+            // Enable Power Saver
+            setBatterySaverMode(true);
+            assertBackgroundNetworkAccess(false);
+            mTestNetworkCallback.expectBlockedStatusCallback(mNetwork, true);
 
-        // Register callback
-        registerNetworkCallback((INetworkCallback.Stub) mTestNetworkCallback);
-        mTestNetworkCallback.expectAvailableCallback(mNetwork);
-        mTestNetworkCallback.expectBlockedStatusCallback(mNetwork, false);
-
-        // Enable Power Saver
-        setBatterySaverMode(true);
-        assertBackgroundNetworkAccess(false);
-        mTestNetworkCallback.expectBlockedStatusCallback(mNetwork, true);
-
-        // Disable Power Saver
-        setBatterySaverMode(false);
-        assertBackgroundNetworkAccess(true);
-        mTestNetworkCallback.expectBlockedStatusCallback(mNetwork, false);
+            // Disable Power Saver
+            setBatterySaverMode(false);
+            assertBackgroundNetworkAccess(true);
+            mTestNetworkCallback.expectBlockedStatusCallback(mNetwork, false);
+        } finally {
+            meterednessConfiguration.resetNetworkMeteredness();
+        }
 
         // Set to non-metered network
-        setUnmeteredNetwork();
-        mTestNetworkCallback.assertNoCallback();
+        meterednessConfiguration.configureNetworkMeteredness(false);
+        try {
+            mTestNetworkCallback.assertNoCallback();
 
-        // Enable Power Saver
-        setBatterySaverMode(true);
-        assertBackgroundNetworkAccess(false);
-        mTestNetworkCallback.expectBlockedStatusCallback(mNetwork, true);
+            // Enable Power Saver
+            setBatterySaverMode(true);
+            assertBackgroundNetworkAccess(false);
+            mTestNetworkCallback.expectBlockedStatusCallback(mNetwork, true);
 
-        // Disable Power Saver
-        setBatterySaverMode(false);
-        assertBackgroundNetworkAccess(true);
-        mTestNetworkCallback.expectBlockedStatusCallback(mNetwork, false);
+            // Disable Power Saver
+            setBatterySaverMode(false);
+            assertBackgroundNetworkAccess(true);
+            mTestNetworkCallback.expectBlockedStatusCallback(mNetwork, false);
+        } finally {
+            meterednessConfiguration.resetNetworkMeteredness();
+        }
     }
 
     // TODO: 1. test against VPN lockdown.
