@@ -16,21 +16,19 @@
 
 package com.android.cts.net.hostside;
 
-import static com.android.cts.net.hostside.Property.BATTERY_SAVER_MODE;
-
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import android.text.TextUtils;
+import android.util.Log;
 
 /**
  * Base class for metered and non-metered Battery Saver Mode tests.
  */
-@RequiredProperties({BATTERY_SAVER_MODE})
 abstract class AbstractBatterySaverModeTestCase extends AbstractRestrictBackgroundNetworkTestCase {
 
-    @Before
-    public final void setUp() throws Exception {
+    @Override
+    protected final void setUp() throws Exception {
         super.setUp();
+
+        if (!isSupported()) return;
 
         // Set initial state.
         removePowerSaveModeWhitelist(TEST_APP2_PKG);
@@ -40,15 +38,55 @@ abstract class AbstractBatterySaverModeTestCase extends AbstractRestrictBackgrou
         registerBroadcastReceiver();
     }
 
-    @After
-    public final void tearDown() throws Exception {
+    @Override
+    protected final void tearDown() throws Exception {
         super.tearDown();
 
-        setBatterySaverMode(false);
+        if (!isSupported()) return;
+
+        try {
+            tearDownMeteredNetwork();
+        } finally {
+            setBatterySaverMode(false);
+        }
     }
 
-    @Test
+    @Override
+    protected boolean isSupported() throws Exception {
+        String unSupported = "";
+        if (!isDozeModeEnabled()) {
+            unSupported += "Doze mode,";
+        }
+        if (!isBatterySaverSupported()) {
+            unSupported += "Battery saver mode,";
+        }
+        if (!TextUtils.isEmpty(unSupported)) {
+            Log.i(TAG, "Skipping " + getClass() + "." + getName()
+                    + "() because device does not support " + unSupported);
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Sets the initial (non) metered network state.
+     *
+     * <p>By default is empty - it's up to subclasses to override.
+     */
+    protected void setUpMeteredNetwork() throws Exception {
+    }
+
+    /**
+     * Resets the (non) metered network state.
+     *
+     * <p>By default is empty - it's up to subclasses to override.
+     */
+    protected void tearDownMeteredNetwork() throws Exception {
+    }
+
     public void testBackgroundNetworkAccess_enabled() throws Exception {
+        if (!isSupported()) return;
+
         setBatterySaverMode(true);
         assertBackgroundNetworkAccess(false);
 
@@ -80,8 +118,9 @@ abstract class AbstractBatterySaverModeTestCase extends AbstractRestrictBackgrou
         assertBackgroundNetworkAccess(false);
     }
 
-    @Test
     public void testBackgroundNetworkAccess_whitelisted() throws Exception {
+        if (!isSupported()) return;
+
         setBatterySaverMode(true);
         assertBackgroundNetworkAccess(false);
 
@@ -101,8 +140,9 @@ abstract class AbstractBatterySaverModeTestCase extends AbstractRestrictBackgrou
         assertBackgroundNetworkAccess(false);
     }
 
-    @Test
     public void testBackgroundNetworkAccess_disabled() throws Exception {
+        if (!isSupported()) return;
+
         assertBackgroundNetworkAccess(true);
 
         assertsForegroundAlwaysHasNetworkAccess();

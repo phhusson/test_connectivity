@@ -16,8 +16,15 @@
 
 package com.android.cts.net.hostside;
 
-import static com.android.cts.net.hostside.Property.METERED_NETWORK;
-
-@RequiredProperties({METERED_NETWORK})
 public class BatterySaverModeMeteredTest extends AbstractBatterySaverModeTestCase {
+
+    @Override
+    protected boolean setUpActiveNetworkMeteringState() throws Exception {
+        return setMeteredNetwork();
+    }
+
+    @Override
+    protected void tearDownMeteredNetwork() throws Exception {
+        resetMeteredNetwork();
+    }
 }

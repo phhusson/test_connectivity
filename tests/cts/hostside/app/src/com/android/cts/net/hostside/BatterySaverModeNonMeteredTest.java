@@ -16,9 +16,10 @@
 
 package com.android.cts.net.hostside;
 
-
-import static com.android.cts.net.hostside.Property.NON_METERED_NETWORK;
-
-@RequiredProperties({NON_METERED_NETWORK})
 public class BatterySaverModeNonMeteredTest extends AbstractBatterySaverModeTestCase {
+
+    @Override
+    protected boolean setUpActiveNetworkMeteringState() throws Exception {
+        return setUnmeteredNetwork();
+    }
 }
