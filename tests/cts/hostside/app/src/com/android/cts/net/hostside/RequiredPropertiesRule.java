@@ -58,8 +58,12 @@ public class RequiredPropertiesRule extends BeforeAfterRule {
                 continue;
             }
             for (Property requiredProperty : requiredProperties.value()) {
-                if (!allRequiredProperties.contains(~requiredProperty.getValue())) {
-                    allRequiredProperties.add(requiredProperty);
+                for (Property p : Property.values()) {
+                    if (p.getValue() == ~requiredProperty.getValue()) {
+                        if (!allRequiredProperties.contains(p)) {
+                            allRequiredProperties.add(requiredProperty);
+                        }
+                    }
                 }
             }
         }
