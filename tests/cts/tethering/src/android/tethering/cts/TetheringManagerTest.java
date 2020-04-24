@@ -21,6 +21,7 @@ import static android.net.TetheringManager.TETHERING_WIFI_P2P;
 import static android.net.TetheringManager.TETHER_ERROR_ENTITLEMENT_UNKNOWN;
 import static android.net.TetheringManager.TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION;
 import static android.net.TetheringManager.TETHER_ERROR_NO_ERROR;
+import static android.net.TetheringManager.TETHER_ERROR_TETHER_IFACE_ERROR;
 import static android.net.TetheringManager.TETHER_HARDWARE_OFFLOAD_FAILED;
 import static android.net.TetheringManager.TETHER_HARDWARE_OFFLOAD_STARTED;
 import static android.net.TetheringManager.TETHER_HARDWARE_OFFLOAD_STOPPED;
@@ -31,6 +32,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.junit.Assume.assumeTrue;
 
 import android.app.UiAutomation;
 import android.content.BroadcastReceiver;
@@ -64,10 +66,8 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 
 @RunWith(AndroidJUnit4.class)
@@ -140,28 +140,24 @@ public class TetheringManagerTest {
 
         public final LinkedBlockingQueue<TetherState> mResult = new LinkedBlockingQueue<>();
 
-        // This method expects either an event where one of the interfaces is active, or events
-        // where the interfaces are available followed by one event where one of the interfaces is
-        // active. Here is a typical example for wifi tethering:
-        // AVAILABLE(wlan0) -> AVAILABLE(wlan1) -> ACTIVATE(wlan1).
-        public void expectActiveTethering(String[] ifaceRegexs) {
-            TetherState state = null;
+        // Expects that tethering reaches the desired state.
+        // - If active is true, expects that tethering is enabled on at least one interface
+        //   matching ifaceRegexs.
+        // - If active is false, expects that tethering is disabled on all the interfaces matching
+        //   ifaceRegexs.
+        // Fails if any interface matching ifaceRegexs becomes errored.
+        public void expectTethering(final boolean active, final String[] ifaceRegexs) {
             while (true) {
-                state = pollAndAssertNoError(DEFAULT_TIMEOUT_MS);
-                if (state == null) fail("Do not receive active state change broadcast");
+                final TetherState state = pollAndAssertNoError(DEFAULT_TIMEOUT_MS, ifaceRegexs);
+                assertNotNull("Did not receive expected state change, active: " + active, state);
 
-                if (isIfaceActive(ifaceRegexs, state)) return;
-
-                if (!isIfaceAvailable(ifaceRegexs, state)) break;
+                if (isIfaceActive(ifaceRegexs, state) == active) return;
             }
-
-            fail("Tethering is not actived, available ifaces: " + state.mAvailable.toString()
-                    + ", active ifaces: " + state.mActive.toString());
         }
 
-        private TetherState pollAndAssertNoError(final int timeout) {
+        private TetherState pollAndAssertNoError(final int timeout, final String[] ifaceRegexs) {
             final TetherState state = pollTetherState(timeout);
-            assertNoErroredIfaces(state);
+            assertNoErroredIfaces(state, ifaceRegexs);
             return state;
         }
 
@@ -178,41 +174,11 @@ public class TetheringManagerTest {
             return isIfaceMatch(ifaceRegexs, state.mActive);
         }
 
-        private boolean isIfaceAvailable(final String[] ifaceRegexs, final TetherState state) {
-            return isIfaceMatch(ifaceRegexs, state.mAvailable);
-        }
-
-        // This method requires a broadcast to have been recorded iff the timeout is non-zero.
-        public void expectNoActiveTethering(final int timeout) {
-            final TetherState state = pollAndAssertNoError(timeout);
-
-            if (state == null) {
-                if (timeout != 0) {
-                    fail("Do not receive tethering state change broadcast");
-                }
-                return;
-            }
-
-            assertNoActiveIfaces(state);
-
-            for (final TetherState ts : mResult) {
-                assertNoErroredIfaces(ts);
-
-                assertNoActiveIfaces(ts);
-            }
-        }
-
-        private void assertNoErroredIfaces(final TetherState state) {
+        private void assertNoErroredIfaces(final TetherState state, final String[] ifaceRegexs) {
             if (state == null || state.mErrored == null) return;
 
-            if (state.mErrored.size() > 0) {
+            if (isIfaceMatch(ifaceRegexs, state.mErrored)) {
                 fail("Found failed tethering interfaces: " + Arrays.toString(state.mErrored.toArray()));
-            }
-        }
-
-        private void assertNoActiveIfaces(final TetherState state) {
-            if (state.mActive != null && state.mActive.size() > 0) {
-                fail("Found active tethering interface: " + Arrays.toString(state.mActive.toArray()));
             }
         }
     }
@@ -295,17 +261,18 @@ public class TetheringManagerTest {
         final String[] wifiRegexs = mTM.getTetherableWifiRegexs();
         if (wifiRegexs.length == 0) return;
 
-        mTetherChangeReceiver.expectNoActiveTethering(0 /** timeout */);
+        final String[] tetheredIfaces = mTM.getTetheredIfaces();
+        assertTrue(tetheredIfaces.length == 0);
 
         final StartTetheringCallback startTetheringCallback = new StartTetheringCallback();
         mTM.startTethering(new TetheringRequest.Builder(TETHERING_WIFI).build(),
                 c -> c.run() /* executor */, startTetheringCallback);
         startTetheringCallback.verifyTetheringStarted();
 
-        mTetherChangeReceiver.expectActiveTethering(wifiRegexs);
+        mTetherChangeReceiver.expectTethering(true /* active */, wifiRegexs);
 
         mTM.stopTethering(TETHERING_WIFI);
-        mTetherChangeReceiver.expectNoActiveTethering(DEFAULT_TIMEOUT_MS);
+        mTetherChangeReceiver.expectTethering(false /* active */, wifiRegexs);
     }
 
     @Test
@@ -459,6 +426,21 @@ public class TetheringManagerTest {
             }));
         }
 
+        public void expectErrorOrTethered(final String iface) {
+            assertNotNull("No expected callback", mHistory.poll(TIMEOUT_MS, (cv) -> {
+                if (cv.callbackType == CallbackType.ON_ERROR
+                        && iface.equals((String) cv.callbackParam)) {
+                    return true;
+                }
+                if (cv.callbackType == CallbackType.ON_TETHERED_IFACES
+                        && ((List<String>) cv.callbackParam).contains(iface)) {
+                    return true;
+                }
+
+                return false;
+            }));
+        }
+
         public TetheringInterfaceRegexps getTetheringInterfaceRegexps() {
             return mTetherableRegex;
         }
@@ -497,19 +479,12 @@ public class TetheringManagerTest {
     private void startWifiTethering(final TestTetheringEventCallback callback)
             throws InterruptedException {
         final List<String> wifiRegexs = getWifiTetherableInterfaceRegexps(callback);
-        final boolean isIfaceAvailWhenNoTethering =
-                isIfaceMatch(wifiRegexs, callback.getTetherableInterfaces());
+        assertFalse(isIfaceMatch(wifiRegexs, callback.getTetheredInterfaces()));
 
         final StartTetheringCallback startTetheringCallback = new StartTetheringCallback();
         mTM.startTethering(new TetheringRequest.Builder(TETHERING_WIFI).build(),
                 c -> c.run() /* executor */, startTetheringCallback);
         startTetheringCallback.verifyTetheringStarted();
-
-        // If interface is already available before starting tethering, the available callback may
-        // not be sent after tethering enabled.
-        if (!isIfaceAvailWhenNoTethering) {
-            callback.expectTetherableInterfacesChanged(wifiRegexs);
-        }
 
         callback.expectTetheredInterfacesChanged(wifiRegexs);
 
@@ -534,9 +509,26 @@ public class TetheringManagerTest {
 
         startWifiTethering(tetherEventCallback);
 
+        final List<String> tetheredIfaces = tetherEventCallback.getTetheredInterfaces();
+        assertEquals(1, tetheredIfaces.size());
+        final String wifiTetheringIface = tetheredIfaces.get(0);
+
         stopWifiTethering(tetherEventCallback);
 
-        unregisterTetheringEventCallback(tetherEventCallback);
+        try {
+            final int ret = mTM.tether(wifiTetheringIface);
+
+            // There is no guarantee that the wifi interface will be available after disabling
+            // the hotspot, so don't fail the test if the call to tether() fails.
+            assumeTrue(ret == TETHER_ERROR_NO_ERROR);
+
+            // If calling #tether successful, there is a callback to tell the result of tethering
+            // setup.
+            tetherEventCallback.expectErrorOrTethered(wifiTetheringIface);
+        } finally {
+            mTM.untether(wifiTetheringIface);
+            unregisterTetheringEventCallback(tetherEventCallback);
+        }
     }
 
     @Test
