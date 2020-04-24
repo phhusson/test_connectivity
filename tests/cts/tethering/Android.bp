@@ -28,6 +28,7 @@ android_test {
         "TetheringCommonTests",
         "TetheringIntegrationTestsLib",
         "compatibility-device-util-axt",
+        "cts-net-utils",
         "net-tests-utils",
         "ctstestrunner-axt",
         "junit",
