@@ -45,6 +45,9 @@ abstract class IkeTestBase {
 
     static final String LOCAL_HOSTNAME = "client.test.ike.android.net";
     static final String REMOTE_HOSTNAME = "server.test.ike.android.net";
+    static final String LOCAL_ASN1_DN_STRING = "CN=client.test.ike.android.net, O=Android, C=US";
+    static final String LOCAL_RFC822_NAME = "client.test.ike@example.com";
+    static final byte[] LOCAL_KEY_ID = "Local Key ID".getBytes();
 
     static final Inet4Address IPV4_ADDRESS_LOCAL =
             (Inet4Address) (InetAddresses.parseNumericAddress("192.0.2.100"));
