@@ -17,16 +17,22 @@
 package android.net.ipsec.ike.cts;
 
 import static android.net.ipsec.ike.IkeSessionParams.IKE_OPTION_ACCEPT_ANY_REMOTE_ID;
+import static android.net.ipsec.ike.IkeSessionParams.IKE_OPTION_EAP_ONLY_AUTH;
 import static android.net.ipsec.ike.IkeSessionParams.IkeAuthConfig;
+import static android.net.ipsec.ike.IkeSessionParams.IkeAuthDigitalSignRemoteConfig;
+import static android.net.ipsec.ike.IkeSessionParams.IkeAuthEapConfig;
 import static android.net.ipsec.ike.IkeSessionParams.IkeAuthPskConfig;
 import static android.system.OsConstants.AF_INET;
 import static android.system.OsConstants.AF_INET6;
+import static android.telephony.TelephonyManager.APPTYPE_USIM;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
+import android.net.eap.EapSessionConfig;
 import android.net.ipsec.ike.IkeFqdnIdentification;
 import android.net.ipsec.ike.IkeIdentification;
 import android.net.ipsec.ike.IkeSaProposal;
@@ -37,10 +43,14 @@ import android.net.ipsec.ike.IkeSessionParams.IkeConfigRequest;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 
+import com.android.internal.net.ipsec.ike.testutils.CertUtils;
+
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import java.net.InetAddress;
+import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -76,6 +86,29 @@ public final class IkeSessionParamsTest extends IkeSessionParamsTestBase {
     private static final IkeIdentification LOCAL_ID = new IkeFqdnIdentification(LOCAL_HOSTNAME);
     private static final IkeIdentification REMOTE_ID = new IkeFqdnIdentification(REMOTE_HOSTNAME);
 
+    private static final EapSessionConfig EAP_ALL_METHODS_CONFIG =
+            createEapOnlySafeMethodsBuilder()
+                    .setEapMsChapV2Config(EAP_MSCHAPV2_USERNAME, EAP_MSCHAPV2_PASSWORD)
+                    .build();
+    private static final EapSessionConfig EAP_ONLY_SAFE_METHODS_CONFIG =
+            createEapOnlySafeMethodsBuilder().build();
+
+    private X509Certificate mServerCaCert;
+
+    @Before
+    public void setUp() throws Exception {
+        mServerCaCert = CertUtils.createCertFromPemFile("server-a-self-signed-ca.pem");
+    }
+
+    private static EapSessionConfig.Builder createEapOnlySafeMethodsBuilder() {
+        return new EapSessionConfig.Builder()
+                .setEapIdentity(EAP_IDENTITY)
+                .setEapSimConfig(SUB_ID, APPTYPE_USIM)
+                .setEapAkaConfig(SUB_ID, APPTYPE_USIM)
+                .setEapAkaPrimeConfig(
+                        SUB_ID, APPTYPE_USIM, NETWORK_NAME, true /* allowMismatchedNetworkNames */);
+    }
+
     /**
      * Create a Builder that has minimum configurations to build an IkeSessionParams.
      *
@@ -110,23 +143,6 @@ public final class IkeSessionParamsTest extends IkeSessionParamsTestBase {
         IkeAuthConfig remoteConfig = sessionParams.getRemoteAuthConfig();
         assertTrue(remoteConfig instanceof IkeAuthPskConfig);
         assertArrayEquals(IKE_PSK, ((IkeAuthPskConfig) remoteConfig).getPsk());
-    }
-
-    private void verifySpecificPcscfConfigReqs(
-            HashSet<InetAddress> expectedAddresses, IkeSessionParams sessionParams) {
-        Set<InetAddress> resultAddresses = new HashSet<>();
-
-        for (IkeConfigRequest req : sessionParams.getConfigurationRequests()) {
-            if (req instanceof ConfigRequestIpv4PcscfServer
-                    && ((ConfigRequestIpv4PcscfServer) req).getAddress() != null) {
-                resultAddresses.add(((ConfigRequestIpv4PcscfServer) req).getAddress());
-            } else if (req instanceof ConfigRequestIpv6PcscfServer
-                    && ((ConfigRequestIpv6PcscfServer) req).getAddress() != null) {
-                resultAddresses.add(((ConfigRequestIpv6PcscfServer) req).getAddress());
-            }
-        }
-
-        assertEquals(expectedAddresses, resultAddresses);
     }
 
     @Test
@@ -232,22 +248,39 @@ public final class IkeSessionParamsTest extends IkeSessionParamsTestBase {
         assertFalse(sessionParams.hasIkeOption(IKE_OPTION_ACCEPT_ANY_REMOTE_ID));
     }
 
-    @Test
-    public void testBuildWithPsk() throws Exception {
-        IkeSessionParams sessionParams =
-                new IkeSessionParams.Builder(sContext)
-                        .setNetwork(sTunNetwork)
-                        .setServerHostname(IPV4_ADDRESS_REMOTE.getHostAddress())
-                        .addSaProposal(SA_PROPOSAL)
-                        .setLocalIdentification(LOCAL_ID)
-                        .setRemoteIdentification(REMOTE_ID)
-                        .setAuthPsk(IKE_PSK)
-                        .build();
+    /**
+     * Create a Builder that has minimum configurations to build an IkeSessionParams, except for
+     * authentication method.
+     */
+    private IkeSessionParams.Builder createIkeParamsBuilderMinimumWithoutAuth() {
+        return new IkeSessionParams.Builder(sContext)
+                .setNetwork(sTunNetwork)
+                .setServerHostname(IPV4_ADDRESS_REMOTE.getHostAddress())
+                .addSaProposal(SA_PROPOSAL)
+                .setLocalIdentification(LOCAL_ID)
+                .setRemoteIdentification(REMOTE_ID);
+    }
+
+    /**
+     * Verify the minimum configurations to build an IkeSessionParams, except for authentication
+     * method.
+     *
+     * @see #createIkeParamsBuilderMinimumWithoutAuth
+     */
+    private void verifyIkeParamsMinimumWithoutAuth(IkeSessionParams sessionParams) {
         assertEquals(sTunNetwork, sessionParams.getNetwork());
         assertEquals(IPV4_ADDRESS_REMOTE.getHostAddress(), sessionParams.getServerHostname());
         assertEquals(Arrays.asList(SA_PROPOSAL), sessionParams.getSaProposals());
         assertEquals(LOCAL_ID, sessionParams.getLocalIdentification());
         assertEquals(REMOTE_ID, sessionParams.getRemoteIdentification());
+    }
+
+    @Test
+    public void testBuildWithPsk() throws Exception {
+        IkeSessionParams sessionParams =
+                createIkeParamsBuilderMinimumWithoutAuth().setAuthPsk(IKE_PSK).build();
+
+        verifyIkeParamsMinimumWithoutAuth(sessionParams);
 
         IkeAuthConfig localConfig = sessionParams.getLocalAuthConfig();
         assertTrue(localConfig instanceof IkeAuthPskConfig);
@@ -257,6 +290,57 @@ public final class IkeSessionParamsTest extends IkeSessionParamsTestBase {
         assertArrayEquals(IKE_PSK, ((IkeAuthPskConfig) remoteConfig).getPsk());
     }
 
-    // TODO(b/148689509): Add tests for building IkeSessionParams using EAP and
-    // digital-signature-based authentication
+    @Test
+    public void testBuildWithEap() throws Exception {
+        IkeSessionParams sessionParams =
+                createIkeParamsBuilderMinimumWithoutAuth()
+                        .setAuthEap(mServerCaCert, EAP_ALL_METHODS_CONFIG)
+                        .build();
+
+        verifyIkeParamsMinimumWithoutAuth(sessionParams);
+
+        IkeAuthConfig localConfig = sessionParams.getLocalAuthConfig();
+        assertTrue(localConfig instanceof IkeAuthEapConfig);
+        assertEquals(EAP_ALL_METHODS_CONFIG, ((IkeAuthEapConfig) localConfig).getEapConfig());
+        IkeAuthConfig remoteConfig = sessionParams.getRemoteAuthConfig();
+        assertTrue(remoteConfig instanceof IkeAuthDigitalSignRemoteConfig);
+        assertEquals(
+                mServerCaCert, ((IkeAuthDigitalSignRemoteConfig) remoteConfig).getRemoteCaCert());
+    }
+
+    @Test
+    public void testBuildWithEapOnlyAuth() throws Exception {
+        IkeSessionParams sessionParams =
+                createIkeParamsBuilderMinimumWithoutAuth()
+                        .setAuthEap(mServerCaCert, EAP_ONLY_SAFE_METHODS_CONFIG)
+                        .addIkeOption(IKE_OPTION_EAP_ONLY_AUTH)
+                        .build();
+
+        assertTrue(sessionParams.hasIkeOption(IKE_OPTION_EAP_ONLY_AUTH));
+        verifyIkeParamsMinimumWithoutAuth(sessionParams);
+
+        IkeAuthConfig localConfig = sessionParams.getLocalAuthConfig();
+        assertTrue(localConfig instanceof IkeAuthEapConfig);
+        assertEquals(EAP_ONLY_SAFE_METHODS_CONFIG, ((IkeAuthEapConfig) localConfig).getEapConfig());
+        IkeAuthConfig remoteConfig = sessionParams.getRemoteAuthConfig();
+        assertTrue(remoteConfig instanceof IkeAuthDigitalSignRemoteConfig);
+        assertEquals(
+                mServerCaCert, ((IkeAuthDigitalSignRemoteConfig) remoteConfig).getRemoteCaCert());
+    }
+
+    @Test
+    public void testThrowBuildEapOnlyAuthWithUnsafeMethod() throws Exception {
+        try {
+            IkeSessionParams sessionParams =
+                    createIkeParamsBuilderMinimumWithoutAuth()
+                            .setAuthEap(mServerCaCert, EAP_ALL_METHODS_CONFIG)
+                            .addIkeOption(IKE_OPTION_EAP_ONLY_AUTH)
+                            .build();
+            fail("Expected to fail because EAP only unsafe method is proposed");
+        } catch (IllegalArgumentException expected) {
+        }
+    }
+
+    // TODO(b/148689509): Add tests for building IkeSessionParams using digital-signature-based
+    // authentication
 }
