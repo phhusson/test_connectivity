@@ -26,6 +26,7 @@ android_test {
 
     srcs: [
         "src/**/*.java",
+        ":ike-test-utils",
     ],
 
     static_libs: [
