@@ -19,6 +19,7 @@ package android.net.ipsec.ike.cts;
 import static android.net.ipsec.ike.IkeSessionParams.IKE_OPTION_ACCEPT_ANY_REMOTE_ID;
 import static android.net.ipsec.ike.IkeSessionParams.IKE_OPTION_EAP_ONLY_AUTH;
 import static android.net.ipsec.ike.IkeSessionParams.IkeAuthConfig;
+import static android.net.ipsec.ike.IkeSessionParams.IkeAuthDigitalSignLocalConfig;
 import static android.net.ipsec.ike.IkeSessionParams.IkeAuthDigitalSignRemoteConfig;
 import static android.net.ipsec.ike.IkeSessionParams.IkeAuthEapConfig;
 import static android.net.ipsec.ike.IkeSessionParams.IkeAuthPskConfig;
@@ -51,9 +52,12 @@ import org.junit.runner.RunWith;
 
 import java.net.InetAddress;
 import java.security.cert.X509Certificate;
+import java.security.interfaces.RSAPrivateKey;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -94,10 +98,20 @@ public final class IkeSessionParamsTest extends IkeSessionParamsTestBase {
             createEapOnlySafeMethodsBuilder().build();
 
     private X509Certificate mServerCaCert;
+    private X509Certificate mClientEndCert;
+    private X509Certificate mClientIntermediateCaCertOne;
+    private X509Certificate mClientIntermediateCaCertTwo;
+    private RSAPrivateKey mClientPrivateKey;
 
     @Before
     public void setUp() throws Exception {
         mServerCaCert = CertUtils.createCertFromPemFile("server-a-self-signed-ca.pem");
+        mClientEndCert = CertUtils.createCertFromPemFile("client-a-end-cert.pem");
+        mClientIntermediateCaCertOne =
+                CertUtils.createCertFromPemFile("client-a-intermediate-ca-one.pem");
+        mClientIntermediateCaCertTwo =
+                CertUtils.createCertFromPemFile("client-a-intermediate-ca-two.pem");
+        mClientPrivateKey = CertUtils.createRsaPrivateKeyFromKeyFile("client-a-private-key.key");
     }
 
     private static EapSessionConfig.Builder createEapOnlySafeMethodsBuilder() {
@@ -341,6 +355,51 @@ public final class IkeSessionParamsTest extends IkeSessionParamsTestBase {
         }
     }
 
-    // TODO(b/148689509): Add tests for building IkeSessionParams using digital-signature-based
-    // authentication
+    @Test
+    public void testBuildWithDigitalSignature() throws Exception {
+        IkeSessionParams sessionParams =
+                createIkeParamsBuilderMinimumWithoutAuth()
+                        .setAuthDigitalSignature(mServerCaCert, mClientEndCert, mClientPrivateKey)
+                        .build();
+
+        verifyIkeParamsMinimumWithoutAuth(sessionParams);
+
+        IkeAuthConfig localConfig = sessionParams.getLocalAuthConfig();
+        assertTrue(localConfig instanceof IkeAuthDigitalSignLocalConfig);
+        IkeAuthDigitalSignLocalConfig localSignConfig = (IkeAuthDigitalSignLocalConfig) localConfig;
+        assertEquals(mClientEndCert, localSignConfig.getClientEndCertificate());
+        assertEquals(Collections.EMPTY_LIST, localSignConfig.getIntermediateCertificates());
+        assertEquals(mClientPrivateKey, localSignConfig.getPrivateKey());
+
+        IkeAuthConfig remoteConfig = sessionParams.getRemoteAuthConfig();
+        assertTrue(remoteConfig instanceof IkeAuthDigitalSignRemoteConfig);
+        assertEquals(
+                mServerCaCert, ((IkeAuthDigitalSignRemoteConfig) remoteConfig).getRemoteCaCert());
+    }
+
+    @Test
+    public void testBuildWithDigitalSignatureAndIntermediateCerts() throws Exception {
+        List<X509Certificate> intermediateCerts =
+                Arrays.asList(mClientIntermediateCaCertOne, mClientIntermediateCaCertTwo);
+
+        IkeSessionParams sessionParams =
+                createIkeParamsBuilderMinimumWithoutAuth()
+                        .setAuthDigitalSignature(
+                                mServerCaCert, mClientEndCert, intermediateCerts, mClientPrivateKey)
+                        .build();
+
+        verifyIkeParamsMinimumWithoutAuth(sessionParams);
+
+        IkeAuthConfig localConfig = sessionParams.getLocalAuthConfig();
+        assertTrue(localConfig instanceof IkeAuthDigitalSignLocalConfig);
+        IkeAuthDigitalSignLocalConfig localSignConfig = (IkeAuthDigitalSignLocalConfig) localConfig;
+        assertEquals(mClientEndCert, localSignConfig.getClientEndCertificate());
+        assertEquals(intermediateCerts, localSignConfig.getIntermediateCertificates());
+        assertEquals(mClientPrivateKey, localSignConfig.getPrivateKey());
+
+        IkeAuthConfig remoteConfig = sessionParams.getRemoteAuthConfig();
+        assertTrue(remoteConfig instanceof IkeAuthDigitalSignRemoteConfig);
+        assertEquals(
+                mServerCaCert, ((IkeAuthDigitalSignRemoteConfig) remoteConfig).getRemoteCaCert());
+    }
 }
