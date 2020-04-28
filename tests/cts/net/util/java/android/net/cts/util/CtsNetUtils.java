@@ -16,6 +16,7 @@
 
 package android.net.cts.util;
 
+import static android.Manifest.permission.NETWORK_SETTINGS;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
 import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 
@@ -107,6 +108,8 @@ public final class CtsNetUtils {
         boolean connected = false;
         try {
             SystemUtil.runShellCommand("svc wifi enable");
+            SystemUtil.runWithShellPermissionIdentity(() -> mWifiManager.reconnect(),
+                    NETWORK_SETTINGS);
             // Ensure we get both an onAvailable callback and a CONNECTIVITY_ACTION.
             wifiNetwork = callback.waitForAvailable();
             assertNotNull(wifiNetwork);
