@@ -24,6 +24,7 @@ import android.net.ipsec.ike.IkeTrafficSelector;
 
 import java.net.Inet4Address;
 import java.net.Inet6Address;
+import java.net.InetAddress;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +41,20 @@ abstract class IkeTestBase {
     static final int IP4_PREFIX_LEN = 32;
     static final int IP6_PREFIX_LEN = 64;
 
+    static final byte[] IKE_PSK = "ikeAndroidPsk".getBytes();
+
+    static final String LOCAL_HOSTNAME = "client.test.ike.android.net";
+    static final String REMOTE_HOSTNAME = "server.test.ike.android.net";
+    static final String LOCAL_ASN1_DN_STRING = "CN=client.test.ike.android.net, O=Android, C=US";
+    static final String LOCAL_RFC822_NAME = "client.test.ike@example.com";
+    static final byte[] LOCAL_KEY_ID = "Local Key ID".getBytes();
+
+    static final int SUB_ID = 1;
+    static final byte[] EAP_IDENTITY = "test@android.net".getBytes();
+    static final String NETWORK_NAME = "android.net";
+    static final String EAP_MSCHAPV2_USERNAME = "username";
+    static final String EAP_MSCHAPV2_PASSWORD = "password";
+
     static final Inet4Address IPV4_ADDRESS_LOCAL =
             (Inet4Address) (InetAddresses.parseNumericAddress("192.0.2.100"));
     static final Inet4Address IPV4_ADDRESS_REMOTE =
@@ -48,6 +63,13 @@ abstract class IkeTestBase {
             (Inet6Address) (InetAddresses.parseNumericAddress("2001:db8::100"));
     static final Inet6Address IPV6_ADDRESS_REMOTE =
             (Inet6Address) (InetAddresses.parseNumericAddress("2001:db8:255::100"));
+
+    static final InetAddress PCSCF_IPV4_ADDRESS_1 = InetAddresses.parseNumericAddress("192.0.2.1");
+    static final InetAddress PCSCF_IPV4_ADDRESS_2 = InetAddresses.parseNumericAddress("192.0.2.2");
+    static final InetAddress PCSCF_IPV6_ADDRESS_1 =
+            InetAddresses.parseNumericAddress("2001:DB8::1");
+    static final InetAddress PCSCF_IPV6_ADDRESS_2 =
+            InetAddresses.parseNumericAddress("2001:DB8::2");
 
     static final IkeTrafficSelector DEFAULT_V4_TS =
             new IkeTrafficSelector(
