@@ -46,6 +46,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 
 import com.android.internal.net.ipsec.ike.testutils.CertUtils;
 
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -63,7 +64,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 @RunWith(AndroidJUnit4.class)
-public final class IkeSessionParamsTest extends IkeSessionParamsTestBase {
+public final class IkeSessionParamsTest extends IkeSessionTestBase {
     private static final int HARD_LIFETIME_SECONDS = (int) TimeUnit.HOURS.toSeconds(20L);
     private static final int SOFT_LIFETIME_SECONDS = (int) TimeUnit.HOURS.toSeconds(10L);
     private static final int DPD_DELAY_SECONDS = (int) TimeUnit.MINUTES.toSeconds(10L);
@@ -105,6 +106,9 @@ public final class IkeSessionParamsTest extends IkeSessionParamsTestBase {
 
     @Before
     public void setUp() throws Exception {
+        // This address is never used except for setting up the test network
+        setUpTestNetwork(IPV4_ADDRESS_LOCAL);
+
         mServerCaCert = CertUtils.createCertFromPemFile("server-a-self-signed-ca.pem");
         mClientEndCert = CertUtils.createCertFromPemFile("client-a-end-cert.pem");
         mClientIntermediateCaCertOne =
@@ -112,6 +116,11 @@ public final class IkeSessionParamsTest extends IkeSessionParamsTestBase {
         mClientIntermediateCaCertTwo =
                 CertUtils.createCertFromPemFile("client-a-intermediate-ca-two.pem");
         mClientPrivateKey = CertUtils.createRsaPrivateKeyFromKeyFile("client-a-private-key.key");
+    }
+
+    @After
+    public void tearDown() throws Exception {
+        tearDownTestNetwork();
     }
 
     private static EapSessionConfig.Builder createEapOnlySafeMethodsBuilder() {
@@ -131,7 +140,7 @@ public final class IkeSessionParamsTest extends IkeSessionParamsTestBase {
      */
     private IkeSessionParams.Builder createIkeParamsBuilderMinimum() {
         return new IkeSessionParams.Builder(sContext)
-                .setNetwork(sTunNetwork)
+                .setNetwork(mTunNetwork)
                 .setServerHostname(IPV4_ADDRESS_REMOTE.getHostAddress())
                 .addSaProposal(SA_PROPOSAL)
                 .setLocalIdentification(LOCAL_ID)
@@ -145,7 +154,7 @@ public final class IkeSessionParamsTest extends IkeSessionParamsTestBase {
      * @see #createIkeParamsBuilderMinimum
      */
     private void verifyIkeParamsMinimum(IkeSessionParams sessionParams) {
-        assertEquals(sTunNetwork, sessionParams.getNetwork());
+        assertEquals(mTunNetwork, sessionParams.getNetwork());
         assertEquals(IPV4_ADDRESS_REMOTE.getHostAddress(), sessionParams.getServerHostname());
         assertEquals(Arrays.asList(SA_PROPOSAL), sessionParams.getSaProposals());
         assertEquals(LOCAL_ID, sessionParams.getLocalIdentification());
@@ -268,7 +277,7 @@ public final class IkeSessionParamsTest extends IkeSessionParamsTestBase {
      */
     private IkeSessionParams.Builder createIkeParamsBuilderMinimumWithoutAuth() {
         return new IkeSessionParams.Builder(sContext)
-                .setNetwork(sTunNetwork)
+                .setNetwork(mTunNetwork)
                 .setServerHostname(IPV4_ADDRESS_REMOTE.getHostAddress())
                 .addSaProposal(SA_PROPOSAL)
                 .setLocalIdentification(LOCAL_ID)
@@ -282,7 +291,7 @@ public final class IkeSessionParamsTest extends IkeSessionParamsTestBase {
      * @see #createIkeParamsBuilderMinimumWithoutAuth
      */
     private void verifyIkeParamsMinimumWithoutAuth(IkeSessionParams sessionParams) {
-        assertEquals(sTunNetwork, sessionParams.getNetwork());
+        assertEquals(mTunNetwork, sessionParams.getNetwork());
         assertEquals(IPV4_ADDRESS_REMOTE.getHostAddress(), sessionParams.getServerHostname());
         assertEquals(Arrays.asList(SA_PROPOSAL), sessionParams.getSaProposals());
         assertEquals(LOCAL_ID, sessionParams.getLocalIdentification());
