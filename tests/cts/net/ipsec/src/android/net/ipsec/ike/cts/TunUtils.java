@@ -47,18 +47,18 @@ public class TunUtils {
     private static final String TAG = TunUtils.class.getSimpleName();
 
     private static final int DATA_BUFFER_LEN = 4096;
-    private static final int TIMEOUT = 100;
+    static final int TIMEOUT = 100;
 
-    private static final int IP4_PROTO_OFFSET = 9;
-    private static final int IP6_PROTO_OFFSET = 6;
+    static final int IP4_PROTO_OFFSET = 9;
+    static final int IP6_PROTO_OFFSET = 6;
 
-    private static final int IP4_ADDR_OFFSET = 12;
-    private static final int IP4_ADDR_LEN = 4;
-    private static final int IP6_ADDR_OFFSET = 8;
-    private static final int IP6_ADDR_LEN = 16;
+    static final int IP4_ADDR_OFFSET = 12;
+    static final int IP4_ADDR_LEN = 4;
+    static final int IP6_ADDR_OFFSET = 8;
+    static final int IP6_ADDR_LEN = 16;
 
+    final List<byte[]> mPackets = new ArrayList<>();
     private final ParcelFileDescriptor mTunFd;
-    private final List<byte[]> mPackets = new ArrayList<>();
     private final Thread mReaderThread;
 
     public TunUtils(ParcelFileDescriptor tunFd) {
@@ -107,7 +107,7 @@ public class TunUtils {
         return Arrays.copyOf(inBytes, bytesRead);
     }
 
-    private byte[] getFirstMatchingPacket(Predicate<byte[]> verifier, int startIndex) {
+    byte[] getFirstMatchingPacket(Predicate<byte[]> verifier, int startIndex) {
         synchronized (mPackets) {
             for (int i = startIndex; i < mPackets.size(); i++) {
                 byte[] pkt = mPackets.get(i);
@@ -198,7 +198,7 @@ public class TunUtils {
         }
     }
 
-    private static boolean isIpv6(byte[] pkt) {
+    static boolean isIpv6(byte[] pkt) {
         // First nibble shows IP version. 0x60 for IPv6
         return (pkt[0] & (byte) 0xF0) == (byte) 0x60;
     }

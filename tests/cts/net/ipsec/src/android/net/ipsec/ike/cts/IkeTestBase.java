@@ -31,13 +31,15 @@ import java.util.Map;
 
 /** Shared parameters and util methods for testing different components of IKE */
 abstract class IkeTestBase {
-    private static final int MIN_PORT = 0;
-    private static final int MAX_PORT = 65535;
+    static final int MIN_PORT = 0;
+    static final int MAX_PORT = 65535;
     private static final int INBOUND_TS_START_PORT = MIN_PORT;
     private static final int INBOUND_TS_END_PORT = 65520;
     private static final int OUTBOUND_TS_START_PORT = 16;
     private static final int OUTBOUND_TS_END_PORT = MAX_PORT;
 
+    static final int IP4_ADDRESS_LEN = 4;
+    static final int IP6_ADDRESS_LEN = 16;
     static final int IP4_PREFIX_LEN = 32;
     static final int IP6_PREFIX_LEN = 64;
 
