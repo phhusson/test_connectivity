@@ -30,6 +30,7 @@ import static com.android.cts.net.hostside.NetworkPolicyTestUtils.isDozeModeSupp
 import static com.android.cts.net.hostside.NetworkPolicyTestUtils.restrictBackgroundValueToString;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -177,7 +178,9 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         do {
             attempts++;
             count = getNumberBroadcastsReceived(receiverName, ACTION_RESTRICT_BACKGROUND_CHANGED);
-            if (count >= expectedCount) {
+            assertFalse("Expected count " + expectedCount + " but actual is " + count,
+                    count > expectedCount);
+            if (count == expectedCount) {
                 break;
             }
             Log.d(TAG, "Expecting count " + expectedCount + " but actual is " + count + " after "
