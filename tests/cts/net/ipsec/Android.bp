@@ -33,6 +33,7 @@ android_test {
         "androidx.test.ext.junit",
         "compatibility-device-util-axt",
         "ctstestrunner-axt",
+        "net-tests-utils",
     ],
 
     platform_apis: true,
