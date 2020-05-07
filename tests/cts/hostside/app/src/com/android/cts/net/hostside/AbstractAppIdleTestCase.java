@@ -50,7 +50,7 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
     public final void tearDown() throws Exception {
         super.tearDown();
 
-        turnBatteryOff();
+        executeSilentShellCommand("cmd battery reset");
         setAppIdle(false);
     }
 
@@ -131,11 +131,11 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
     @RequiredProperties({BATTERY_SAVER_MODE})
     @Test
     public void testAppIdleNetworkAccess_whenCharging() throws Exception {
-        // Check that idle app doesn't get network when charging
+        // Check that app is paroled when charging
         setAppIdle(true);
         assertBackgroundNetworkAccess(false);
         turnBatteryOff();
-        assertBackgroundNetworkAccess(false);
+        assertBackgroundNetworkAccess(true);
         turnBatteryOn();
         assertBackgroundNetworkAccess(false);
 
