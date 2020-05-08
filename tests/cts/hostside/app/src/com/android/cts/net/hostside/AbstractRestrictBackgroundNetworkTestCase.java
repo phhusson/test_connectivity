@@ -711,6 +711,10 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         mServiceClient.registerNetworkCallback(cb);
     }
 
+    protected void unregisterNetworkCallback() throws Exception {
+        mServiceClient.unregisterNetworkCallback();
+    }
+
     /**
      * Registers a {@link NotificationListenerService} implementation that will execute the
      * notification actions right after the notification is sent.
