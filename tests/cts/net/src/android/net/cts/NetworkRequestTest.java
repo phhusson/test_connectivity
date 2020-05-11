@@ -33,11 +33,12 @@ import android.net.MatchAllNetworkSpecifier;
 import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.net.NetworkSpecifier;
-import android.net.TelephonyNetworkSpecifier;
+import android.net.UidRange;
 import android.net.wifi.WifiNetworkSpecifier;
 import android.os.Build;
-import android.os.Process;
 import android.os.PatternMatcher;
+import android.os.Process;
+import android.util.ArraySet;
 
 import androidx.test.runner.AndroidJUnit4;
 
@@ -58,6 +59,20 @@ public class NetworkRequestTest {
     private static final int TEST_UID = 2097;
     private static final String TEST_PACKAGE_NAME = "test.package.name";
     private static final MacAddress ARBITRARY_ADDRESS = MacAddress.fromString("3:5:8:12:9:2");
+
+    private class LocalNetworkSpecifier extends NetworkSpecifier {
+        private final int mId;
+
+        LocalNetworkSpecifier(int id) {
+            mId = id;
+        }
+
+        @Override
+        public boolean canBeSatisfiedBy(NetworkSpecifier other) {
+            return other instanceof LocalNetworkSpecifier
+                && mId == ((LocalNetworkSpecifier) other).mId;
+        }
+    }
 
     @Test
     public void testCapabilities() {
@@ -129,54 +144,108 @@ public class NetworkRequestTest {
     @Test
     @IgnoreUpTo(Build.VERSION_CODES.Q)
     public void testCanBeSatisfiedBy() {
-        final TelephonyNetworkSpecifier specifier1 = new TelephonyNetworkSpecifier.Builder()
-                .setSubscriptionId(1234 /* subId */)
-                .build();
-        final TelephonyNetworkSpecifier specifier2 = new TelephonyNetworkSpecifier.Builder()
-                .setSubscriptionId(5678 /* subId */)
-                .build();
-        final NetworkCapabilities cap = new NetworkCapabilities()
+        final LocalNetworkSpecifier specifier1 = new LocalNetworkSpecifier(1234 /* id */);
+        final LocalNetworkSpecifier specifier2 = new LocalNetworkSpecifier(5678 /* id */);
+
+        final NetworkCapabilities capCellularMmsInternet = new NetworkCapabilities()
                 .addTransportType(TRANSPORT_CELLULAR)
                 .addCapability(NET_CAPABILITY_MMS)
                 .addCapability(NET_CAPABILITY_INTERNET);
-        final NetworkCapabilities capDualTransport = new NetworkCapabilities(cap)
-                .addTransportType(TRANSPORT_VPN);
-        final NetworkCapabilities capWithSpecifier1 =
-                new NetworkCapabilities(cap).setNetworkSpecifier(specifier1);
-        final NetworkCapabilities capDiffTransportWithSpecifier1 = new NetworkCapabilities()
+        final NetworkCapabilities capCellularVpnMmsInternet =
+                new NetworkCapabilities(capCellularMmsInternet).addTransportType(TRANSPORT_VPN);
+        final NetworkCapabilities capCellularMmsInternetSpecifier1 =
+                new NetworkCapabilities(capCellularMmsInternet).setNetworkSpecifier(specifier1);
+        final NetworkCapabilities capVpnInternetSpecifier1 = new NetworkCapabilities()
                 .addCapability(NET_CAPABILITY_INTERNET)
                 .addTransportType(TRANSPORT_VPN)
                 .setNetworkSpecifier(specifier1);
+        final NetworkCapabilities capCellularMmsInternetMatchallspecifier =
+                new NetworkCapabilities(capCellularMmsInternet)
+                    .setNetworkSpecifier(new MatchAllNetworkSpecifier());
+        final NetworkCapabilities capCellularMmsInternetSpecifier2 =
+                new NetworkCapabilities(capCellularMmsInternet).setNetworkSpecifier(specifier2);
 
-        final NetworkRequest requestWithSpecifier1 = new NetworkRequest.Builder()
+        final NetworkRequest requestCellularInternetSpecifier1 = new NetworkRequest.Builder()
                 .addTransportType(TRANSPORT_CELLULAR)
                 .addCapability(NET_CAPABILITY_INTERNET)
                 .setNetworkSpecifier(specifier1)
                 .build();
-        assertFalse(requestWithSpecifier1.canBeSatisfiedBy(null));
-        assertFalse(requestWithSpecifier1.canBeSatisfiedBy(new NetworkCapabilities()));
-        assertTrue(requestWithSpecifier1.canBeSatisfiedBy(new NetworkCapabilities(cap)
-                .setNetworkSpecifier(new MatchAllNetworkSpecifier())));
-        assertTrue(requestWithSpecifier1.canBeSatisfiedBy(cap));
-        assertTrue(requestWithSpecifier1.canBeSatisfiedBy(capWithSpecifier1));
-        assertTrue(requestWithSpecifier1.canBeSatisfiedBy(capDualTransport));
-        assertFalse(requestWithSpecifier1.canBeSatisfiedBy(
-                new NetworkCapabilities(cap).setNetworkSpecifier(specifier2)));
+        assertFalse(requestCellularInternetSpecifier1.canBeSatisfiedBy(null));
+        assertFalse(requestCellularInternetSpecifier1.canBeSatisfiedBy(new NetworkCapabilities()));
+        assertTrue(requestCellularInternetSpecifier1.canBeSatisfiedBy(
+                capCellularMmsInternetMatchallspecifier));
+        assertFalse(requestCellularInternetSpecifier1.canBeSatisfiedBy(capCellularMmsInternet));
+        assertTrue(requestCellularInternetSpecifier1.canBeSatisfiedBy(
+                capCellularMmsInternetSpecifier1));
+        assertFalse(requestCellularInternetSpecifier1.canBeSatisfiedBy(capCellularVpnMmsInternet));
+        assertFalse(requestCellularInternetSpecifier1.canBeSatisfiedBy(
+                capCellularMmsInternetSpecifier2));
 
-        final NetworkRequest request = new NetworkRequest.Builder()
+        final NetworkRequest requestCellularInternet = new NetworkRequest.Builder()
                 .addTransportType(TRANSPORT_CELLULAR)
                 .addCapability(NET_CAPABILITY_INTERNET)
                 .build();
-        assertTrue(request.canBeSatisfiedBy(cap));
-        assertTrue(request.canBeSatisfiedBy(capWithSpecifier1));
-        assertTrue(request.canBeSatisfiedBy(
-                new NetworkCapabilities(cap).setNetworkSpecifier(specifier2)));
-        assertFalse(request.canBeSatisfiedBy(capDiffTransportWithSpecifier1));
-        assertTrue(request.canBeSatisfiedBy(capDualTransport));
+        assertTrue(requestCellularInternet.canBeSatisfiedBy(capCellularMmsInternet));
+        assertTrue(requestCellularInternet.canBeSatisfiedBy(capCellularMmsInternetSpecifier1));
+        assertTrue(requestCellularInternet.canBeSatisfiedBy(capCellularMmsInternetSpecifier2));
+        assertFalse(requestCellularInternet.canBeSatisfiedBy(capVpnInternetSpecifier1));
+        assertTrue(requestCellularInternet.canBeSatisfiedBy(capCellularVpnMmsInternet));
 
-        assertEquals(requestWithSpecifier1.canBeSatisfiedBy(capWithSpecifier1),
-                new NetworkCapabilities(capWithSpecifier1)
-                    .satisfiedByNetworkCapabilities(capWithSpecifier1));
+        testInvariantInCanBeSatisfiedBy();
+    }
+
+    private void testInvariantInCanBeSatisfiedBy() {
+        // Test invariant that result of NetworkRequest.canBeSatisfiedBy() should be the same with
+        // NetworkCapabilities.satisfiedByNetworkCapabilities().
+        final LocalNetworkSpecifier specifier1 = new LocalNetworkSpecifier(1234 /* id */);
+        final int uid = Process.myUid();
+        final ArraySet<UidRange> ranges = new ArraySet<>();
+        ranges.add(new UidRange(uid, uid));
+        final NetworkRequest requestCombination = new NetworkRequest.Builder()
+                .addTransportType(TRANSPORT_CELLULAR)
+                .addCapability(NET_CAPABILITY_INTERNET)
+                .setLinkUpstreamBandwidthKbps(1000)
+                .setNetworkSpecifier(specifier1)
+                .setSignalStrength(-123)
+                .setUids(ranges).build();
+        final NetworkCapabilities capCell = new NetworkCapabilities.Builder()
+                .addTransportType(TRANSPORT_CELLULAR).build();
+        assertCorrectlySatisfies(false, requestCombination, capCell);
+
+        final NetworkCapabilities capCellInternet = new NetworkCapabilities.Builder(capCell)
+                .addCapability(NET_CAPABILITY_INTERNET).build();
+        assertCorrectlySatisfies(false, requestCombination, capCellInternet);
+
+        final NetworkCapabilities capCellInternetBW =
+                new NetworkCapabilities.Builder(capCellInternet)
+                    .setLinkUpstreamBandwidthKbps(1024).build();
+        assertCorrectlySatisfies(false, requestCombination, capCellInternetBW);
+
+        final NetworkCapabilities capCellInternetBWSpecifier1 =
+                new NetworkCapabilities.Builder(capCellInternetBW)
+                    .setNetworkSpecifier(specifier1).build();
+        assertCorrectlySatisfies(false, requestCombination, capCellInternetBWSpecifier1);
+
+        final NetworkCapabilities capCellInternetBWSpecifier1Signal =
+                new NetworkCapabilities.Builder(capCellInternetBWSpecifier1)
+                    .setSignalStrength(-123).build();
+        assertCorrectlySatisfies(true, requestCombination,
+                capCellInternetBWSpecifier1Signal);
+
+        final NetworkCapabilities capCellInternetBWSpecifier1SignalUid =
+                new NetworkCapabilities.Builder(capCellInternetBWSpecifier1Signal)
+                    .setOwnerUid(uid)
+                    .setAdministratorUids(new int [] {uid}).build();
+        assertCorrectlySatisfies(true, requestCombination,
+                capCellInternetBWSpecifier1SignalUid);
+    }
+
+    private void assertCorrectlySatisfies(boolean expect, NetworkRequest request,
+            NetworkCapabilities nc) {
+        assertEquals(expect, request.canBeSatisfiedBy(nc));
+        assertEquals(
+                request.canBeSatisfiedBy(nc),
+                request.networkCapabilities.satisfiedByNetworkCapabilities(nc));
     }
 
     @Test @IgnoreUpTo(Build.VERSION_CODES.Q)
