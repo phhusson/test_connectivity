@@ -190,11 +190,11 @@ public class NetworkRequestTest {
         assertTrue(requestCellularInternet.canBeSatisfiedBy(capCellularMmsInternetSpecifier2));
         assertFalse(requestCellularInternet.canBeSatisfiedBy(capVpnInternetSpecifier1));
         assertTrue(requestCellularInternet.canBeSatisfiedBy(capCellularVpnMmsInternet));
-
-        testInvariantInCanBeSatisfiedBy();
     }
 
-    private void testInvariantInCanBeSatisfiedBy() {
+    @Test
+    @IgnoreUpTo(Build.VERSION_CODES.Q)
+    public void testInvariantInCanBeSatisfiedBy() {
         // Test invariant that result of NetworkRequest.canBeSatisfiedBy() should be the same with
         // NetworkCapabilities.satisfiedByNetworkCapabilities().
         final LocalNetworkSpecifier specifier1 = new LocalNetworkSpecifier(1234 /* id */);
