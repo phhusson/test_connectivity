@@ -39,6 +39,7 @@ java_defaults {
 
     static_libs: [
         "FrameworksNetCommonTests",
+        "TestNetworkStackLib",
         "core-tests-support",
         "compatibility-device-util-axt",
         "cts-net-utils",
