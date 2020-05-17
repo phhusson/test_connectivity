@@ -23,6 +23,7 @@ import com.android.tradefed.targetprep.ITargetPreparer;
 
 public class NetworkPolicyTestsPreparer implements ITargetPreparer {
     private ITestDevice mDevice;
+    private boolean mOriginalAirplaneModeEnabled;
     private String mOriginalAppStandbyEnabled;
     private String mOriginalBatteryStatsConstants;
     private final static String KEY_STABLE_CHARGING_DELAY_MS = "battery_charged_delay_ms";
@@ -39,13 +40,27 @@ public class NetworkPolicyTestsPreparer implements ITargetPreparer {
         setBatteryStatsConstants(
                 KEY_STABLE_CHARGING_DELAY_MS + "=" + DESIRED_STABLE_CHARGING_DELAY_MS);
         LogUtil.CLog.d("Original battery_saver_constants: " + mOriginalBatteryStatsConstants);
+
+        mOriginalAirplaneModeEnabled = getAirplaneModeEnabled();
+        // Turn off airplane mode in case another test left the device in that state.
+        setAirplaneModeEnabled(false);
+        LogUtil.CLog.d("Original airplane mode state: " + mOriginalAirplaneModeEnabled);
     }
 
     @Override
     public void tearDown(TestInformation testInformation, Throwable e)
             throws DeviceNotAvailableException {
+        setAirplaneModeEnabled(mOriginalAirplaneModeEnabled);
         setAppStandbyEnabled(mOriginalAppStandbyEnabled);
         setBatteryStatsConstants(mOriginalBatteryStatsConstants);
+    }
+
+    private void setAirplaneModeEnabled(boolean enable) throws DeviceNotAvailableException {
+        executeCmd("cmd connectivity airplane-mode " + (enable ? "enable" : "disable"));
+    }
+
+    private boolean getAirplaneModeEnabled() throws DeviceNotAvailableException {
+        return "enabled".equals(executeCmd("cmd connectivity airplane-mode").trim());
     }
 
     private void setAppStandbyEnabled(String appStandbyEnabled) throws DeviceNotAvailableException {
