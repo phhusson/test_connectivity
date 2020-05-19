@@ -26,7 +26,6 @@ import static android.net.TetheringManager.TETHERING_WIFI_P2P;
 import static android.net.TetheringManager.TETHER_ERROR_ENTITLEMENT_UNKNOWN;
 import static android.net.TetheringManager.TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION;
 import static android.net.TetheringManager.TETHER_ERROR_NO_ERROR;
-import static android.net.TetheringManager.TETHER_ERROR_TETHER_IFACE_ERROR;
 import static android.net.TetheringManager.TETHER_HARDWARE_OFFLOAD_FAILED;
 import static android.net.TetheringManager.TETHER_HARDWARE_OFFLOAD_STARTED;
 import static android.net.TetheringManager.TETHER_HARDWARE_OFFLOAD_STOPPED;
@@ -59,7 +58,10 @@ import android.net.TetheringManager.TetheringRequest;
 import android.net.cts.util.CtsNetUtils;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
+import android.os.PersistableBundle;
 import android.os.ResultReceiver;
+import android.telephony.CarrierConfigManager;
+import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 
 import androidx.annotation.NonNull;
@@ -676,6 +678,26 @@ public class TetheringManagerTest {
             mTM.requestLatestTetheringEntitlementResult(
                     TETHERING_WIFI, false, c -> c.run(), null);
         } catch (IllegalArgumentException expect) { }
+
+        // Override carrier config to ignore entitlement check.
+        final PersistableBundle bundle = new PersistableBundle();
+        bundle.putBoolean(CarrierConfigManager.KEY_REQUIRE_ENTITLEMENT_CHECKS_BOOL, false);
+        overrideCarrierConfig(bundle);
+
+        // Verify that requestLatestTetheringEntitlementResult() can get entitlement
+        // result TETHER_ERROR_NO_ERROR due to provisioning bypassed.
+        assertEntitlementResult(listener -> mTM.requestLatestTetheringEntitlementResult(
+                TETHERING_WIFI, false, c -> c.run(), listener), TETHER_ERROR_NO_ERROR);
+
+        // Reset carrier config.
+        overrideCarrierConfig(null);
+    }
+
+    private void overrideCarrierConfig(PersistableBundle bundle) {
+        final CarrierConfigManager configManager = (CarrierConfigManager) mContext
+                .getSystemService(Context.CARRIER_CONFIG_SERVICE);
+        final int subId = SubscriptionManager.getDefaultSubscriptionId();
+        configManager.overrideConfig(subId, bundle);
     }
 
     @Test
