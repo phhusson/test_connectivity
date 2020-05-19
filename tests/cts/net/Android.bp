@@ -77,6 +77,7 @@ android_test {
 android_test {
     name: "CtsNetTestCasesLatestSdk",
     defaults: ["CtsNetTestCasesDefaults"],
+    jni_uses_sdk_apis: true,
     min_sdk_version: "29",
     target_sdk_version: "29",
     test_suites: [
