@@ -76,7 +76,7 @@ public class Ikev2VpnTest {
     private static final String TAG = Ikev2VpnTest.class.getSimpleName();
 
     // Test vectors for IKE negotiation in test mode.
-    private static final String SUCCESSFUL_IKE_INIT_RESP =
+    private static final String SUCCESSFUL_IKE_INIT_RESP_V4 =
             "46b8eca1e0d72a18b2b5d9006d47a0022120222000000000000002d0220000300000002c01010004030000"
                     + "0c0100000c800e0100030000080300000c030000080200000400000008040000102800020800"
                     + "100000b8070f159fe5141d8754ca86f72ecc28d66f514927e96cbe9eec0adb42bf2c276a0ab7"
@@ -96,25 +96,53 @@ public class Ikev2VpnTest {
                     + "297b6ad169bccce4f66c5399c6e0be9120166f2900001c0000400428b8df2e66f69c8584a186"
                     + "c5eac66783551d49b72900001c000040054e7a622e802d5cbfb96d5f30a6e433994370173529"
                     + "0000080000402e290000100000402f00020003000400050000000800004014";
-    private static final String SUCCESSFUL_IKE_AUTH_RESP =
+    private static final String SUCCESSFUL_IKE_INIT_RESP_V6 =
+            "46b8eca1e0d72a1800d9ea1babce26bf2120222000000000000002d0220000300000002c01010004030000"
+                    + "0c0100000c800e0100030000080300000c030000080200000400000008040000102800020800"
+                    + "100000ea0e6dd9ca5930a9a45c323a41f64bfd8cdef7730f5fbff37d7c377da427f489a42aa8"
+                    + "c89233380e6e925990d49de35c2cdcf63a61302c731a4b3569df1ee1bf2457e55a6751838ede"
+                    + "abb75cc63ba5c9e4355e8e784f383a5efe8a44727dc14aeaf8dacc2620fb1c8875416dc07739"
+                    + "7fe4decc1bd514a9c7d270cf21fd734c63a25c34b30b68686e54e8a198f37f27cb491fe27235"
+                    + "fab5476b036d875ccab9a68d65fbf3006197f9bebbf94de0d3802b4fafe1d48d931ce3a1a346"
+                    + "2d65bd639e9bd7fa46299650a9dbaf9b324e40b466942d91a59f41ef8042f8474c4850ed0f63"
+                    + "e9238949d41cd8bbaea9aefdb65443a6405792839563aa5dc5c36b5ce8326ccf8a94d9622b85"
+                    + "038d390d5fc0299e14e1f022966d4ac66515f6108ca04faec44821fe5bbf2ed4f84ff5671219"
+                    + "608cb4c36b44a31ba010c9088f8d5ff943bb9ff857f74be1755f57a5783874adc57f42bb174e"
+                    + "4ad3215de628707014dbcb1707bd214658118fdd7a42b3e1638b991ce5b812a667f1145be811"
+                    + "685e3cd3baf9b18d062657b64c206a4d19a531c252a6a51a04aeaf42c618620cdbab65baca23"
+                    + "82c57ed888422aeaacf7f1bc3fe2247ff7e7eaca218b74d7b31d02f2b0afa123f802529e7e6c"
+                    + "3259d418290740ddbf55686e26998d7edcbbf895664972fed666f2f20af40503aa2af436ec6d"
+                    + "4ec981ab19b9088755d94ae7a7c2066ea331d4e56e290000243fefe5555fce552d57a84e682c"
+                    + "d4a6dfb3f2f94a94464d5bec3d88b88e9559642900001c00004004eb4afff764e7b79bca78b1"
+                    + "3a89100d36d678ae982900001c00004005d177216a3c26f782076e12570d40bfaaa148822929"
+                    + "0000080000402e290000100000402f00020003000400050000000800004014";
+    private static final String SUCCESSFUL_IKE_AUTH_RESP_V4 =
             "46b8eca1e0d72a18b2b5d9006d47a0022e20232000000001000000e0240000c420a2500a3da4c66fa6929e"
                     + "600f36349ba0e38de14f78a3ad0416cba8c058735712a3d3f9a0a6ed36de09b5e9e02697e7c4"
                     + "2d210ac86cfbd709503cfa51e2eab8cfdc6427d136313c072968f6506a546eb5927164200592"
                     + "6e36a16ee994e63f029432a67bc7d37ca619e1bd6e1678df14853067ecf816b48b81e8746069"
                     + "406363e5aa55f13cb2afda9dbebee94256c29d630b17dd7f1ee52351f92b6e1c3d8551c513f1"
                     + "d74ac52a80b2041397e109fe0aeb3c105b0d4be0ae343a943398764281";
+    private static final String SUCCESSFUL_IKE_AUTH_RESP_V6 =
+            "46b8eca1e0d72a1800d9ea1babce26bf2e20232000000001000000f0240000d4aaf6eaa6c06b50447e6f54"
+                    + "827fd8a9d9d6ac8015c1ebb3e8cb03fc6e54b49a107441f50004027cc5021600828026367f03"
+                    + "bc425821cd7772ee98637361300c9b76056e874fea2bd4a17212370b291894264d8c023a01d1"
+                    + "c3b691fd4b7c0b534e8c95af4c4638e2d125cb21c6267e2507cd745d72e8da109c47b9259c6c"
+                    + "57a26f6bc5b337b9b9496d54bdde0333d7a32e6e1335c9ee730c3ecd607a8689aa7b0577b74f"
+                    + "3bf437696a9fd5fc0aee3ed346cd9e15d1dda293df89eb388a8719388a60ca7625754de12cdb"
+                    + "efe4c886c5c401";
     private static final long IKE_INITIATOR_SPI = Long.parseLong("46B8ECA1E0D72A18", 16);
 
     private static final InetAddress LOCAL_OUTER_4 = InetAddress.parseNumericAddress("192.0.2.1");
     private static final InetAddress LOCAL_OUTER_6 =
-            InetAddress.parseNumericAddress("2001:db8:1::1");
+            InetAddress.parseNumericAddress("2001:db8::1");
 
     private static final int IP4_PREFIX_LEN = 32;
     private static final int IP6_PREFIX_LEN = 128;
 
     // TODO: Use IPv6 address when we can generate test vectors (GCE does not allow IPv6 yet).
     private static final String TEST_SERVER_ADDR_V4 = "192.0.2.2";
-    private static final String TEST_SERVER_ADDR = "2001:db8::1";
+    private static final String TEST_SERVER_ADDR_V6 = "2001:db8::2";
     private static final String TEST_IDENTITY = "client.cts.android.com";
     private static final List<String> TEST_ALLOWED_ALGORITHMS =
             Arrays.asList(IpSecAlgorithm.AUTH_CRYPT_AES_GCM);
@@ -174,7 +202,7 @@ public class Ikev2VpnTest {
 
     private Ikev2VpnProfile buildIkev2VpnProfilePsk(boolean isRestrictedToTestNetworks)
             throws Exception {
-        return buildIkev2VpnProfilePsk(TEST_SERVER_ADDR, isRestrictedToTestNetworks);
+        return buildIkev2VpnProfilePsk(TEST_SERVER_ADDR_V6, isRestrictedToTestNetworks);
     }
 
     private Ikev2VpnProfile buildIkev2VpnProfilePsk(
@@ -188,7 +216,7 @@ public class Ikev2VpnTest {
     private Ikev2VpnProfile buildIkev2VpnProfileUsernamePassword(boolean isRestrictedToTestNetworks)
             throws Exception {
         final Ikev2VpnProfile.Builder builder =
-                new Ikev2VpnProfile.Builder(TEST_SERVER_ADDR, TEST_IDENTITY)
+                new Ikev2VpnProfile.Builder(TEST_SERVER_ADDR_V6, TEST_IDENTITY)
                         .setAuthUsernamePassword(TEST_USER, TEST_PASSWORD, mServerRootCa);
 
         return buildIkev2VpnProfileCommon(builder, isRestrictedToTestNetworks);
@@ -197,7 +225,7 @@ public class Ikev2VpnTest {
     private Ikev2VpnProfile buildIkev2VpnProfileDigitalSignature(boolean isRestrictedToTestNetworks)
             throws Exception {
         final Ikev2VpnProfile.Builder builder =
-                new Ikev2VpnProfile.Builder(TEST_SERVER_ADDR, TEST_IDENTITY)
+                new Ikev2VpnProfile.Builder(TEST_SERVER_ADDR_V6, TEST_IDENTITY)
                         .setAuthDigitalSignature(
                                 mUserCertKey.cert, mUserCertKey.key, mServerRootCa);
 
@@ -205,7 +233,7 @@ public class Ikev2VpnTest {
     }
 
     private void checkBasicIkev2VpnProfile(@NonNull Ikev2VpnProfile profile) throws Exception {
-        assertEquals(TEST_SERVER_ADDR, profile.getServerAddr());
+        assertEquals(TEST_SERVER_ADDR_V6, profile.getServerAddr());
         assertEquals(TEST_IDENTITY, profile.getUserIdentity());
         assertEquals(TEST_PROXY_INFO, profile.getProxyInfo());
         assertEquals(TEST_ALLOWED_ALGORITHMS, profile.getAllowedAlgorithms());
@@ -355,12 +383,18 @@ public class Ikev2VpnTest {
         }
     }
 
-    private void checkStartStopVpnProfileBuildsNetworks(IkeTunUtils tunUtils) throws Exception {
+    private void checkStartStopVpnProfileBuildsNetworks(IkeTunUtils tunUtils, boolean testIpv6)
+            throws Exception {
+        String serverAddr = testIpv6 ? TEST_SERVER_ADDR_V6 : TEST_SERVER_ADDR_V4;
+        String initResp = testIpv6 ? SUCCESSFUL_IKE_INIT_RESP_V6 : SUCCESSFUL_IKE_INIT_RESP_V4;
+        String authResp = testIpv6 ? SUCCESSFUL_IKE_AUTH_RESP_V6 : SUCCESSFUL_IKE_AUTH_RESP_V4;
+        boolean hasNat = !testIpv6;
+
         // Requires MANAGE_TEST_NETWORKS to provision a test-mode profile.
         mCtsNetUtils.setAppopPrivileged(AppOpsManager.OP_ACTIVATE_PLATFORM_VPN, true);
 
         final Ikev2VpnProfile profile =
-                buildIkev2VpnProfilePsk(TEST_SERVER_ADDR_V4, true /* isRestrictedToTestNetworks */);
+                buildIkev2VpnProfilePsk(serverAddr, true /* isRestrictedToTestNetworks */);
         assertNull(sVpnMgr.provisionVpnProfile(profile));
 
         sVpnMgr.startProvisionedVpnProfile();
@@ -368,9 +402,9 @@ public class Ikev2VpnTest {
         // Inject IKE negotiation
         int expectedMsgId = 0;
         tunUtils.awaitReqAndInjectResp(IKE_INITIATOR_SPI, expectedMsgId++, false /* isEncap */,
-                HexDump.hexStringToByteArray(SUCCESSFUL_IKE_INIT_RESP));
-        tunUtils.awaitReqAndInjectResp(IKE_INITIATOR_SPI, expectedMsgId++, true /* isEncap */,
-                HexDump.hexStringToByteArray(SUCCESSFUL_IKE_AUTH_RESP));
+                HexDump.hexStringToByteArray(initResp));
+        tunUtils.awaitReqAndInjectResp(IKE_INITIATOR_SPI, expectedMsgId++, hasNat /* isEncap */,
+                HexDump.hexStringToByteArray(authResp));
 
         // Verify the VPN network came up
         final NetworkRequest nr = new NetworkRequest.Builder()
@@ -387,7 +421,7 @@ public class Ikev2VpnTest {
         assertEquals(vpnNetwork, cb.lastLostNetwork);
     }
 
-    private void doTestStartStopVpnProfile() throws Exception {
+    private void doTestStartStopVpnProfile(boolean testIpv6) throws Exception {
         // Non-final; these variables ensure we clean up properly after our test if we have
         // allocated test network resources
         final TestNetworkManager tnm = sContext.getSystemService(TestNetworkManager.class);
@@ -402,10 +436,11 @@ public class Ikev2VpnTest {
                             new LinkAddress(LOCAL_OUTER_6, IP6_PREFIX_LEN)});
 
             // Hold on to this callback to ensure network does not get reaped.
-            tunNetworkCallback = mCtsNetUtils.setupAndGetTestNetwork(testIface.getInterfaceName());
+            tunNetworkCallback = mCtsNetUtils.setupAndGetTestNetwork(
+                    testIface.getInterfaceName());
             final IkeTunUtils tunUtils = new IkeTunUtils(testIface.getFileDescriptor());
 
-            checkStartStopVpnProfileBuildsNetworks(tunUtils);
+            checkStartStopVpnProfileBuildsNetworks(tunUtils, testIpv6);
         } finally {
             // Make sure to stop the VPN profile. This is safe to call multiple times.
             sVpnMgr.stopProvisionedVpnProfile();
@@ -426,12 +461,22 @@ public class Ikev2VpnTest {
     }
 
     @Test
-    public void testStartStopVpnProfile() throws Exception {
+    public void testStartStopVpnProfileV4() throws Exception {
         assumeTrue(mCtsNetUtils.hasIpsecTunnelsFeature());
 
         // Requires shell permission to update appops.
         runWithShellPermissionIdentity(() -> {
-            doTestStartStopVpnProfile();
+            doTestStartStopVpnProfile(false);
+        });
+    }
+
+    @Test
+    public void testStartStopVpnProfileV6() throws Exception {
+        assumeTrue(mCtsNetUtils.hasIpsecTunnelsFeature());
+
+        // Requires shell permission to update appops.
+        runWithShellPermissionIdentity(() -> {
+            doTestStartStopVpnProfile(true);
         });
     }
 
