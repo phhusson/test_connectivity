@@ -41,6 +41,7 @@ public class MultinetworkApiTest extends AndroidTestCase {
 
     private static final String TAG = "MultinetworkNativeApiTest";
     static final String GOOGLE_PRIVATE_DNS_SERVER = "dns.google";
+    static final int PRIVATE_DNS_SETTING_TIMEOUT_MS = 2_000;
 
     /**
      * @return 0 on success
@@ -68,12 +69,24 @@ public class MultinetworkApiTest extends AndroidTestCase {
         mCM = (ConnectivityManager) getContext().getSystemService(Context.CONNECTIVITY_SERVICE);
         mCR = getContext().getContentResolver();
         mCtsNetUtils = new CtsNetUtils(getContext());
-        mCtsNetUtils.storePrivateDnsSetting();
+        storePrivateDnsSetting();
     }
 
     @Override
     protected void tearDown() throws Exception {
         super.tearDown();
+    }
+
+    private void storePrivateDnsSetting() {
+        // Store private DNS setting
+        mOldMode = Settings.Global.getString(mCR, Settings.Global.PRIVATE_DNS_MODE);
+        mOldDnsSpecifier = Settings.Global.getString(mCR, Settings.Global.PRIVATE_DNS_SPECIFIER);
+    }
+
+    private void restorePrivateDnsSetting() {
+        // restore private DNS setting
+        Settings.Global.putString(mCR, Settings.Global.PRIVATE_DNS_MODE, mOldMode);
+        Settings.Global.putString(mCR, Settings.Global.PRIVATE_DNS_SPECIFIER, mOldDnsSpecifier);
     }
 
     private Network[] getTestableNetworks() {
@@ -226,15 +239,17 @@ public class MultinetworkApiTest extends AndroidTestCase {
         // Enable private DNS strict mode and set server to dns.google before doing NxDomain test.
         // b/144521720
         try {
-            mCtsNetUtils.setPrivateDnsStrictMode(GOOGLE_PRIVATE_DNS_SERVER);
+            Settings.Global.putString(mCR, Settings.Global.PRIVATE_DNS_MODE, "hostname");
+            Settings.Global.putString(mCR,
+                    Settings.Global.PRIVATE_DNS_SPECIFIER, GOOGLE_PRIVATE_DNS_SERVER);
             for (Network network : getTestableNetworks()) {
               // Wait for private DNS setting to propagate.
               mCtsNetUtils.awaitPrivateDnsSetting("NxDomain test wait private DNS setting timeout",
-                        network, GOOGLE_PRIVATE_DNS_SERVER, true);
+                        network, GOOGLE_PRIVATE_DNS_SERVER, PRIVATE_DNS_SETTING_TIMEOUT_MS, true);
               runResNnxDomainCheck(network.getNetworkHandle());
             }
         } finally {
-            mCtsNetUtils.restorePrivateDnsSetting();
+            restorePrivateDnsSetting();
         }
     }
 }
