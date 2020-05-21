@@ -20,6 +20,7 @@ import static android.app.AppOpsManager.OP_MANAGE_IPSEC_TUNNELS;
 import android.annotation.NonNull;
 import android.app.AppOpsManager;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.InetAddresses;
 import android.net.IpSecTransform;
@@ -366,6 +367,11 @@ abstract class IkeSessionTestBase extends IkeTestBase {
             this.ipSecTransform = ipSecTransform;
             this.direction = direction;
         }
+    }
+
+    /** Package private method to check if device has IPsec tunnels feature */
+    static boolean hasTunnelsFeature() {
+        return sContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_IPSEC_TUNNELS);
     }
 
     // TODO(b/148689509): Verify IKE Session setup using EAP and digital-signature-based auth
