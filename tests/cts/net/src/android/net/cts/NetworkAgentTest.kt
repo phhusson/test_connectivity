@@ -592,4 +592,50 @@ class NetworkAgentTest {
             assertNull(it.uri)
         }
     }
+
+    @Test
+    fun testTemporarilyUnmeteredCapability() {
+        // This test will create a networks with/without NET_CAPABILITY_TEMPORARILY_NOT_METERED
+        // and check that the callback reflects the capability changes.
+        // First create a request to make sure the network is kept up
+        val request1 = NetworkRequest.Builder()
+                .clearCapabilities()
+                .addTransportType(NetworkCapabilities.TRANSPORT_TEST)
+                .build()
+        val callback1 = TestableNetworkCallback(DEFAULT_TIMEOUT_MS).also {
+            registerNetworkCallback(request1, it)
+        }
+        requestNetwork(request1, callback1)
+
+        // Then file the interesting request
+        val request = NetworkRequest.Builder()
+                .clearCapabilities()
+                .addTransportType(NetworkCapabilities.TRANSPORT_TEST)
+                .build()
+        val callback = TestableNetworkCallback()
+        requestNetwork(request, callback)
+
+        // Connect the network
+        createConnectedNetworkAgent().let { (agent, _) ->
+            callback.expectAvailableThenValidatedCallbacks(agent.network)
+
+            // Send TEMP_NOT_METERED and check that the callback is called appropriately.
+            val nc1 = NetworkCapabilities(agent.nc)
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED)
+            agent.sendNetworkCapabilities(nc1)
+            callback.expectCapabilitiesThat(agent.network) {
+                it.hasCapability(NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED)
+            }
+
+            // Remove TEMP_NOT_METERED and check that the callback is called appropriately.
+            val nc2 = NetworkCapabilities(agent.nc)
+                    .removeCapability(NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED)
+            agent.sendNetworkCapabilities(nc2)
+            callback.expectCapabilitiesThat(agent.network) {
+                !it.hasCapability(NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED)
+            }
+        }
+
+        // tearDown() will unregister the requests and agents
+    }
 }
