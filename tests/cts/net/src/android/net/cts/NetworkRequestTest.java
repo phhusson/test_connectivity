@@ -18,6 +18,7 @@ package android.net.cts;
 
 import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_MMS;
+import static android.net.NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED;
 import static android.net.NetworkCapabilities.TRANSPORT_BLUETOOTH;
 import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 import static android.net.NetworkCapabilities.TRANSPORT_VPN;
@@ -84,6 +85,16 @@ public class NetworkRequestTest {
         final NetworkRequest nr = new NetworkRequest.Builder().clearCapabilities().build();
         // Verify request has no capabilities
         verifyNoCapabilities(nr);
+    }
+
+    @Test
+    public void testTemporarilyNotMeteredCapability() {
+        assertTrue(new NetworkRequest.Builder()
+                .addCapability(NET_CAPABILITY_TEMPORARILY_NOT_METERED).build()
+                .hasCapability(NET_CAPABILITY_TEMPORARILY_NOT_METERED));
+        assertFalse(new NetworkRequest.Builder()
+                .removeCapability(NET_CAPABILITY_TEMPORARILY_NOT_METERED).build()
+                .hasCapability(NET_CAPABILITY_TEMPORARILY_NOT_METERED));
     }
 
     private void verifyNoCapabilities(NetworkRequest nr) {
