@@ -122,7 +122,9 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
     }
 
     @Test
-    public void testIkeSessionSetupAndManageChildSas() throws Exception {
+    public void testIkeSessionSetupAndChildSessionSetupWithTunnelMode() throws Exception {
+        if (!hasTunnelsFeature()) return;
+
         // Open IKE Session
         IkeSession ikeSession = openIkeSession(createIkeSessionParams(mRemoteAddress));
         int expectedMsgId = 0;
@@ -210,7 +212,9 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
     }
 
     @Test
-    public void testIkeSessionKill() throws Exception {
+    public void testIkeSessionKillWithTunnelMode() throws Exception {
+        if (!hasTunnelsFeature()) return;
+
         // Open IKE Session
         IkeSession ikeSession = openIkeSession(createIkeSessionParams(mRemoteAddress));
         int expectedMsgId = 0;
@@ -254,5 +258,7 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
         assertArrayEquals(EXPECTED_PROTOCOL_ERROR_DATA_NONE, protocolException.getErrorData());
     }
 
-    // TODO(b/148689509): Verify rekey process and handling IKE_AUTH failure
+    // TODO(b/155821007): Verify rekey process and handling IKE_AUTH failure
+
+    // TODO(b/155821007): Test creating transport mode Child SA
 }
