@@ -86,7 +86,6 @@ public class DnsResolverTest extends AndroidTestCase {
     static final int CANCEL_RETRY_TIMES = 5;
     static final int QUERY_TIMES = 10;
     static final int NXDOMAIN = 3;
-    static final int PRIVATE_DNS_SETTING_TIMEOUT_MS = 6_000;
 
     private ContentResolver mCR;
     private ConnectivityManager mCM;
@@ -107,30 +106,13 @@ public class DnsResolverTest extends AndroidTestCase {
         mExecutorInline = (Runnable r) -> r.run();
         mCR = getContext().getContentResolver();
         mCtsNetUtils = new CtsNetUtils(getContext());
-        storePrivateDnsSetting();
+        mCtsNetUtils.storePrivateDnsSetting();
     }
 
     @Override
     protected void tearDown() throws Exception {
-        restorePrivateDnsSetting();
+        mCtsNetUtils.restorePrivateDnsSetting();
         super.tearDown();
-    }
-
-    private void storePrivateDnsSetting() {
-        // Store private DNS setting
-        mOldMode = Settings.Global.getString(mCR, Settings.Global.PRIVATE_DNS_MODE);
-        mOldDnsSpecifier = Settings.Global.getString(mCR, Settings.Global.PRIVATE_DNS_SPECIFIER);
-    }
-
-    private void restorePrivateDnsSetting() throws InterruptedException {
-        // restore private DNS setting
-        Settings.Global.putString(mCR, Settings.Global.PRIVATE_DNS_MODE, mOldMode);
-        if ("hostname".equals(mOldMode)) {
-            Settings.Global.putString(
-                mCR, Settings.Global.PRIVATE_DNS_SPECIFIER, mOldDnsSpecifier);
-            mCtsNetUtils.awaitPrivateDnsSetting("restorePrivateDnsSetting timeout",
-                    mCM.getActiveNetwork(), mOldDnsSpecifier, PRIVATE_DNS_SETTING_TIMEOUT_MS, true);
-        }
     }
 
     private static String byteArrayToHexString(byte[] bytes) {
@@ -416,16 +398,13 @@ public class DnsResolverTest extends AndroidTestCase {
         final String msg = "RawQuery " + TEST_NX_DOMAIN + " with private DNS";
         // Enable private DNS strict mode and set server to dns.google before doing NxDomain test.
         // b/144521720
-        Settings.Global.putString(mCR, Settings.Global.PRIVATE_DNS_MODE, "hostname");
-        Settings.Global.putString(mCR,
-                Settings.Global.PRIVATE_DNS_SPECIFIER, GOOGLE_PRIVATE_DNS_SERVER);
+        mCtsNetUtils.setPrivateDnsStrictMode(GOOGLE_PRIVATE_DNS_SERVER);
         for (Network network :  getTestableNetworks()) {
             final Network networkForPrivateDns =
                     (network != null) ? network : mCM.getActiveNetwork();
             assertNotNull("Can't find network to await private DNS on", networkForPrivateDns);
             mCtsNetUtils.awaitPrivateDnsSetting(msg + " wait private DNS setting timeout",
-                    networkForPrivateDns, GOOGLE_PRIVATE_DNS_SERVER,
-                    PRIVATE_DNS_SETTING_TIMEOUT_MS, true);
+                    networkForPrivateDns, GOOGLE_PRIVATE_DNS_SERVER, true);
             final VerifyCancelCallback callback = new VerifyCancelCallback(msg);
             mDns.rawQuery(network, TEST_NX_DOMAIN, CLASS_IN, TYPE_AAAA, FLAG_NO_CACHE_LOOKUP,
                     executor, null, callback);
@@ -688,9 +667,7 @@ public class DnsResolverTest extends AndroidTestCase {
         final Network[] testNetworks = getTestableNetworks();
 
         // Set an invalid private DNS server
-        Settings.Global.putString(mCR, Settings.Global.PRIVATE_DNS_MODE, "hostname");
-        Settings.Global.putString(mCR,
-                Settings.Global.PRIVATE_DNS_SPECIFIER, INVALID_PRIVATE_DNS_SERVER);
+        mCtsNetUtils.setPrivateDnsStrictMode(INVALID_PRIVATE_DNS_SERVER);
         final String msg = "Test PrivateDnsBypass " + TEST_DOMAIN;
         for (Network network : testNetworks) {
             // This test cannot be ran with null network because we need to explicitly pass a
@@ -699,7 +676,7 @@ public class DnsResolverTest extends AndroidTestCase {
 
             // wait for private DNS setting propagating
             mCtsNetUtils.awaitPrivateDnsSetting(msg + " wait private DNS setting timeout",
-                    network, INVALID_PRIVATE_DNS_SERVER, PRIVATE_DNS_SETTING_TIMEOUT_MS, false);
+                    network, INVALID_PRIVATE_DNS_SERVER, false);
 
             final CountDownLatch latch = new CountDownLatch(1);
             final DnsResolver.Callback<List<InetAddress>> errorCallback =
