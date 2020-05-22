@@ -121,7 +121,9 @@ public class IkeTunUtils extends TunUtils {
                             + " and message ID "
                             + expectedMsgId);
         }
-        return null;
+
+        throw new IllegalStateException(
+                "Hit an impossible case where fail() didn't throw an exception");
     }
 
     private static boolean isIke(
