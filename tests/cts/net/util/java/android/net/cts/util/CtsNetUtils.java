@@ -17,6 +17,7 @@
 package android.net.cts.util;
 
 import static android.Manifest.permission.NETWORK_SETTINGS;
+import static android.net.ConnectivityManager.PRIVATE_DNS_MODE_OPPORTUNISTIC;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
 import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 
@@ -28,6 +29,7 @@ import static org.junit.Assert.fail;
 import android.annotation.NonNull;
 import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.ContentResolver;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.ConnectivityManager;
@@ -39,6 +41,7 @@ import android.net.NetworkInfo;
 import android.net.NetworkInfo.State;
 import android.net.NetworkRequest;
 import android.net.wifi.WifiManager;
+import android.provider.Settings;
 import android.system.Os;
 import android.system.OsConstants;
 import android.util.Log;
@@ -59,6 +62,7 @@ public final class CtsNetUtils {
     private static final int SOCKET_TIMEOUT_MS = 2000;
     private static final int PRIVATE_DNS_PROBE_MS = 1_000;
 
+    public static final int PRIVATE_DNS_SETTING_TIMEOUT_MS = 6_000;
     public static final int HTTP_PORT = 80;
     public static final String TEST_HOST = "connectivitycheck.gstatic.com";
     public static final String HTTP_REQUEST =
@@ -69,15 +73,19 @@ public final class CtsNetUtils {
     public static final String NETWORK_CALLBACK_ACTION =
             "ConnectivityManagerTest.NetworkCallbackAction";
 
-    private Context mContext;
-    private ConnectivityManager mCm;
-    private WifiManager mWifiManager;
+    private final Context mContext;
+    private final ConnectivityManager mCm;
+    private final ContentResolver mCR;
+    private final WifiManager mWifiManager;
     private TestNetworkCallback mCellNetworkCallback;
+    private String mOldPrivateDnsMode;
+    private String mOldPrivateDnsSpecifier;
 
     public CtsNetUtils(Context context) {
         mContext = context;
         mCm = (ConnectivityManager) mContext.getSystemService(Context.CONNECTIVITY_SERVICE);
         mWifiManager = (WifiManager) mContext.getSystemService(Context.WIFI_SERVICE);
+        mCR = context.getContentResolver();
     }
 
     // Toggle WiFi twice, leaving it in the state it started in
@@ -249,9 +257,51 @@ public final class CtsNetUtils {
         return s;
     }
 
+    public void storePrivateDnsSetting() {
+        // Store private DNS setting
+        mOldPrivateDnsMode = Settings.Global.getString(mCR, Settings.Global.PRIVATE_DNS_MODE);
+        mOldPrivateDnsSpecifier = Settings.Global.getString(mCR,
+                Settings.Global.PRIVATE_DNS_SPECIFIER);
+        // It's possible that there is no private DNS default value in Settings.
+        // Give it a proper default mode which is opportunistic mode.
+        if (mOldPrivateDnsMode == null) {
+            mOldPrivateDnsSpecifier = "";
+            mOldPrivateDnsMode = PRIVATE_DNS_MODE_OPPORTUNISTIC;
+            Settings.Global.putString(mCR,
+                    Settings.Global.PRIVATE_DNS_SPECIFIER, mOldPrivateDnsSpecifier);
+            Settings.Global.putString(mCR, Settings.Global.PRIVATE_DNS_MODE, mOldPrivateDnsMode);
+        }
+    }
+
+    public void restorePrivateDnsSetting() throws InterruptedException {
+        if (mOldPrivateDnsMode == null || mOldPrivateDnsSpecifier == null) {
+            return;
+        }
+        // restore private DNS setting
+        if ("hostname".equals(mOldPrivateDnsMode)) {
+            setPrivateDnsStrictMode(mOldPrivateDnsSpecifier);
+            awaitPrivateDnsSetting("restorePrivateDnsSetting timeout",
+                    mCm.getActiveNetwork(),
+                    mOldPrivateDnsSpecifier, true);
+        } else {
+            Settings.Global.putString(mCR, Settings.Global.PRIVATE_DNS_MODE, mOldPrivateDnsMode);
+        }
+    }
+
+    public void setPrivateDnsStrictMode(String server) {
+        // To reduce flake rate, set PRIVATE_DNS_SPECIFIER before PRIVATE_DNS_MODE. This ensures
+        // that if the previous private DNS mode was not "hostname", the system only sees one
+        // EVENT_PRIVATE_DNS_SETTINGS_CHANGED event instead of two.
+        Settings.Global.putString(mCR, Settings.Global.PRIVATE_DNS_SPECIFIER, server);
+        final String mode = Settings.Global.getString(mCR, Settings.Global.PRIVATE_DNS_MODE);
+        // If current private DNS mode is "hostname", we only need to set PRIVATE_DNS_SPECIFIER.
+        if (!"hostname".equals(mode)) {
+            Settings.Global.putString(mCR, Settings.Global.PRIVATE_DNS_MODE, "hostname");
+        }
+    }
+
     public void awaitPrivateDnsSetting(@NonNull String msg, @NonNull Network network,
-            @NonNull String server, int timeoutMs,
-            boolean requiresValidatedServers) throws InterruptedException {
+            @NonNull String server, boolean requiresValidatedServers) throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
         NetworkRequest request = new NetworkRequest.Builder().clearCapabilities().build();
         NetworkCallback callback = new NetworkCallback() {
@@ -266,7 +316,7 @@ public final class CtsNetUtils {
             }
         };
         mCm.registerNetworkCallback(request, callback);
-        assertTrue(msg, latch.await(timeoutMs, TimeUnit.MILLISECONDS));
+        assertTrue(msg, latch.await(PRIVATE_DNS_SETTING_TIMEOUT_MS, TimeUnit.MILLISECONDS));
         mCm.unregisterNetworkCallback(callback);
         // Wait some time for NetworkMonitor's private DNS probe to complete. If we do not do
         // this, then the test could complete before the NetworkMonitor private DNS probe
