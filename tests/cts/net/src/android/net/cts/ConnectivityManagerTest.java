@@ -16,13 +16,17 @@
 
 package android.net.cts;
 
+import static android.Manifest.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS;
 import static android.content.pm.PackageManager.FEATURE_ETHERNET;
 import static android.content.pm.PackageManager.FEATURE_TELEPHONY;
-import static android.content.pm.PackageManager.FEATURE_WIFI;
 import static android.content.pm.PackageManager.FEATURE_USB_HOST;
+import static android.content.pm.PackageManager.FEATURE_WIFI;
+import static android.content.pm.PackageManager.GET_PERMISSIONS;
+import static android.content.pm.PackageManager.PERMISSION_GRANTED;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_IMS;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED;
+import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED;
 import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
 import static android.net.cts.util.CtsNetUtils.ConnectivityActionReceiver;
 import static android.net.cts.util.CtsNetUtils.HTTP_PORT;
@@ -45,6 +49,7 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.net.ConnectivityManager;
@@ -59,10 +64,12 @@ import android.net.NetworkInfo;
 import android.net.NetworkInfo.DetailedState;
 import android.net.NetworkInfo.State;
 import android.net.NetworkRequest;
+import android.net.NetworkUtils;
 import android.net.SocketKeepalive;
 import android.net.cts.util.CtsNetUtils;
 import android.net.util.KeepaliveUtils;
 import android.net.wifi.WifiManager;
+import android.os.Binder;
 import android.os.Build;
 import android.os.Looper;
 import android.os.MessageQueue;
@@ -77,6 +84,8 @@ import android.util.Log;
 import android.util.Pair;
 
 import androidx.test.InstrumentationRegistry;
+
+import com.android.internal.util.ArrayUtils;
 
 import libcore.io.Streams;
 
@@ -1279,5 +1288,39 @@ public class ConnectivityManagerTest extends AndroidTestCase {
     private static void assertGreaterOrEqual(long greater, long lesser) {
         assertTrue("" + greater + " expected to be greater than or equal to " + lesser,
                 greater >= lesser);
+    }
+
+    /**
+     * Verifies that apps are not allowed to access restricted networks even if they declare the
+     * CONNECTIVITY_USE_RESTRICTED_NETWORKS permission in their manifests.
+     * See. b/144679405.
+     */
+    @AppModeFull(reason = "Cannot get WifiManager in instant app mode")
+    public void testRestrictedNetworkPermission() throws Exception {
+        // Ensure that CONNECTIVITY_USE_RESTRICTED_NETWORKS isn't granted to this package.
+        final PackageInfo app = mPackageManager.getPackageInfo(mContext.getPackageName(),
+                GET_PERMISSIONS);
+        final int index = ArrayUtils.indexOf(
+                app.requestedPermissions, CONNECTIVITY_USE_RESTRICTED_NETWORKS);
+        assertTrue(index >= 0);
+        assertTrue(app.requestedPermissionsFlags[index] != PERMISSION_GRANTED);
+
+        // Ensure that NetworkUtils.queryUserAccess always returns false since this package should
+        // not have netd system permission to call this function.
+        final Network wifiNetwork = ensureWifiConnected();
+        assertFalse(NetworkUtils.queryUserAccess(Binder.getCallingUid(), wifiNetwork.netId));
+
+        // Ensure that this package cannot bind to any restricted network that's currently
+        // connected.
+        Network[] networks = mCm.getAllNetworks();
+        for (Network network : networks) {
+            NetworkCapabilities nc = mCm.getNetworkCapabilities(network);
+            if (nc != null && !nc.hasCapability(NET_CAPABILITY_NOT_RESTRICTED)) {
+                try {
+                    network.bindSocket(new Socket());
+                    fail("Bind to restricted network " + network + " unexpectedly succeeded");
+                } catch (IOException expected) {}
+            }
+        }
     }
 }
