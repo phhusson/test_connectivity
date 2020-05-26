@@ -87,7 +87,7 @@ public class NetworkRequestTest {
         verifyNoCapabilities(nr);
     }
 
-    @Test
+    @Test @IgnoreUpTo(Build.VERSION_CODES.Q)
     public void testTemporarilyNotMeteredCapability() {
         assertTrue(new NetworkRequest.Builder()
                 .addCapability(NET_CAPABILITY_TEMPORARILY_NOT_METERED).build()
