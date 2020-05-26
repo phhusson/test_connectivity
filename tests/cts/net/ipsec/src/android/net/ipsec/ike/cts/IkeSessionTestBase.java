@@ -66,6 +66,7 @@ import org.junit.runner.RunWith;
 
 import java.net.Inet4Address;
 import java.net.InetAddress;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -94,15 +95,29 @@ abstract class IkeSessionTestBase extends IkeTestBase {
     // Package-wide common expected results that will be shared by all IKE/Child SA creation tests
     static final String EXPECTED_REMOTE_APP_VERSION_EMPTY = "";
     static final byte[] EXPECTED_PROTOCOL_ERROR_DATA_NONE = new byte[0];
+
+    static final InetAddress EXPECTED_DNS_SERVERS_ONE =
+            InetAddresses.parseNumericAddress("8.8.8.8");
+    static final InetAddress EXPECTED_DNS_SERVERS_TWO =
+            InetAddresses.parseNumericAddress("8.8.4.4");
+
     static final InetAddress EXPECTED_INTERNAL_ADDR =
             InetAddresses.parseNumericAddress("198.51.100.10");
     static final LinkAddress EXPECTED_INTERNAL_LINK_ADDR =
             new LinkAddress(EXPECTED_INTERNAL_ADDR, IP4_PREFIX_LEN);
+    static final InetAddress EXPECTED_INTERNAL_ADDR_V6 =
+            InetAddresses.parseNumericAddress("2001:db8::2");
+    static final LinkAddress EXPECTED_INTERNAL_LINK_ADDR_V6 =
+            new LinkAddress(EXPECTED_INTERNAL_ADDR_V6, IP6_PREFIX_LEN);
 
     static final IkeTrafficSelector TUNNEL_MODE_INBOUND_TS =
             new IkeTrafficSelector(
                     MIN_PORT, MAX_PORT, EXPECTED_INTERNAL_ADDR, EXPECTED_INTERNAL_ADDR);
     static final IkeTrafficSelector TUNNEL_MODE_OUTBOUND_TS = DEFAULT_V4_TS;
+    static final IkeTrafficSelector TUNNEL_MODE_INBOUND_TS_V6 =
+            new IkeTrafficSelector(
+                    MIN_PORT, MAX_PORT, EXPECTED_INTERNAL_ADDR_V6, EXPECTED_INTERNAL_ADDR_V6);
+    static final IkeTrafficSelector TUNNEL_MODE_OUTBOUND_TS_V6 = DEFAULT_V6_TS;
 
     // This value is align with the test vectors hex that are generated in an IPv4 environment
     static final IkeTrafficSelector TRANSPORT_MODE_OUTBOUND_TS =
@@ -179,7 +194,7 @@ abstract class IkeSessionTestBase extends IkeTestBase {
     }
 
     void setUpTestNetwork(InetAddress localAddr) throws Exception {
-        int prefixLen = localAddr instanceof Inet4Address ? IP4_PREFIX_LEN : IP4_PREFIX_LEN;
+        int prefixLen = localAddr instanceof Inet4Address ? IP4_PREFIX_LEN : IP6_PREFIX_LEN;
 
         TestNetworkInterface testIface =
                 sTNM.createTunInterface(new LinkAddress[] {new LinkAddress(localAddr, prefixLen)});
@@ -273,11 +288,27 @@ abstract class IkeSessionTestBase extends IkeTestBase {
     PortPair performSetupIkeAndFirstChildBlocking(String ikeInitRespHex, String... ikeAuthRespHexes)
             throws Exception {
         return performSetupIkeAndFirstChildBlocking(
-                ikeInitRespHex, 1 /* expectedAuthReqPktCnt */, ikeAuthRespHexes);
+                ikeInitRespHex,
+                1 /* expectedAuthReqPktCnt */,
+                true /*expectedAuthUseEncap*/,
+                ikeAuthRespHexes);
     }
 
     PortPair performSetupIkeAndFirstChildBlocking(
-            String ikeInitRespHex, int expectedAuthReqPktCnt, String... ikeAuthRespHexes)
+            String ikeInitRespHex, boolean expectedAuthUseEncap, String... ikeAuthRespHexes)
+            throws Exception {
+        return performSetupIkeAndFirstChildBlocking(
+                ikeInitRespHex,
+                1 /* expectedAuthReqPktCnt */,
+                expectedAuthUseEncap,
+                ikeAuthRespHexes);
+    }
+
+    PortPair performSetupIkeAndFirstChildBlocking(
+            String ikeInitRespHex,
+            int expectedAuthReqPktCnt,
+            boolean expectedAuthUseEncap,
+            String... ikeAuthRespHexes)
             throws Exception {
         mTunUtils.awaitReqAndInjectResp(
                 IKE_DETERMINISTIC_INITIATOR_SPI,
@@ -290,7 +321,7 @@ abstract class IkeSessionTestBase extends IkeTestBase {
                         .awaitReqAndInjectResp(
                                 IKE_DETERMINISTIC_INITIATOR_SPI,
                                 1 /* expectedMsgId */,
-                                true /* expectedUseEncap */,
+                                expectedAuthUseEncap,
                                 expectedAuthReqPktCnt,
                                 ikeAuthRespHexes)
                         .get(0);
@@ -298,11 +329,13 @@ abstract class IkeSessionTestBase extends IkeTestBase {
     }
 
     void performCloseIkeBlocking(int expectedMsgId, String deleteIkeRespHex) throws Exception {
+        performCloseIkeBlocking(expectedMsgId, true /* expectedUseEncap*/, deleteIkeRespHex);
+    }
+
+    void performCloseIkeBlocking(
+            int expectedMsgId, boolean expectedUseEncap, String deleteIkeRespHex) throws Exception {
         mTunUtils.awaitReqAndInjectResp(
-                IKE_DETERMINISTIC_INITIATOR_SPI,
-                expectedMsgId,
-                true /* expectedUseEncap */,
-                deleteIkeRespHex);
+                IKE_DETERMINISTIC_INITIATOR_SPI, expectedMsgId, expectedUseEncap, deleteIkeRespHex);
     }
 
     /** Testing callback that allows caller to block current thread until a method get called */
@@ -480,13 +513,28 @@ abstract class IkeSessionTestBase extends IkeTestBase {
             List<IkeTrafficSelector> expectedOutboundTs,
             List<LinkAddress> expectedInternalAddresses)
             throws Exception {
+        verifyChildSessionSetupBlocking(
+                childCallback,
+                expectedInboundTs,
+                expectedOutboundTs,
+                expectedInternalAddresses,
+                new ArrayList<InetAddress>() /* expectedDnsServers */);
+    }
+
+    void verifyChildSessionSetupBlocking(
+            TestChildSessionCallback childCallback,
+            List<IkeTrafficSelector> expectedInboundTs,
+            List<IkeTrafficSelector> expectedOutboundTs,
+            List<LinkAddress> expectedInternalAddresses,
+            List<InetAddress> expectedDnsServers)
+            throws Exception {
         ChildSessionConfiguration childConfig = childCallback.awaitChildConfig();
         assertNotNull(childConfig);
         assertEquals(expectedInboundTs, childConfig.getInboundTrafficSelectors());
         assertEquals(expectedOutboundTs, childConfig.getOutboundTrafficSelectors());
         assertEquals(expectedInternalAddresses, childConfig.getInternalAddresses());
+        assertEquals(expectedDnsServers, childConfig.getInternalDnsServers());
         assertTrue(childConfig.getInternalSubnets().isEmpty());
-        assertTrue(childConfig.getInternalDnsServers().isEmpty());
         assertTrue(childConfig.getInternalDhcpServers().isEmpty());
     }
 
