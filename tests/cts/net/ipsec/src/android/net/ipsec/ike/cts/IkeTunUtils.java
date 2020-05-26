@@ -26,6 +26,8 @@ import static android.net.ipsec.ike.cts.PacketUtils.UDP_HDRLEN;
 import static android.net.ipsec.ike.cts.PacketUtils.UdpHeader;
 import static android.system.OsConstants.IPPROTO_UDP;
 
+import static com.android.internal.util.HexDump.hexStringToByteArray;
+
 import static org.junit.Assert.fail;
 
 import android.os.ParcelFileDescriptor;
@@ -35,6 +37,7 @@ import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.function.Predicate;
 
 public class IkeTunUtils extends TunUtils {
     private static final int PORT_LEN = 2;
@@ -54,17 +57,24 @@ public class IkeTunUtils extends TunUtils {
     /**
      * Await the expected IKE request and inject an IKE response.
      *
-     * @param respIkePkt IKE response packet without IP/UDP headers or NON ESP MARKER.
+     * @param ikeRespDataHex IKE response hex without IP/UDP headers or NON ESP MARKER.
      */
     public byte[] awaitReqAndInjectResp(
-            long expectedInitIkeSpi, int expectedMsgId, boolean expectedUseEncap, byte[] respIkePkt)
+            long expectedInitIkeSpi,
+            int expectedMsgId,
+            boolean expectedUseEncap,
+            String ikeRespDataHex)
             throws Exception {
         byte[] request =
                 awaitIkePacket(
-                        expectedInitIkeSpi,
-                        expectedMsgId,
-                        false /* expectedResp */,
-                        expectedUseEncap);
+                        (pkt) -> {
+                            return isExpectedIkePkt(
+                                    pkt,
+                                    expectedInitIkeSpi,
+                                    expectedMsgId,
+                                    false /* expectedResp */,
+                                    expectedUseEncap);
+                        });
 
         // Build response header by flipping address and port
         InetAddress srcAddr = getAddress(request, false /* shouldGetSource */);
@@ -73,32 +83,26 @@ public class IkeTunUtils extends TunUtils {
         int dstPort = getPort(request, true /* shouldGetSource */);
 
         byte[] response =
-                buildIkePacket(srcAddr, dstAddr, srcPort, dstPort, expectedUseEncap, respIkePkt);
+                buildIkePacket(
+                        srcAddr,
+                        dstAddr,
+                        srcPort,
+                        dstPort,
+                        expectedUseEncap,
+                        hexStringToByteArray(ikeRespDataHex));
         injectPacket(response);
         return request;
     }
 
-    private byte[] awaitIkePacket(
-            long expectedInitIkeSpi,
-            int expectedMsgId,
-            boolean expectedResp,
-            boolean expectedUseEncap)
-            throws Exception {
+    // TODO: Implemented in followup CL (aosp/1308675) to support awaiting multiple
+    // request fragments and injecting multiple  response fragments
+
+    private byte[] awaitIkePacket(Predicate<byte[]> pktVerifier) throws Exception {
         long endTime = System.currentTimeMillis() + TIMEOUT;
         int startIndex = 0;
         synchronized (mPackets) {
             while (System.currentTimeMillis() < endTime) {
-                byte[] ikePkt =
-                        getFirstMatchingPacket(
-                                (pkt) -> {
-                                    return isIke(
-                                            pkt,
-                                            expectedInitIkeSpi,
-                                            expectedMsgId,
-                                            expectedResp,
-                                            expectedUseEncap);
-                                },
-                                startIndex);
+                byte[] ikePkt = getFirstMatchingPacket(pktVerifier, startIndex);
                 if (ikePkt != null) {
                     return ikePkt; // We've found the packet we're looking for.
                 }
@@ -112,21 +116,14 @@ public class IkeTunUtils extends TunUtils {
                 }
             }
 
-            String direction = expectedResp ? "response" : "request";
-            fail(
-                    "No such IKE "
-                            + direction
-                            + " found with Initiator SPI "
-                            + expectedInitIkeSpi
-                            + " and message ID "
-                            + expectedMsgId);
+            fail("No matching packet found");
         }
 
         throw new IllegalStateException(
                 "Hit an impossible case where fail() didn't throw an exception");
     }
 
-    private static boolean isIke(
+    private static boolean isExpectedIkePkt(
             byte[] pkt,
             long expectedInitIkeSpi,
             int expectedMsgId,
@@ -153,7 +150,7 @@ public class IkeTunUtils extends TunUtils {
         }
 
         return pkt[ipProtocolOffset] == IPPROTO_UDP
-                && areSpiAndMsgIdEqual(
+                && isExpectedSpiAndMsgId(
                         pkt, ikeOffset, expectedInitIkeSpi, expectedMsgId, expectedResp);
     }
 
@@ -170,10 +167,10 @@ public class IkeTunUtils extends TunUtils {
         return Arrays.equals(NON_ESP_MARKER, nonEspMarker);
     }
 
-    private static boolean areSpiAndMsgIdEqual(
+    private static boolean isExpectedSpiAndMsgId(
             byte[] pkt,
             int ikeOffset,
-            long expectedIkeInitSpi,
+            long expectedInitIkeSpi,
             int expectedMsgId,
             boolean expectedResp) {
         if (pkt.length <= ikeOffset + IKE_HEADER_LEN) return false;
