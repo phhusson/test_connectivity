@@ -16,6 +16,7 @@
 
 package android.net.cts
 
+import android.Manifest.permission.CONNECTIVITY_INTERNAL
 import android.Manifest.permission.NETWORK_SETTINGS
 import android.Manifest.permission.READ_DEVICE_CONFIG
 import android.Manifest.permission.WRITE_DEVICE_CONFIG
@@ -31,6 +32,7 @@ import android.net.NetworkRequest
 import android.net.Uri
 import android.net.cts.util.CtsNetUtils
 import android.net.wifi.WifiManager
+import android.os.Build
 import android.os.ConditionVariable
 import android.platform.test.annotations.AppModeFull
 import android.provider.DeviceConfig
@@ -164,7 +166,10 @@ class CaptivePortalTest {
                     "access."
             assertNotEquals(network, cm.activeNetwork, wifiDefaultMessage)
 
-            doAsShell(NETWORK_SETTINGS) { cm.startCaptivePortalApp(network) }
+            val startPortalAppPermission =
+                    if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) CONNECTIVITY_INTERNAL
+                    else NETWORK_SETTINGS
+            doAsShell(startPortalAppPermission) { cm.startCaptivePortalApp(network) }
             assertTrue(portalContentRequestCv.block(TEST_TIMEOUT_MS), "The captive portal login " +
                     "page was still not fetched ${TEST_TIMEOUT_MS}ms after startCaptivePortalApp.")
 
