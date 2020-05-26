@@ -17,12 +17,16 @@ package android.net.ipsec.ike.cts;
 
 import static android.app.AppOpsManager.OP_MANAGE_IPSEC_TUNNELS;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+
 import android.annotation.NonNull;
 import android.app.AppOpsManager;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.InetAddresses;
+import android.net.IpSecManager;
 import android.net.IpSecTransform;
 import android.net.LinkAddress;
 import android.net.Network;
@@ -55,6 +59,9 @@ import org.junit.runner.RunWith;
 
 import java.net.Inet4Address;
 import java.net.InetAddress;
+import java.util.HashSet;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -370,6 +377,53 @@ abstract class IkeSessionTestBase extends IkeTestBase {
             this.ipSecTransform = ipSecTransform;
             this.direction = direction;
         }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(ipSecTransform, direction);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof IpSecTransformCallRecord)) return false;
+
+            IpSecTransformCallRecord record = (IpSecTransformCallRecord) o;
+            return ipSecTransform.equals(record.ipSecTransform) && direction == record.direction;
+        }
+    }
+
+    static void verifyCreateIpSecTransformPair(
+            IpSecTransformCallRecord transformRecordA, IpSecTransformCallRecord transformRecordB) {
+        IpSecTransform transformA = transformRecordA.ipSecTransform;
+        IpSecTransform transformB = transformRecordB.ipSecTransform;
+
+        assertNotNull(transformA);
+        assertNotNull(transformB);
+
+        Set<Integer> expectedDirections = new HashSet<>();
+        expectedDirections.add(IpSecManager.DIRECTION_IN);
+        expectedDirections.add(IpSecManager.DIRECTION_OUT);
+
+        Set<Integer> resultDirections = new HashSet<>();
+        resultDirections.add(transformRecordA.direction);
+        resultDirections.add(transformRecordB.direction);
+
+        assertEquals(expectedDirections, resultDirections);
+    }
+
+    static void verifyDeleteIpSecTransformPair(
+            TestChildSessionCallback childCb,
+            IpSecTransformCallRecord expectedTransformRecordA,
+            IpSecTransformCallRecord expectedTransformRecordB) {
+        Set<IpSecTransformCallRecord> expectedTransforms = new HashSet<>();
+        expectedTransforms.add(expectedTransformRecordA);
+        expectedTransforms.add(expectedTransformRecordB);
+
+        Set<IpSecTransformCallRecord> resultTransforms = new HashSet<>();
+        resultTransforms.add(childCb.awaitNextDeletedIpSecTransform());
+        resultTransforms.add(childCb.awaitNextDeletedIpSecTransform());
+
+        assertEquals(expectedTransforms, resultTransforms);
     }
 
     /** Package private method to check if device has IPsec tunnels feature */
