@@ -165,8 +165,11 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
         assertTrue(firstChildConfig.getInternalDnsServers().isEmpty());
         assertTrue(firstChildConfig.getInternalDhcpServers().isEmpty());
 
-        assertNotNull(mFirstChildSessionCallback.awaitNextCreatedIpSecTransform());
-        assertNotNull(mFirstChildSessionCallback.awaitNextCreatedIpSecTransform());
+        IpSecTransformCallRecord firstTransformRecordA =
+                mFirstChildSessionCallback.awaitNextCreatedIpSecTransform();
+        IpSecTransformCallRecord firstTransformRecordB =
+                mFirstChildSessionCallback.awaitNextCreatedIpSecTransform();
+        verifyCreateIpSecTransformPair(firstTransformRecordA, firstTransformRecordB);
 
         // Open additional Child Session
         TestChildSessionCallback additionalChildCb = new TestChildSessionCallback();
@@ -188,8 +191,11 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
         assertTrue(additionalChildConfig.getInternalDnsServers().isEmpty());
         assertTrue(additionalChildConfig.getInternalDhcpServers().isEmpty());
 
-        assertNotNull(additionalChildCb.awaitNextCreatedIpSecTransform());
-        assertNotNull(additionalChildCb.awaitNextCreatedIpSecTransform());
+        IpSecTransformCallRecord additionalTransformRecordA =
+                additionalChildCb.awaitNextCreatedIpSecTransform();
+        IpSecTransformCallRecord additionalTransformRecordB =
+                additionalChildCb.awaitNextCreatedIpSecTransform();
+        verifyCreateIpSecTransformPair(additionalTransformRecordA, additionalTransformRecordB);
 
         // Close additional Child Session
         ikeSession.closeChildSession(additionalChildCb);
@@ -199,8 +205,8 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
                 true /* expectedUseEncap */,
                 hexStringToByteArray(SUCCESS_DELETE_CHILD_RESP));
 
-        assertNotNull(additionalChildCb.awaitNextDeletedIpSecTransform());
-        assertNotNull(additionalChildCb.awaitNextDeletedIpSecTransform());
+        verifyDeleteIpSecTransformPair(
+                additionalChildCb, additionalTransformRecordA, additionalTransformRecordB);
         additionalChildCb.awaitOnClosed();
 
         // Close IKE Session
@@ -211,12 +217,10 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
                 true /* expectedUseEncap */,
                 hexStringToByteArray(SUCCESS_DELETE_IKE_RESP));
 
-        assertNotNull(mFirstChildSessionCallback.awaitNextDeletedIpSecTransform());
-        assertNotNull(mFirstChildSessionCallback.awaitNextDeletedIpSecTransform());
+        verifyDeleteIpSecTransformPair(
+                mFirstChildSessionCallback, firstTransformRecordA, firstTransformRecordB);
         mFirstChildSessionCallback.awaitOnClosed();
         mIkeSessionCallback.awaitOnClosed();
-
-        // TODO: verify created and deleted IpSecTransform pair and their directions
     }
 
     @Test
@@ -245,7 +249,7 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
 
     @Test
     public void testIkeInitFail() throws Exception {
-        String ikeInitFailRespHex =
+        final String ikeInitFailRespHex =
                 "46B8ECA1E0D72A180000000000000000292022200000000000000024000000080000000E";
 
         // Open IKE Session
