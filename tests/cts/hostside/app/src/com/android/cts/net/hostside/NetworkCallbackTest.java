@@ -130,14 +130,11 @@ public class NetworkCallbackTest extends AbstractRestrictBackgroundNetworkTestCa
             setLastCallback(CallbackState.CAPABILITIES, network, cap);
         }
 
-        public void expectLostCallback(Network expectedNetwork) {
-            expectCallback(CallbackState.LOST, expectedNetwork, null);
-        }
-
         public Network expectAvailableCallbackAndGetNetwork() {
             final CallbackInfo cb = nextCallback(TEST_CALLBACK_TIMEOUT_MS);
             if (cb.state != CallbackState.AVAILABLE) {
-                fail("Network is not available");
+                fail("Network is not available. Instead obtained the following callback :"
+                        + cb);
             }
             return cb.network;
         }
@@ -152,7 +149,7 @@ public class NetworkCallbackTest extends AbstractRestrictBackgroundNetworkTestCa
             do {
                 final CallbackInfo cb = nextCallback((int) (deadline - System.currentTimeMillis()));
                 if (cb.state == CallbackState.BLOCKED_STATUS) {
-                    assertEquals(expectBlocked, (Boolean) cb.arg);
+                    assertEquals(expectBlocked, cb.arg);
                     return;
                 }
             } while (System.currentTimeMillis() <= deadline);
@@ -165,10 +162,10 @@ public class NetworkCallbackTest extends AbstractRestrictBackgroundNetworkTestCa
             final NetworkCapabilities cap = (NetworkCapabilities) cb.arg;
             assertEquals(expectedNetwork, cb.network);
             assertEquals(CallbackState.CAPABILITIES, cb.state);
-            if (hasCapability) {
-                assertTrue(cap.hasCapability(capability));
-            } else {
-                assertFalse(cap.hasCapability(capability));
+            if (hasCapability != cap.hasCapability(capability)) {
+                fail("NetworkCapabilities callback "
+                        + (hasCapability ? "missing expected" : "has unexpected")
+                        + " capability. " + cb);
             }
         }
     }
