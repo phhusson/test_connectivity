@@ -16,6 +16,7 @@
 
 package android.net.ipsec.ike.cts;
 
+import static android.app.AppOpsManager.OP_MANAGE_IPSEC_TUNNELS;
 import static android.net.ipsec.ike.exceptions.IkeProtocolException.ERROR_TYPE_NO_PROPOSAL_CHOSEN;
 
 import static org.junit.Assert.assertArrayEquals;
@@ -33,6 +34,8 @@ import android.platform.test.annotations.AppModeFull;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -100,6 +103,21 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
                 mUserCbExecutor,
                 mIkeSessionCallback,
                 mFirstChildSessionCallback);
+    }
+
+    @BeforeClass
+    public static void setUpTunnelPermissionBeforeClass() throws Exception {
+        // Under normal circumstances, the MANAGE_IPSEC_TUNNELS appop would be auto-granted, and
+        // a standard permission is insufficient. So we shell out the appop, to give us the
+        // right appop permissions.
+        setAppOp(OP_MANAGE_IPSEC_TUNNELS, true);
+    }
+
+    // This method is guaranteed to run in subclasses and will run after subclasses' @AfterClass
+    // methods.
+    @AfterClass
+    public static void tearDownTunnelPermissionAfterClass() throws Exception {
+        setAppOp(OP_MANAGE_IPSEC_TUNNELS, false);
     }
 
     @Test
@@ -203,6 +221,4 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
     }
 
     // TODO(b/155821007): Verify rekey process and handling IKE_AUTH failure
-
-    // TODO(b/155821007): Test creating transport mode Child SA
 }
