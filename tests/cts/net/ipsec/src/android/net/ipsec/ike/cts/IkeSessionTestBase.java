@@ -40,7 +40,6 @@ import android.net.ipsec.ike.exceptions.IkeProtocolException;
 import android.os.Binder;
 import android.os.ParcelFileDescriptor;
 import android.platform.test.annotations.AppModeFull;
-import android.util.Log;
 
 import androidx.test.InstrumentationRegistry;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -66,6 +65,13 @@ import java.util.concurrent.TimeUnit;
  *
  * <p>Subclasses MUST explicitly call #setUpTestNetwork and #tearDownTestNetwork to be able to use
  * the test network
+ *
+ * <p>All IKE Sessions running in test mode will generate SPIs deterministically. That is to say
+ * each IKE Session will always generate the same IKE INIT SPI and test vectors are generated based
+ * on this deterministic IKE SPI. Each test will use different local and remote addresses to avoid
+ * the case that the next test try to allocate the same SPI before the previous test has released
+ * it, since SPI resources are not released in testing thread. Similarly, each test MUST use
+ * different Network instances to avoid sharing the same IkeSocket and hitting IKE SPI collision.
  */
 @RunWith(AndroidJUnit4.class)
 @AppModeFull(reason = "MANAGE_TEST_NETWORKS permission can't be granted to instant apps")
@@ -117,7 +123,7 @@ abstract class IkeSessionTestBase extends IkeTestBase {
         InstrumentationRegistry.getInstrumentation()
                 .getUiAutomation()
                 .adoptShellPermissionIdentity();
-        sTNM = (TestNetworkManager) sContext.getSystemService(Context.TEST_NETWORK_SERVICE);
+        sTNM = sContext.getSystemService(TestNetworkManager.class);
 
         // Under normal circumstances, the MANAGE_IPSEC_TUNNELS appop would be auto-granted, and
         // a standard permission is insufficient. So we shell out the appop, to give us the
@@ -150,10 +156,6 @@ abstract class IkeSessionTestBase extends IkeTestBase {
     @After
     public void tearDown() throws Exception {
         tearDownTestNetwork();
-
-        resetNextAvailableAddress(NEXT_AVAILABLE_IP4_ADDR_LOCAL, INITIAL_AVAILABLE_IP4_ADDR_LOCAL);
-        resetNextAvailableAddress(
-                NEXT_AVAILABLE_IP4_ADDR_REMOTE, INITIAL_AVAILABLE_IP4_ADDR_REMOTE);
     }
 
     void setUpTestNetwork(InetAddress localAddr) throws Exception {
@@ -186,9 +188,8 @@ abstract class IkeSessionTestBase extends IkeTestBase {
                             pkg, // Package name
                             opName, // Appop
                             (allow ? "allow" : "deny")); // Action
-            Log.d("IKE", "CTS setAppOp cmd " + cmd);
 
-            String result = SystemUtil.runShellCommand(cmd);
+            SystemUtil.runShellCommand(cmd);
         }
     }
 
@@ -230,6 +231,7 @@ abstract class IkeSessionTestBase extends IkeTestBase {
         }
     }
 
+    /** Testing callback that allows caller to block current thread until a method get called */
     static class TestIkeSessionCallback implements IkeSessionCallback {
         private CompletableFuture<IkeSessionConfiguration> mFutureIkeConfig =
                 new CompletableFuture<>();
@@ -283,6 +285,7 @@ abstract class IkeSessionTestBase extends IkeTestBase {
         }
     }
 
+    /** Testing callback that allows caller to block current thread until a method get called */
     static class TestChildSessionCallback implements ChildSessionCallback {
         private CompletableFuture<ChildSessionConfiguration> mFutureChildConfig =
                 new CompletableFuture<>();

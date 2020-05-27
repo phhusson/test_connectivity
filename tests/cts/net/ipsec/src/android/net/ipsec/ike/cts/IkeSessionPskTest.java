@@ -99,19 +99,17 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
                     .addInternalAddressRequest(AF_INET6)
                     .build();
 
-    private IkeSessionParams createIkeSessionParams(InetAddress mRemoteAddress) {
-        return new IkeSessionParams.Builder(sContext)
-                .setNetwork(mTunNetwork)
-                .setServerHostname(mRemoteAddress.getHostAddress())
-                .addSaProposal(SaProposalTest.buildIkeSaProposalWithNormalModeCipher())
-                .addSaProposal(SaProposalTest.buildIkeSaProposalWithCombinedModeCipher())
-                .setLocalIdentification(new IkeFqdnIdentification(LOCAL_HOSTNAME))
-                .setRemoteIdentification(new IkeFqdnIdentification(REMOTE_HOSTNAME))
-                .setAuthPsk(IKE_PSK)
-                .build();
-    }
-
-    private IkeSession openIkeSession(IkeSessionParams ikeParams) {
+    private IkeSession openIkeSessionWithRemoteAddress(InetAddress remoteAddress) {
+        IkeSessionParams ikeParams =
+                new IkeSessionParams.Builder(sContext)
+                        .setNetwork(mTunNetwork)
+                        .setServerHostname(remoteAddress.getHostAddress())
+                        .addSaProposal(SaProposalTest.buildIkeSaProposalWithNormalModeCipher())
+                        .addSaProposal(SaProposalTest.buildIkeSaProposalWithCombinedModeCipher())
+                        .setLocalIdentification(new IkeFqdnIdentification(LOCAL_HOSTNAME))
+                        .setRemoteIdentification(new IkeFqdnIdentification(REMOTE_HOSTNAME))
+                        .setAuthPsk(IKE_PSK)
+                        .build();
         return new IkeSession(
                 sContext,
                 ikeParams,
@@ -126,7 +124,7 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
         if (!hasTunnelsFeature()) return;
 
         // Open IKE Session
-        IkeSession ikeSession = openIkeSession(createIkeSessionParams(mRemoteAddress));
+        IkeSession ikeSession = openIkeSessionWithRemoteAddress(mRemoteAddress);
         int expectedMsgId = 0;
         mTunUtils.awaitReqAndInjectResp(
                 IKE_INIT_SPI,
@@ -167,6 +165,9 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
         assertTrue(firstChildConfig.getInternalDnsServers().isEmpty());
         assertTrue(firstChildConfig.getInternalDhcpServers().isEmpty());
 
+        assertNotNull(mFirstChildSessionCallback.awaitNextCreatedIpSecTransform());
+        assertNotNull(mFirstChildSessionCallback.awaitNextCreatedIpSecTransform());
+
         // Open additional Child Session
         TestChildSessionCallback additionalChildCb = new TestChildSessionCallback();
         ikeSession.openChildSession(CHILD_PARAMS, additionalChildCb);
@@ -183,9 +184,12 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
                 Arrays.asList(EXPECTED_INBOUND_TS), firstChildConfig.getInboundTrafficSelectors());
         assertEquals(Arrays.asList(DEFAULT_V4_TS), firstChildConfig.getOutboundTrafficSelectors());
         assertTrue(additionalChildConfig.getInternalAddresses().isEmpty());
-        assertTrue(firstChildConfig.getInternalSubnets().isEmpty());
-        assertTrue(firstChildConfig.getInternalDnsServers().isEmpty());
-        assertTrue(firstChildConfig.getInternalDhcpServers().isEmpty());
+        assertTrue(additionalChildConfig.getInternalSubnets().isEmpty());
+        assertTrue(additionalChildConfig.getInternalDnsServers().isEmpty());
+        assertTrue(additionalChildConfig.getInternalDhcpServers().isEmpty());
+
+        assertNotNull(additionalChildCb.awaitNextCreatedIpSecTransform());
+        assertNotNull(additionalChildCb.awaitNextCreatedIpSecTransform());
 
         // Close additional Child Session
         ikeSession.closeChildSession(additionalChildCb);
@@ -195,6 +199,8 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
                 true /* expectedUseEncap */,
                 hexStringToByteArray(SUCCESS_DELETE_CHILD_RESP));
 
+        assertNotNull(additionalChildCb.awaitNextDeletedIpSecTransform());
+        assertNotNull(additionalChildCb.awaitNextDeletedIpSecTransform());
         additionalChildCb.awaitOnClosed();
 
         // Close IKE Session
@@ -205,10 +211,12 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
                 true /* expectedUseEncap */,
                 hexStringToByteArray(SUCCESS_DELETE_IKE_RESP));
 
+        assertNotNull(mFirstChildSessionCallback.awaitNextDeletedIpSecTransform());
+        assertNotNull(mFirstChildSessionCallback.awaitNextDeletedIpSecTransform());
         mFirstChildSessionCallback.awaitOnClosed();
         mIkeSessionCallback.awaitOnClosed();
 
-        // TODO: verify IpSecTransform pair is created and deleted
+        // TODO: verify created and deleted IpSecTransform pair and their directions
     }
 
     @Test
@@ -216,7 +224,7 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
         if (!hasTunnelsFeature()) return;
 
         // Open IKE Session
-        IkeSession ikeSession = openIkeSession(createIkeSessionParams(mRemoteAddress));
+        IkeSession ikeSession = openIkeSessionWithRemoteAddress(mRemoteAddress);
         int expectedMsgId = 0;
         mTunUtils.awaitReqAndInjectResp(
                 IKE_INIT_SPI,
@@ -231,7 +239,6 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
                 hexStringToByteArray(SUCCESS_IKE_AUTH_RESP));
 
         ikeSession.kill();
-
         mFirstChildSessionCallback.awaitOnClosed();
         mIkeSessionCallback.awaitOnClosed();
     }
@@ -242,13 +249,15 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
                 "46B8ECA1E0D72A180000000000000000292022200000000000000024000000080000000E";
 
         // Open IKE Session
-        IkeSession ikeSession = openIkeSession(createIkeSessionParams(mRemoteAddress));
+        IkeSession ikeSession = openIkeSessionWithRemoteAddress(mRemoteAddress);
         int expectedMsgId = 0;
         mTunUtils.awaitReqAndInjectResp(
                 IKE_INIT_SPI,
                 expectedMsgId++,
                 false /* expectedUseEncap */,
                 hexStringToByteArray(ikeInitFailRespHex));
+
+        mFirstChildSessionCallback.awaitOnClosed();
 
         IkeException exception = mIkeSessionCallback.awaitOnClosedException();
         assertNotNull(exception);
