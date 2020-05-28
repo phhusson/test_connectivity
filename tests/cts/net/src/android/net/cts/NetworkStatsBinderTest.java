@@ -18,12 +18,15 @@ package android.net.cts;
 
 import static android.os.Process.INVALID_UID;
 
+import static org.junit.Assert.assertEquals;
+
 import android.annotation.NonNull;
 import android.content.Context;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.net.INetworkStatsService;
 import android.net.TrafficStats;
+import android.os.Build;
 import android.os.IBinder;
 import android.os.Process;
 import android.os.RemoteException;
@@ -31,8 +34,15 @@ import android.test.AndroidTestCase;
 import android.util.SparseArray;
 
 import androidx.test.InstrumentationRegistry;
+import androidx.test.runner.AndroidJUnit4;
 
 import com.android.internal.util.CollectionUtils;
+import com.android.testutils.DevSdkIgnoreRule;
+
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -41,17 +51,22 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
-public class NetworkStatsBinderTest extends AndroidTestCase {
+@RunWith(AndroidJUnit4.class)
+public class NetworkStatsBinderTest {
     // NOTE: These are shamelessly copied from TrafficStats.
     private static final int TYPE_RX_BYTES = 0;
     private static final int TYPE_RX_PACKETS = 1;
     private static final int TYPE_TX_BYTES = 2;
     private static final int TYPE_TX_PACKETS = 3;
 
+    @Rule
+    public DevSdkIgnoreRule mIgnoreRule = new DevSdkIgnoreRule(
+            Build.VERSION_CODES.Q /* ignoreClassUpTo */);
+
     private final SparseArray<Function<Integer, Long>> mUidStatsQueryOpArray = new SparseArray<>();
 
-    @Override
-    protected void setUp() throws Exception {
+    @Before
+    public void setUp() throws Exception {
         mUidStatsQueryOpArray.put(TYPE_RX_BYTES, uid -> TrafficStats.getUidRxBytes(uid));
         mUidStatsQueryOpArray.put(TYPE_RX_PACKETS, uid -> TrafficStats.getUidRxPackets(uid));
         mUidStatsQueryOpArray.put(TYPE_TX_BYTES, uid -> TrafficStats.getUidTxBytes(uid));
@@ -75,6 +90,7 @@ public class NetworkStatsBinderTest extends AndroidTestCase {
         return INVALID_UID;
     }
 
+    @Test
     public void testAccessUidStatsFromBinder() throws Exception {
         final int myUid = Process.myUid();
         final List<Integer> testUidList = new ArrayList<>();
