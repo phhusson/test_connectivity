@@ -54,7 +54,7 @@ abstract class IkeTestBase {
     static final int SUB_ID = 1;
     static final byte[] EAP_IDENTITY = "test@android.net".getBytes();
     static final String NETWORK_NAME = "android.net";
-    static final String EAP_MSCHAPV2_USERNAME = "username";
+    static final String EAP_MSCHAPV2_USERNAME = "mschapv2user";
     static final String EAP_MSCHAPV2_PASSWORD = "password";
 
     static final Inet4Address IPV4_ADDRESS_LOCAL =
