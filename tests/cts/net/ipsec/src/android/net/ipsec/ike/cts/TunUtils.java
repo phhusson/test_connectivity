@@ -47,7 +47,7 @@ public class TunUtils {
     private static final String TAG = TunUtils.class.getSimpleName();
 
     private static final int DATA_BUFFER_LEN = 4096;
-    static final int TIMEOUT = 100;
+    static final int TIMEOUT = 500;
 
     static final int IP4_PROTO_OFFSET = 9;
     static final int IP6_PROTO_OFFSET = 6;
