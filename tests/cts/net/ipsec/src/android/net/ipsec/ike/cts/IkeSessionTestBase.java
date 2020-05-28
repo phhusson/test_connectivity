@@ -44,6 +44,7 @@ import android.net.ipsec.ike.IkeSessionConnectionInfo;
 import android.net.ipsec.ike.IkeTrafficSelector;
 import android.net.ipsec.ike.TransportModeChildSessionParams;
 import android.net.ipsec.ike.TunnelModeChildSessionParams;
+import android.net.ipsec.ike.cts.IkeTunUtils.PortPair;
 import android.net.ipsec.ike.cts.TestNetworkUtils.TestNetworkCallback;
 import android.net.ipsec.ike.exceptions.IkeException;
 import android.net.ipsec.ike.exceptions.IkeProtocolException;
@@ -269,13 +270,13 @@ abstract class IkeSessionTestBase extends IkeTestBase {
                 .build();
     }
 
-    void performSetupIkeAndFirstChildBlocking(String ikeInitRespHex, String... ikeAuthRespHexes)
+    PortPair performSetupIkeAndFirstChildBlocking(String ikeInitRespHex, String... ikeAuthRespHexes)
             throws Exception {
-        performSetupIkeAndFirstChildBlocking(
+        return performSetupIkeAndFirstChildBlocking(
                 ikeInitRespHex, 1 /* expectedAuthReqPktCnt */, ikeAuthRespHexes);
     }
 
-    void performSetupIkeAndFirstChildBlocking(
+    PortPair performSetupIkeAndFirstChildBlocking(
             String ikeInitRespHex, int expectedAuthReqPktCnt, String... ikeAuthRespHexes)
             throws Exception {
         mTunUtils.awaitReqAndInjectResp(
@@ -284,12 +285,16 @@ abstract class IkeSessionTestBase extends IkeTestBase {
                 false /* expectedUseEncap */,
                 ikeInitRespHex);
 
-        mTunUtils.awaitReqAndInjectResp(
-                IKE_DETERMINISTIC_INITIATOR_SPI,
-                1 /* expectedMsgId */,
-                true /* expectedUseEncap */,
-                expectedAuthReqPktCnt,
-                ikeAuthRespHexes);
+        byte[] ikeAuthReqPkt =
+                mTunUtils
+                        .awaitReqAndInjectResp(
+                                IKE_DETERMINISTIC_INITIATOR_SPI,
+                                1 /* expectedMsgId */,
+                                true /* expectedUseEncap */,
+                                expectedAuthReqPktCnt,
+                                ikeAuthRespHexes)
+                        .get(0);
+        return IkeTunUtils.getSrcDestPortPair(ikeAuthReqPkt);
     }
 
     void performCloseIkeBlocking(int expectedMsgId, String deleteIkeRespHex) throws Exception {
