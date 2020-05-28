@@ -183,6 +183,77 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
     }
 
     @Test
+    public void testIkeSessionSetupAndChildSessionSetupWithTunnelModeV6() throws Exception {
+        if (!hasTunnelsFeature()) return;
+
+        final String ikeInitResp =
+                "46B8ECA1E0D72A186F7B6C2CEB77EB9021202220000000000000011822000030"
+                        + "0000002C010100040300000C0100000C800E0100030000080300000C03000008"
+                        + "0200000500000008040000022800008800020000DABAA04B38B491E2403F2125"
+                        + "96ECF1C8EF7B1DC19A422FDD46E1756C826BB3A16404361B775D9950577B5CDF"
+                        + "6AAA1642BD1427BDA8BC55354A97C1025E19C1E2EE2DF8A0C9406E545D829F52"
+                        + "75695008E3B742984B8DD1770F3514213B0DF3EE8B199416DF200D248115C057"
+                        + "1C193E4F96802E5EF48DD99CAC251882A8F7CCC329000024BC6F0F1D3653C2C7"
+                        + "679E02CDB6A3B32B2FEE9AF52F0326D4D9AE073D56CE8922290000080000402E"
+                        + "290000100000402F00020003000400050000000800004014";
+        final String ikeAuthResp =
+                "46B8ECA1E0D72A186F7B6C2CEB77EB902E202320000000010000015024000134"
+                        + "4D115AFDCDAD0310760BB664EB7D405A340869AD6EDF0AAEAD0663A9253DADCB"
+                        + "73EBE5CD29D4FA1CDEADE0B94391B5C4CF77BCC1596ACE3CE6A7891E44888FA5"
+                        + "46632C0EF4E6193C023C9DC59142C37D1C49D6EF5CD324EC6FC35C89E1721C78"
+                        + "91FDCDB723D8062709950F4AA9273D26A54C9C7E86862DBC15F7B6641D2B9BAD"
+                        + "E55069008201D12968D97B537B1518FE87B0FFA03C3EE6012C06721B1E2A3F68"
+                        + "92108BC4A4F7063F7F94562D8B60F291A1377A836CF12BCDA7E15C1A8F3C77BB"
+                        + "6DB7F2C833CCE4CDDED7506536621A3356CE2BC1874E7B1A1A9B447D7DF6AB09"
+                        + "638B8AD94A781B28BB91B514B611B24DF8E8A047A10AE27BBF15C754D3D2F792"
+                        + "D3E1CCADDAE934C98AE53A8FC3419C88AFF0355564F82A629C998012DA7BB704"
+                        + "5307270DF326377E3E1994476902035B";
+        final String deleteIkeResp =
+                "46B8ECA1E0D72A186F7B6C2CEB77EB902E202520000000020000005000000034"
+                        + "CF15C299F35688E5140A48B61C95F004121BF8236201415E5CD45BA41AAB16D4"
+                        + "90B44B9E6D5D92B5B97D24196A58C73F";
+
+        mLocalAddress = IPV6_ADDRESS_LOCAL;
+        mRemoteAddress = IPV6_ADDRESS_REMOTE;
+
+        // Teardown current test network that uses IPv4 address and set up new network with IPv6
+        // address.
+        tearDownTestNetwork();
+        setUpTestNetwork(mLocalAddress);
+
+        // Open IKE Session
+        IkeSession ikeSession = openIkeSessionWithRemoteAddress(mRemoteAddress);
+        performSetupIkeAndFirstChildBlocking(
+                ikeInitResp,
+                1 /* expectedAuthReqPktCnt */,
+                false /* expectedAuthUseEncap */,
+                ikeAuthResp);
+
+        // Local request message ID starts from 2 because there is one IKE_INIT message and a single
+        // IKE_AUTH message.
+        int expectedMsgId = 2;
+
+        verifyIkeSessionSetupBlocking();
+        verifyChildSessionSetupBlocking(
+                mFirstChildSessionCallback,
+                Arrays.asList(TUNNEL_MODE_INBOUND_TS_V6),
+                Arrays.asList(TUNNEL_MODE_OUTBOUND_TS_V6),
+                Arrays.asList(EXPECTED_INTERNAL_LINK_ADDR_V6),
+                Arrays.asList(EXPECTED_DNS_SERVERS_ONE, EXPECTED_DNS_SERVERS_TWO));
+
+        IpSecTransformCallRecord firstTransformRecordA =
+                mFirstChildSessionCallback.awaitNextCreatedIpSecTransform();
+        IpSecTransformCallRecord firstTransformRecordB =
+                mFirstChildSessionCallback.awaitNextCreatedIpSecTransform();
+        verifyCreateIpSecTransformPair(firstTransformRecordA, firstTransformRecordB);
+
+        // Close IKE Session
+        ikeSession.close();
+        performCloseIkeBlocking(expectedMsgId++, false /* expectedUseEncap */, deleteIkeResp);
+        verifyCloseIkeAndChildBlocking(firstTransformRecordA, firstTransformRecordB);
+    }
+
+    @Test
     public void testIkeSessionKillWithTunnelMode() throws Exception {
         if (!hasTunnelsFeature()) return;
 
