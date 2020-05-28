@@ -15,7 +15,6 @@
 
 package android.net.ipsec.ike.cts;
 
-import static android.app.AppOpsManager.OP_MANAGE_IPSEC_TUNNELS;
 import static android.net.ipsec.ike.IkeSessionConfiguration.EXTENSION_TYPE_FRAGMENTATION;
 import static android.system.OsConstants.AF_INET;
 import static android.system.OsConstants.AF_INET6;
@@ -43,6 +42,7 @@ import android.net.ipsec.ike.IkeSessionCallback;
 import android.net.ipsec.ike.IkeSessionConfiguration;
 import android.net.ipsec.ike.IkeSessionConnectionInfo;
 import android.net.ipsec.ike.IkeTrafficSelector;
+import android.net.ipsec.ike.TransportModeChildSessionParams;
 import android.net.ipsec.ike.TunnelModeChildSessionParams;
 import android.net.ipsec.ike.cts.TestNetworkUtils.TestNetworkCallback;
 import android.net.ipsec.ike.exceptions.IkeException;
@@ -103,6 +103,14 @@ abstract class IkeSessionTestBase extends IkeTestBase {
                     MIN_PORT, MAX_PORT, EXPECTED_INTERNAL_ADDR, EXPECTED_INTERNAL_ADDR);
     static final IkeTrafficSelector TUNNEL_MODE_OUTBOUND_TS = DEFAULT_V4_TS;
 
+    // This value is align with the test vectors hex that are generated in an IPv4 environment
+    static final IkeTrafficSelector TRANSPORT_MODE_OUTBOUND_TS =
+            new IkeTrafficSelector(
+                    MIN_PORT,
+                    MAX_PORT,
+                    InetAddresses.parseNumericAddress("10.138.0.2"),
+                    InetAddresses.parseNumericAddress("10.138.0.2"));
+
     static final long IKE_DETERMINISTIC_INITIATOR_SPI = Long.parseLong("46B8ECA1E0D72A18", 16);
 
     // Static state to reduce setup/teardown
@@ -142,19 +150,12 @@ abstract class IkeSessionTestBase extends IkeTestBase {
                 .getUiAutomation()
                 .adoptShellPermissionIdentity();
         sTNM = sContext.getSystemService(TestNetworkManager.class);
-
-        // Under normal circumstances, the MANAGE_IPSEC_TUNNELS appop would be auto-granted, and
-        // a standard permission is insufficient. So we shell out the appop, to give us the
-        // right appop permissions.
-        setAppOp(OP_MANAGE_IPSEC_TUNNELS, true);
     }
 
     // This method is guaranteed to run in subclasses and will run after subclasses' @AfterClass
     // methods.
     @AfterClass
     public static void tearDownPermissionAfterClass() throws Exception {
-        setAppOp(OP_MANAGE_IPSEC_TUNNELS, false);
-
         InstrumentationRegistry.getInstrumentation()
                 .getUiAutomation()
                 .dropShellPermissionIdentity();
@@ -197,7 +198,7 @@ abstract class IkeSessionTestBase extends IkeTestBase {
         mTunFd.close();
     }
 
-    private static void setAppOp(int appop, boolean allow) {
+    static void setAppOp(int appop, boolean allow) {
         String opName = AppOpsManager.opToName(appop);
         for (String pkg : new String[] {"com.android.shell", sContext.getPackageName()}) {
             String cmd =
@@ -249,6 +250,16 @@ abstract class IkeSessionTestBase extends IkeTestBase {
         }
     }
 
+    TransportModeChildSessionParams buildTransportModeChildParamsWithTs(
+            IkeTrafficSelector inboundTs, IkeTrafficSelector outboundTs) {
+        return new TransportModeChildSessionParams.Builder()
+                .addSaProposal(SaProposalTest.buildChildSaProposalWithCombinedModeCipher())
+                .addSaProposal(SaProposalTest.buildChildSaProposalWithNormalModeCipher())
+                .addInboundTrafficSelectors(inboundTs)
+                .addOutboundTrafficSelectors(outboundTs)
+                .build();
+    }
+
     TunnelModeChildSessionParams buildTunnelModeChildSessionParams() {
         return new TunnelModeChildSessionParams.Builder()
                 .addSaProposal(SaProposalTest.buildChildSaProposalWithNormalModeCipher())
@@ -258,7 +269,14 @@ abstract class IkeSessionTestBase extends IkeTestBase {
                 .build();
     }
 
-    void performSetupIkeAndFirstChildBlocking(String ikeInitRespHex, String ikeAuthRespHex)
+    void performSetupIkeAndFirstChildBlocking(String ikeInitRespHex, String... ikeAuthRespHexes)
+            throws Exception {
+        performSetupIkeAndFirstChildBlocking(
+                ikeInitRespHex, 1 /* expectedAuthReqPktCnt */, ikeAuthRespHexes);
+    }
+
+    void performSetupIkeAndFirstChildBlocking(
+            String ikeInitRespHex, int expectedAuthReqPktCnt, String... ikeAuthRespHexes)
             throws Exception {
         mTunUtils.awaitReqAndInjectResp(
                 IKE_DETERMINISTIC_INITIATOR_SPI,
@@ -270,14 +288,8 @@ abstract class IkeSessionTestBase extends IkeTestBase {
                 IKE_DETERMINISTIC_INITIATOR_SPI,
                 1 /* expectedMsgId */,
                 true /* expectedUseEncap */,
-                ikeAuthRespHex);
-    }
-
-    void performSetupIkeAndFirstChildBlocking(
-            String ikeInitRespHex, int expectedAuthReqPktCnt, String... ikeAuthRespPktHex)
-            throws Exception {
-        // TODO: Implemented in followup CL (aosp/1308675) to support awaiting multiple IKE AUTH
-        // request fragments and injecting multiple IKE AUTH response fragments
+                expectedAuthReqPktCnt,
+                ikeAuthRespHexes);
     }
 
     void performCloseIkeBlocking(int expectedMsgId, String deleteIkeRespHex) throws Exception {
@@ -522,7 +534,7 @@ abstract class IkeSessionTestBase extends IkeTestBase {
         return sContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_IPSEC_TUNNELS);
     }
 
-    // TODO(b/148689509): Verify IKE Session setup using EAP and digital-signature-based auth
+    // TODO(b/148689509): Verify IKE Session setup using EAP
 
     // TODO(b/148689509): Verify hostname based creation
 }
