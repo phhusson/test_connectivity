@@ -60,22 +60,23 @@ public class IkeTunUtils extends TunUtils {
     }
 
     /**
-     * Await the expected IKE request and inject an IKE response.
+     * Await the expected IKE request inject an IKE response (or a list of response fragments)
      *
-     * @param ikeRespDataHex IKE response hex without IP/UDP headers or NON ESP MARKER.
+     * @param ikeRespDataFragmentsHex IKE response hex (or a list of response fragments) without
+     *     IP/UDP headers or NON ESP MARKER.
      */
     public byte[] awaitReqAndInjectResp(
             long expectedInitIkeSpi,
             int expectedMsgId,
             boolean expectedUseEncap,
-            String ikeRespDataHex)
+            String... ikeRespDataFragmentsHex)
             throws Exception {
         return awaitReqAndInjectResp(
                         expectedInitIkeSpi,
                         expectedMsgId,
                         expectedUseEncap,
                         1 /* expectedReqPktCnt */,
-                        ikeRespDataHex)
+                        ikeRespDataFragmentsHex)
                 .get(0);
     }
 
@@ -83,15 +84,15 @@ public class IkeTunUtils extends TunUtils {
      * Await the expected IKE request (or the list of IKE request fragments) and inject an IKE
      * response (or a list of response fragments)
      *
-     * @param ikeRespDataHexes IKE response hex (or a list of response fragments) without IP/UDP
-     *     headers or NON ESP MARKER.
+     * @param ikeRespDataFragmentsHex IKE response hex (or a list of response fragments) without
+     *     IP/UDP headers or NON ESP MARKER.
      */
     public List<byte[]> awaitReqAndInjectResp(
             long expectedInitIkeSpi,
             int expectedMsgId,
             boolean expectedUseEncap,
             int expectedReqPktCnt,
-            String... ikeRespDataHexes)
+            String... ikeRespDataFragmentsHex)
             throws Exception {
         List<byte[]> reqList = new ArrayList<>(expectedReqPktCnt);
         if (expectedReqPktCnt == 1) {
@@ -136,7 +137,7 @@ public class IkeTunUtils extends TunUtils {
         int srcPort = getPort(request, false /* shouldGetSource */);
         int dstPort = getPort(request, true /* shouldGetSource */);
 
-        for (String hex : ikeRespDataHexes) {
+        for (String hex : ikeRespDataFragmentsHex) {
             byte[] response =
                     buildIkePacket(
                             srcAddr,
