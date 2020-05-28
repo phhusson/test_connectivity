@@ -56,6 +56,7 @@ import android.net.TetheringManager.TetheringEventCallback;
 import android.net.TetheringManager.TetheringInterfaceRegexps;
 import android.net.TetheringManager.TetheringRequest;
 import android.net.cts.util.CtsNetUtils;
+import android.net.cts.util.CtsNetUtils.TestNetworkCallback;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.PersistableBundle;
@@ -714,7 +715,15 @@ public class TetheringManagerTest {
                 mCtsNetUtils.disconnectFromWifi(null);
             }
 
-            final Network activeNetwork = mCm.getActiveNetwork();
+            final TestNetworkCallback networkCallback = new TestNetworkCallback();
+            Network activeNetwork = null;
+            try {
+                mCm.registerDefaultNetworkCallback(networkCallback);
+                activeNetwork = networkCallback.waitForAvailable();
+            } finally {
+                mCm.unregisterNetworkCallback(networkCallback);
+            }
+
             assertNotNull("No active network. Please ensure the device has working mobile data.",
                     activeNetwork);
             final NetworkCapabilities activeNetCap = mCm.getNetworkCapabilities(activeNetwork);
