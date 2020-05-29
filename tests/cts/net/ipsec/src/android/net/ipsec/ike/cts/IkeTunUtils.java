@@ -55,6 +55,8 @@ public class IkeTunUtils extends TunUtils {
     private static final int IKE_FRAG_NUM_OFFSET = 32;
     private static final int IKE_PAYLOAD_TYPE_SKF = 53;
 
+    private static final int RSP_FLAG_MASK = 0x20;
+
     public IkeTunUtils(ParcelFileDescriptor tunFd) {
         super(tunFd);
     }
@@ -136,8 +138,7 @@ public class IkeTunUtils extends TunUtils {
         InetAddress dstAddr = getAddress(request, true /* shouldGetSource */);
         int srcPort = getPort(request, false /* shouldGetSource */);
         int dstPort = getPort(request, true /* shouldGetSource */);
-
-        for (String hex : ikeRespDataFragmentsHex) {
+        for (String resp : ikeRespDataFragmentsHex) {
             byte[] response =
                     buildIkePacket(
                             srcAddr,
@@ -145,11 +146,25 @@ public class IkeTunUtils extends TunUtils {
                             srcPort,
                             dstPort,
                             expectedUseEncap,
-                            hexStringToByteArray(hex));
+                            hexStringToByteArray(resp));
             injectPacket(response);
         }
 
         return reqList;
+    }
+
+    /** Await the expected IKE response */
+    public byte[] awaitResp(long expectedInitIkeSpi, int expectedMsgId, boolean expectedUseEncap)
+            throws Exception {
+        return awaitIkePacket(
+                (pkt) -> {
+                    return isExpectedIkePkt(
+                            pkt,
+                            expectedInitIkeSpi,
+                            expectedMsgId,
+                            true /* expectedResp*/,
+                            expectedUseEncap);
+                });
     }
 
     private byte[] awaitIkePacket(Predicate<byte[]> pktVerifier) throws Exception {
@@ -239,13 +254,36 @@ public class IkeTunUtils extends TunUtils {
 
         ByteBuffer buffer = ByteBuffer.wrap(pkt);
         buffer.get(new byte[ikeOffset]); // Skip IP, UDP header (and NON_ESP_MARKER)
+        buffer.mark(); // Mark this position so that later we can reset back here
 
-        // Check message ID.
+        // Check SPI
+        buffer.get(new byte[IKE_INIT_SPI_OFFSET]);
+        long initSpi = buffer.getLong();
+        if (expectedInitIkeSpi != initSpi) {
+            return false;
+        }
+
+        // Check direction
+        buffer.reset();
+        buffer.get(new byte[IKE_IS_RESP_BYTE_OFFSET]);
+        byte flagsByte = buffer.get();
+        boolean isResp = ((flagsByte & RSP_FLAG_MASK) != 0);
+        if (expectedResp != isResp) {
+            return false;
+        }
+
+        // Check message ID
+        buffer.reset();
         buffer.get(new byte[IKE_MSG_ID_OFFSET]);
-        int msgId = buffer.getInt();
-        return expectedMsgId == msgId;
 
-        // TODO: Check SPI and packet direction
+        // Both the expected message ID and the packet's msgId are signed integers, so directly
+        // compare them.
+        int msgId = buffer.getInt();
+        if (expectedMsgId != msgId) {
+            return false;
+        }
+
+        return true;
     }
 
     private static boolean isExpectedFragNum(byte[] pkt, int ikeOffset, int expectedFragNum) {
@@ -265,6 +303,22 @@ public class IkeTunUtils extends TunUtils {
         buffer.get(new byte[IKE_FRAG_NUM_OFFSET]);
         int fragNum = Short.toUnsignedInt(buffer.getShort());
         return expectedFragNum == fragNum;
+    }
+
+    public static class PortPair {
+        public final int srcPort;
+        public final int dstPort;
+
+        public PortPair(int sourcePort, int destinationPort) {
+            srcPort = sourcePort;
+            dstPort = destinationPort;
+        }
+    }
+
+    public static PortPair getSrcDestPortPair(byte[] outboundIkePkt) throws Exception {
+        return new PortPair(
+                getPort(outboundIkePkt, true /* shouldGetSource */),
+                getPort(outboundIkePkt, false /* shouldGetSource */));
     }
 
     private static InetAddress getAddress(byte[] pkt, boolean shouldGetSource) throws Exception {
@@ -288,7 +342,7 @@ public class IkeTunUtils extends TunUtils {
         return Short.toUnsignedInt(buffer.getShort());
     }
 
-    private static byte[] buildIkePacket(
+    public static byte[] buildIkePacket(
             InetAddress srcAddr,
             InetAddress dstAddr,
             int srcPort,
