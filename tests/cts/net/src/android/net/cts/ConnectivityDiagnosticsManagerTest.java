@@ -36,6 +36,7 @@ import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 import static android.net.NetworkCapabilities.TRANSPORT_TEST;
 import static android.net.cts.util.CtsNetUtils.TestNetworkCallback;
 
+import static com.android.compatibility.common.util.SystemUtil.callWithShellPermissionIdentity;
 import static com.android.compatibility.common.util.SystemUtil.runWithShellPermissionIdentity;
 
 import static org.junit.Assert.assertEquals;
@@ -63,6 +64,7 @@ import android.net.TestNetworkManager;
 import android.os.Binder;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.ParcelFileDescriptor;
 import android.os.PersistableBundle;
 import android.os.Process;
 import android.platform.test.annotations.AppModeFull;
@@ -85,6 +87,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -114,10 +118,6 @@ public class ConnectivityDiagnosticsManagerTest {
 
     private static final String SHA_256 = "SHA-256";
 
-    // Callback used to keep TestNetworks up when there are no other outstanding NetworkRequests
-    // for it.
-    private static final TestNetworkCallback TEST_NETWORK_CALLBACK = new TestNetworkCallback();
-
     private static final NetworkRequest CELLULAR_NETWORK_REQUEST =
             new NetworkRequest.Builder().addTransportType(TRANSPORT_CELLULAR).build();
 
@@ -129,7 +129,14 @@ public class ConnectivityDiagnosticsManagerTest {
     private CarrierConfigManager mCarrierConfigManager;
     private PackageManager mPackageManager;
     private TelephonyManager mTelephonyManager;
+
+    // Callback used to keep TestNetworks up when there are no other outstanding NetworkRequests
+    // for it.
+    private TestNetworkCallback mTestNetworkCallback;
     private Network mTestNetwork;
+    private ParcelFileDescriptor mTestNetworkFD;
+
+    private List<TestConnectivityDiagnosticsCallback> mRegisteredCallbacks;
 
     @Before
     public void setUp() throws Exception {
@@ -140,27 +147,40 @@ public class ConnectivityDiagnosticsManagerTest {
         mPackageManager = mContext.getPackageManager();
         mTelephonyManager = mContext.getSystemService(TelephonyManager.class);
 
-        mConnectivityManager.requestNetwork(TEST_NETWORK_REQUEST, TEST_NETWORK_CALLBACK);
+        mTestNetworkCallback = new TestNetworkCallback();
+        mConnectivityManager.requestNetwork(TEST_NETWORK_REQUEST, mTestNetworkCallback);
+
+        mRegisteredCallbacks = new ArrayList<>();
     }
 
     @After
     public void tearDown() throws Exception {
-        mConnectivityManager.unregisterNetworkCallback(TEST_NETWORK_CALLBACK);
-
+        mConnectivityManager.unregisterNetworkCallback(mTestNetworkCallback);
         if (mTestNetwork != null) {
             runWithShellPermissionIdentity(() -> {
                 final TestNetworkManager tnm = mContext.getSystemService(TestNetworkManager.class);
                 tnm.teardownTestNetwork(mTestNetwork);
             });
+            mTestNetwork = null;
+        }
+
+        if (mTestNetworkFD != null) {
+            mTestNetworkFD.close();
+            mTestNetworkFD = null;
+        }
+
+        for (TestConnectivityDiagnosticsCallback cb : mRegisteredCallbacks) {
+            mCdm.unregisterConnectivityDiagnosticsCallback(cb);
         }
     }
 
     @Test
     public void testRegisterConnectivityDiagnosticsCallback() throws Exception {
-        mTestNetwork = setUpTestNetwork();
+        mTestNetworkFD = setUpTestNetwork().getFileDescriptor();
+        mTestNetwork = mTestNetworkCallback.waitForAvailable();
 
-        final TestConnectivityDiagnosticsCallback cb = new TestConnectivityDiagnosticsCallback();
-        mCdm.registerConnectivityDiagnosticsCallback(TEST_NETWORK_REQUEST, INLINE_EXECUTOR, cb);
+        final TestConnectivityDiagnosticsCallback cb =
+                createAndRegisterConnectivityDiagnosticsCallback(TEST_NETWORK_REQUEST);
 
         final String interfaceName =
                 mConnectivityManager.getLinkProperties(mTestNetwork).getInterfaceName();
@@ -185,17 +205,15 @@ public class ConnectivityDiagnosticsManagerTest {
                 new IntentFilter(CarrierConfigManager.ACTION_CARRIER_CONFIG_CHANGED));
 
         final TestNetworkCallback testNetworkCallback = new TestNetworkCallback();
-        final TestConnectivityDiagnosticsCallback connDiagsCallback =
-                new TestConnectivityDiagnosticsCallback();
+
         try {
             doBroadcastCarrierConfigsAndVerifyOnConnectivityReportAvailable(
-                    subId, carrierConfigReceiver, testNetworkCallback, connDiagsCallback);
+                    subId, carrierConfigReceiver, testNetworkCallback);
         } finally {
             runWithShellPermissionIdentity(
                     () -> mCarrierConfigManager.overrideConfig(subId, null),
                     android.Manifest.permission.MODIFY_PHONE_STATE);
             mConnectivityManager.unregisterNetworkCallback(testNetworkCallback);
-            mCdm.unregisterConnectivityDiagnosticsCallback(connDiagsCallback);
             mContext.unregisterReceiver(carrierConfigReceiver);
         }
     }
@@ -212,8 +230,7 @@ public class ConnectivityDiagnosticsManagerTest {
     private void doBroadcastCarrierConfigsAndVerifyOnConnectivityReportAvailable(
             int subId,
             @NonNull CarrierConfigReceiver carrierConfigReceiver,
-            @NonNull TestNetworkCallback testNetworkCallback,
-            @NonNull TestConnectivityDiagnosticsCallback connDiagsCallback)
+            @NonNull TestNetworkCallback testNetworkCallback)
             throws Exception {
         final PersistableBundle carrierConfigs = new PersistableBundle();
         carrierConfigs.putStringArray(
@@ -251,8 +268,8 @@ public class ConnectivityDiagnosticsManagerTest {
         // detministically wait for, use Thread#sleep here.
         Thread.sleep(500);
 
-        mCdm.registerConnectivityDiagnosticsCallback(
-                CELLULAR_NETWORK_REQUEST, INLINE_EXECUTOR, connDiagsCallback);
+        final TestConnectivityDiagnosticsCallback connDiagsCallback =
+                createAndRegisterConnectivityDiagnosticsCallback(CELLULAR_NETWORK_REQUEST);
 
         final String interfaceName =
                 mConnectivityManager.getLinkProperties(network).getInterfaceName();
@@ -263,8 +280,8 @@ public class ConnectivityDiagnosticsManagerTest {
 
     @Test
     public void testRegisterDuplicateConnectivityDiagnosticsCallback() {
-        final TestConnectivityDiagnosticsCallback cb = new TestConnectivityDiagnosticsCallback();
-        mCdm.registerConnectivityDiagnosticsCallback(TEST_NETWORK_REQUEST, INLINE_EXECUTOR, cb);
+        final TestConnectivityDiagnosticsCallback cb =
+                createAndRegisterConnectivityDiagnosticsCallback(TEST_NETWORK_REQUEST);
 
         try {
             mCdm.registerConnectivityDiagnosticsCallback(TEST_NETWORK_REQUEST, INLINE_EXECUTOR, cb);
@@ -288,10 +305,11 @@ public class ConnectivityDiagnosticsManagerTest {
 
     @Test
     public void testOnConnectivityReportAvailable() throws Exception {
-        mTestNetwork = setUpTestNetwork();
+        final TestConnectivityDiagnosticsCallback cb =
+                createAndRegisterConnectivityDiagnosticsCallback(TEST_NETWORK_REQUEST);
 
-        final TestConnectivityDiagnosticsCallback cb = new TestConnectivityDiagnosticsCallback();
-        mCdm.registerConnectivityDiagnosticsCallback(TEST_NETWORK_REQUEST, INLINE_EXECUTOR, cb);
+        mTestNetworkFD = setUpTestNetwork().getFileDescriptor();
+        mTestNetwork = mTestNetworkCallback.waitForAvailable();
 
         final String interfaceName =
                 mConnectivityManager.getLinkProperties(mTestNetwork).getInterfaceName();
@@ -339,10 +357,11 @@ public class ConnectivityDiagnosticsManagerTest {
             long timestampMillis,
             @NonNull PersistableBundle extras)
             throws Exception {
-        mTestNetwork = setUpTestNetwork();
+        mTestNetworkFD = setUpTestNetwork().getFileDescriptor();
+        mTestNetwork = mTestNetworkCallback.waitForAvailable();
 
-        final TestConnectivityDiagnosticsCallback cb = new TestConnectivityDiagnosticsCallback();
-        mCdm.registerConnectivityDiagnosticsCallback(TEST_NETWORK_REQUEST, INLINE_EXECUTOR, cb);
+        final TestConnectivityDiagnosticsCallback cb =
+                createAndRegisterConnectivityDiagnosticsCallback(TEST_NETWORK_REQUEST);
 
         final String interfaceName =
                 mConnectivityManager.getLinkProperties(mTestNetwork).getInterfaceName();
@@ -370,10 +389,11 @@ public class ConnectivityDiagnosticsManagerTest {
     }
 
     private void verifyOnNetworkConnectivityReported(boolean hasConnectivity) throws Exception {
-        mTestNetwork = setUpTestNetwork();
+        mTestNetworkFD = setUpTestNetwork().getFileDescriptor();
+        mTestNetwork = mTestNetworkCallback.waitForAvailable();
 
-        final TestConnectivityDiagnosticsCallback cb = new TestConnectivityDiagnosticsCallback();
-        mCdm.registerConnectivityDiagnosticsCallback(TEST_NETWORK_REQUEST, INLINE_EXECUTOR, cb);
+        final TestConnectivityDiagnosticsCallback cb =
+                createAndRegisterConnectivityDiagnosticsCallback(TEST_NETWORK_REQUEST);
 
         // onConnectivityReportAvailable always invoked when the test network is established
         final String interfaceName =
@@ -394,17 +414,12 @@ public class ConnectivityDiagnosticsManagerTest {
         cb.assertNoCallback();
     }
 
-    @NonNull
-    private Network waitForConnectivityServiceIdleAndGetNetwork() throws InterruptedException {
-        // Get a new Network. This requires going through the ConnectivityService thread. Once it
-        // completes, all previously enqueued messages on the ConnectivityService main Handler have
-        // completed.
-        final TestNetworkCallback callback = new TestNetworkCallback();
-        mConnectivityManager.requestNetwork(TEST_NETWORK_REQUEST, callback);
-        final Network network = callback.waitForAvailable();
-        mConnectivityManager.unregisterNetworkCallback(callback);
-        assertNotNull(network);
-        return network;
+    private TestConnectivityDiagnosticsCallback createAndRegisterConnectivityDiagnosticsCallback(
+            NetworkRequest request) {
+        final TestConnectivityDiagnosticsCallback cb = new TestConnectivityDiagnosticsCallback();
+        mCdm.registerConnectivityDiagnosticsCallback(request, INLINE_EXECUTOR, cb);
+        mRegisteredCallbacks.add(cb);
+        return cb;
     }
 
     /**
@@ -412,16 +427,16 @@ public class ConnectivityDiagnosticsManagerTest {
      * to the Network being validated.
      */
     @NonNull
-    private Network setUpTestNetwork() throws Exception {
+    private TestNetworkInterface setUpTestNetwork() throws Exception {
         final int[] administratorUids = new int[] {Process.myUid()};
-        runWithShellPermissionIdentity(
+        return callWithShellPermissionIdentity(
                 () -> {
                     final TestNetworkManager tnm =
                             mContext.getSystemService(TestNetworkManager.class);
                     final TestNetworkInterface tni = tnm.createTunInterface(new LinkAddress[0]);
                     tnm.setupTestNetwork(tni.getInterfaceName(), administratorUids, BINDER);
+                    return tni;
                 });
-        return waitForConnectivityServiceIdleAndGetNetwork();
     }
 
     private static class TestConnectivityDiagnosticsCallback
