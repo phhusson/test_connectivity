@@ -220,5 +220,5 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
         assertArrayEquals(EXPECTED_PROTOCOL_ERROR_DATA_NONE, protocolException.getErrorData());
     }
 
-    // TODO(b/155821007): Verify rekey process and handling IKE_AUTH failure
+    // TODO(b/155821007): Verify handling IKE_AUTH failure
 }
