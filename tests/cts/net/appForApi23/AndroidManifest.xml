@@ -16,32 +16,32 @@
  -->
 
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="android.net.cts.appForApi23">
+     package="android.net.cts.appForApi23">
 
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
 
     <application>
-        <receiver android:name=".ConnectivityReceiver">
+        <receiver android:name=".ConnectivityReceiver"
+             android:exported="true">
             <intent-filter>
-                <action android:name="android.net.conn.CONNECTIVITY_CHANGE" />
+                <action android:name="android.net.conn.CONNECTIVITY_CHANGE"/>
             </intent-filter>
             <intent-filter>
-                <action android:name="android.net.cts.appForApi23.getWifiConnectivityActionCount" />
+                <action android:name="android.net.cts.appForApi23.getWifiConnectivityActionCount"/>
             </intent-filter>
         </receiver>
 
         <activity android:name=".ConnectivityListeningActivity"
-                  android:label="ConnectivityListeningActivity"
-                  android:exported="true">
+             android:label="ConnectivityListeningActivity"
+             android:exported="true">
             <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.DEFAULT" />
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.DEFAULT"/>
             </intent-filter>
         </activity>
 
     </application>
 
 </manifest>
-
