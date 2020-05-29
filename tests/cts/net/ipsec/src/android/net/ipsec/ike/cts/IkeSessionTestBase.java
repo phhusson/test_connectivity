@@ -534,7 +534,5 @@ abstract class IkeSessionTestBase extends IkeTestBase {
         return sContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_IPSEC_TUNNELS);
     }
 
-    // TODO(b/148689509): Verify IKE Session setup using EAP
-
     // TODO(b/148689509): Verify hostname based creation
 }
