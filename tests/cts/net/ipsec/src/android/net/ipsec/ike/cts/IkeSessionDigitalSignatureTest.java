@@ -123,7 +123,7 @@ public class IkeSessionDigitalSignatureTest extends IkeSessionTestBase {
                     InetAddresses.parseNumericAddress("172.58.35.103"),
                     InetAddresses.parseNumericAddress("172.58.35.103"));
 
-    // TODO(b/157510502): Add test for IKE Session setup in IPv6 network
+    // TODO(b/157510502): Add test for IKE Session setup with transport mode Child in IPv6 network
 
     private static final String LOCAL_ID_ASN1_DN =
             "CN=client.test.ike.android.net, O=Android, C=US";
@@ -184,6 +184,7 @@ public class IkeSessionDigitalSignatureTest extends IkeSessionTestBase {
         performSetupIkeAndFirstChildBlocking(
                 IKE_INIT_RESP,
                 EXPECTED_AUTH_REQ_FRAG_COUNT /* expectedReqPktCnt */,
+                true /* expectedAuthUseEncap */,
                 IKE_AUTH_RESP_FRAG_1,
                 IKE_AUTH_RESP_FRAG_2);
 
