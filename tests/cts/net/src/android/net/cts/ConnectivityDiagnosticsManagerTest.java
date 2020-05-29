@@ -81,6 +81,8 @@ public class ConnectivityDiagnosticsManagerTest {
     private static final int DNS_CONSECUTIVE_TIMEOUTS = 5;
     private static final int COLLECTION_PERIOD_MILLIS = 5000;
     private static final int FAIL_RATE_PERCENTAGE = 100;
+    private static final int UNKNOWN_DETECTION_METHOD = 4;
+    private static final int FILTERED_UNKNOWN_DETECTION_METHOD = 0;
 
     private static final Executor INLINE_EXECUTOR = x -> x.run();
 
@@ -193,8 +195,27 @@ public class ConnectivityDiagnosticsManagerTest {
         verifyOnDataStallSuspected(DETECTION_METHOD_TCP_METRICS, TIMESTAMP, extras);
     }
 
+    @Test
+    public void testOnDataStallSuspected_UnknownDetectionMethod() throws Exception {
+        verifyOnDataStallSuspected(
+                UNKNOWN_DETECTION_METHOD,
+                FILTERED_UNKNOWN_DETECTION_METHOD,
+                TIMESTAMP,
+                PersistableBundle.EMPTY);
+    }
+
     private void verifyOnDataStallSuspected(
             int detectionMethod, long timestampMillis, @NonNull PersistableBundle extras)
+            throws Exception {
+        // Input detection method is expected to match received detection method
+        verifyOnDataStallSuspected(detectionMethod, detectionMethod, timestampMillis, extras);
+    }
+
+    private void verifyOnDataStallSuspected(
+            int inputDetectionMethod,
+            int expectedDetectionMethod,
+            long timestampMillis,
+            @NonNull PersistableBundle extras)
             throws Exception {
         mTestNetwork = setUpTestNetwork();
 
@@ -208,11 +229,11 @@ public class ConnectivityDiagnosticsManagerTest {
 
         runWithShellPermissionIdentity(
                 () -> mConnectivityManager.simulateDataStall(
-                        detectionMethod, timestampMillis, mTestNetwork, extras),
+                        inputDetectionMethod, timestampMillis, mTestNetwork, extras),
                 android.Manifest.permission.MANAGE_TEST_NETWORKS);
 
         cb.expectOnDataStallSuspected(
-                mTestNetwork, interfaceName, detectionMethod, timestampMillis, extras);
+                mTestNetwork, interfaceName, expectedDetectionMethod, timestampMillis, extras);
         cb.assertNoCallback();
     }
 
