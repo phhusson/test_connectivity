@@ -23,6 +23,12 @@ import static android.net.ConnectivityDiagnosticsManager.ConnectivityReport.KEY_
 import static android.net.ConnectivityDiagnosticsManager.ConnectivityReport.KEY_NETWORK_VALIDATION_RESULT;
 import static android.net.ConnectivityDiagnosticsManager.ConnectivityReport.NETWORK_VALIDATION_RESULT_VALID;
 import static android.net.ConnectivityDiagnosticsManager.DataStallReport;
+import static android.net.ConnectivityDiagnosticsManager.DataStallReport.DETECTION_METHOD_DNS_EVENTS;
+import static android.net.ConnectivityDiagnosticsManager.DataStallReport.DETECTION_METHOD_TCP_METRICS;
+import static android.net.ConnectivityDiagnosticsManager.DataStallReport.KEY_DNS_CONSECUTIVE_TIMEOUTS;
+import static android.net.ConnectivityDiagnosticsManager.DataStallReport.KEY_TCP_METRICS_COLLECTION_PERIOD_MILLIS;
+import static android.net.ConnectivityDiagnosticsManager.DataStallReport.KEY_TCP_PACKET_FAIL_RATE;
+import static android.net.ConnectivityDiagnosticsManager.persistableBundleEquals;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_VPN;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_TRUSTED;
 import static android.net.NetworkCapabilities.TRANSPORT_TEST;
@@ -71,6 +77,10 @@ import java.util.concurrent.Executor;
 public class ConnectivityDiagnosticsManagerTest {
     private static final int CALLBACK_TIMEOUT_MILLIS = 5000;
     private static final int NO_CALLBACK_INVOKED_TIMEOUT = 500;
+    private static final long TIMESTAMP = 123456789L;
+    private static final int DNS_CONSECUTIVE_TIMEOUTS = 5;
+    private static final int COLLECTION_PERIOD_MILLIS = 5000;
+    private static final int FAIL_RATE_PERCENTAGE = 100;
 
     private static final Executor INLINE_EXECUTOR = x -> x.run();
 
@@ -163,6 +173,46 @@ public class ConnectivityDiagnosticsManagerTest {
                 mConnectivityManager.getLinkProperties(mTestNetwork).getInterfaceName();
 
         cb.expectOnConnectivityReportAvailable(mTestNetwork, interfaceName);
+        cb.assertNoCallback();
+    }
+
+    @Test
+    public void testOnDataStallSuspected_DnsEvents() throws Exception {
+        final PersistableBundle extras = new PersistableBundle();
+        extras.putInt(KEY_DNS_CONSECUTIVE_TIMEOUTS, DNS_CONSECUTIVE_TIMEOUTS);
+
+        verifyOnDataStallSuspected(DETECTION_METHOD_DNS_EVENTS, TIMESTAMP, extras);
+    }
+
+    @Test
+    public void testOnDataStallSuspected_TcpMetrics() throws Exception {
+        final PersistableBundle extras = new PersistableBundle();
+        extras.putInt(KEY_TCP_METRICS_COLLECTION_PERIOD_MILLIS, COLLECTION_PERIOD_MILLIS);
+        extras.putInt(KEY_TCP_PACKET_FAIL_RATE, FAIL_RATE_PERCENTAGE);
+
+        verifyOnDataStallSuspected(DETECTION_METHOD_TCP_METRICS, TIMESTAMP, extras);
+    }
+
+    private void verifyOnDataStallSuspected(
+            int detectionMethod, long timestampMillis, @NonNull PersistableBundle extras)
+            throws Exception {
+        mTestNetwork = setUpTestNetwork();
+
+        final TestConnectivityDiagnosticsCallback cb = new TestConnectivityDiagnosticsCallback();
+        mCdm.registerConnectivityDiagnosticsCallback(TEST_NETWORK_REQUEST, INLINE_EXECUTOR, cb);
+
+        final String interfaceName =
+                mConnectivityManager.getLinkProperties(mTestNetwork).getInterfaceName();
+
+        cb.expectOnConnectivityReportAvailable(mTestNetwork, interfaceName);
+
+        runWithShellPermissionIdentity(
+                () -> mConnectivityManager.simulateDataStall(
+                        detectionMethod, timestampMillis, mTestNetwork, extras),
+                android.Manifest.permission.MANAGE_TEST_NETWORKS);
+
+        cb.expectOnDataStallSuspected(
+                mTestNetwork, interfaceName, detectionMethod, timestampMillis, extras);
         cb.assertNoCallback();
     }
 
@@ -276,6 +326,27 @@ public class ConnectivityDiagnosticsManagerTest {
             assertTrue(extras.containsKey(KEY_NETWORK_PROBES_ATTEMPTED_BITMASK));
             final int probesAttempted = extras.getInt(KEY_NETWORK_PROBES_ATTEMPTED_BITMASK);
             assertTrue("PROBES_ATTEMPTED mask not in expected range", probesAttempted >= 0);
+        }
+
+        public void expectOnDataStallSuspected(
+                @NonNull Network network,
+                @NonNull String interfaceName,
+                int detectionMethod,
+                long timestampMillis,
+                @NonNull PersistableBundle extras) {
+            final DataStallReport result =
+                    (DataStallReport) mHistory.poll(CALLBACK_TIMEOUT_MILLIS, x -> true);
+            assertEquals(network, result.getNetwork());
+            assertEquals(detectionMethod, result.getDetectionMethod());
+            assertEquals(timestampMillis, result.getReportTimestamp());
+
+            final NetworkCapabilities nc = result.getNetworkCapabilities();
+            assertNotNull(nc);
+            assertTrue(nc.hasTransport(TRANSPORT_TEST));
+            assertNotNull(result.getLinkProperties());
+            assertEquals(interfaceName, result.getLinkProperties().getInterfaceName());
+
+            assertTrue(persistableBundleEquals(extras, result.getStallDetails()));
         }
 
         public void expectOnNetworkConnectivityReported(
