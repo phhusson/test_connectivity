@@ -17,18 +17,17 @@
 package android.net.ipsec.ike.cts;
 
 import static android.app.AppOpsManager.OP_MANAGE_IPSEC_TUNNELS;
+import static android.net.ipsec.ike.exceptions.IkeProtocolException.ERROR_TYPE_AUTHENTICATION_FAILED;
+import static android.net.ipsec.ike.exceptions.IkeProtocolException.ERROR_TYPE_INTERNAL_ADDRESS_FAILURE;
 import static android.net.ipsec.ike.exceptions.IkeProtocolException.ERROR_TYPE_NO_PROPOSAL_CHOSEN;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
 
 import android.net.LinkAddress;
 import android.net.ipsec.ike.IkeFqdnIdentification;
 import android.net.ipsec.ike.IkeSession;
 import android.net.ipsec.ike.IkeSessionParams;
-import android.net.ipsec.ike.exceptions.IkeException;
 import android.net.ipsec.ike.exceptions.IkeProtocolException;
 import android.platform.test.annotations.AppModeFull;
 
@@ -212,13 +211,80 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
 
         mFirstChildSessionCallback.awaitOnClosed();
 
-        IkeException exception = mIkeSessionCallback.awaitOnClosedException();
-        assertNotNull(exception);
-        assertTrue(exception instanceof IkeProtocolException);
-        IkeProtocolException protocolException = (IkeProtocolException) exception;
+        IkeProtocolException protocolException =
+                (IkeProtocolException) mIkeSessionCallback.awaitOnClosedException();
         assertEquals(ERROR_TYPE_NO_PROPOSAL_CHOSEN, protocolException.getErrorType());
         assertArrayEquals(EXPECTED_PROTOCOL_ERROR_DATA_NONE, protocolException.getErrorData());
     }
 
-    // TODO(b/155821007): Verify handling IKE_AUTH failure
+    @Test
+    public void testIkeAuthHandlesAuthFailNotification() throws Exception {
+        final String ikeInitRespHex =
+                "46B8ECA1E0D72A18CF94CE3159486F002120222000000000000001502200"
+                        + "00300000002C010100040300000C0100000C800E01000300000803000005"
+                        + "0300000802000004000000080400000228000088000200001821AA854691"
+                        + "FA3292DF710F0AC149ACBD0CB421608B8796C1912AF04C5B4B23936FDEC4"
+                        + "7CB640E3EAFB56BBB562825E87AF68B40E4BAB80A49BAD44407450A4195A"
+                        + "1DD54BD99F48D28C9F0FBA315A3401C1C3C4AD55911F514A8DF2D2467C46"
+                        + "A73DDC1452AE81336E0F0D5EC896D2E7A77628AF2F9089F48943399DF216"
+                        + "EFCD2900002418D2B7E4E6AF0FEFF5962CF8D68F7793B1293FEDE13331D4"
+                        + "AB0CE9436C2EE1EC2900001C0000400457BD9AEF5B362A83DD7F3DDAA4A9"
+                        + "9B6B4041DAF32900001C000040055A81893582701E44D4B6729A22FE06DE"
+                        + "82A03A36290000080000402E290000100000402F00020003000400050000"
+                        + "000800004014";
+        final String ikeAuthFailRespHex =
+                "46B8ECA1E0D72A18CF94CE3159486F002E202320000000010000004C2900"
+                        + "00301B9E4C8242D3BE62E7F0A537FE8B92C6EAB7153105DA421DCE43A06D"
+                        + "AB6E4808BAC0CA1DAD6ADD0A126A41BD";
+
+        // Open IKE Session
+        IkeSession ikeSession = openIkeSessionWithRemoteAddress(mRemoteAddress);
+        performSetupIkeAndFirstChildBlocking(ikeInitRespHex, ikeAuthFailRespHex);
+
+        mFirstChildSessionCallback.awaitOnClosed();
+        IkeProtocolException protocolException =
+                (IkeProtocolException) mIkeSessionCallback.awaitOnClosedException();
+        assertEquals(ERROR_TYPE_AUTHENTICATION_FAILED, protocolException.getErrorType());
+        assertArrayEquals(EXPECTED_PROTOCOL_ERROR_DATA_NONE, protocolException.getErrorData());
+    }
+
+    @Test
+    public void testIkeAuthHandlesFirstChildCreationFail() throws Exception {
+        final String ikeInitRespHex =
+                "46B8ECA1E0D72A182B300285DA19E6452120222000000000000001502200"
+                        + "00300000002C010100040300000C0100000C800E01000300000803000005"
+                        + "0300000802000004000000080400000228000088000200005C9DE629981F"
+                        + "DB1FC45DB6CCF15D076C1F51BD9F63C771DC089F05CCDE6247965D15C616"
+                        + "C7B5A62342491715E4D1FEA19326477D24143E8E56AB6AD93F54B19BC32A"
+                        + "44BC0A5B5632E57D0A3C43E466E1547D8E4EF65EA4B864A348161666E229"
+                        + "84975A486251A17C4F096A6D5CF3DB83874B70324A31AA7ADDE2D73BADD8"
+                        + "238029000024CF06260F7C4923295E7C91F2B8479212892DA7A519A0322F"
+                        + "F5B2BF570B92972B2900001C00004004C7ACC2C7D58CF8C9F5E953993AF4"
+                        + "6CAC976635B42900001C00004005B64B190DFE7BDE8B9B1475EDE67B63D6"
+                        + "F1DBBF44290000080000402E290000100000402F00020003000400050000"
+                        + "000800004014";
+        final String ikeAuthCreateChildFailHex =
+                "46B8ECA1E0D72A182B300285DA19E6452E202320000000010000008C2400"
+                        + "0070386FC9CCC67495A17915D0544390A2963A769F4A42C6FA668CEEC07F"
+                        + "EC0C87D681DE34267023DD394F1401B5A563E71002C0CE0928D0ABC0C4570"
+                        + "E39C2EDEF820F870AB71BD70A3F3EB5C96CA294B6D3F01677690DCF9F8CFC"
+                        + "9584650957573502BA83E32F18207A9ADEB1FA";
+
+        // Open IKE Session
+        IkeSession ikeSession = openIkeSessionWithRemoteAddress(mRemoteAddress);
+        performSetupIkeAndFirstChildBlocking(ikeInitRespHex, ikeAuthCreateChildFailHex);
+
+        // Even though the child creation failed, the authentication succeeded, so the IKE Session's
+        // onOpened() callback is still expected
+        verifyIkeSessionSetupBlocking();
+
+        // Verify Child Creation failed
+        IkeProtocolException protocolException =
+                (IkeProtocolException) mFirstChildSessionCallback.awaitOnClosedException();
+        assertEquals(ERROR_TYPE_INTERNAL_ADDRESS_FAILURE, protocolException.getErrorType());
+        assertArrayEquals(EXPECTED_PROTOCOL_ERROR_DATA_NONE, protocolException.getErrorData());
+
+        ikeSession.kill();
+        mIkeSessionCallback.awaitOnClosed();
+    }
 }
