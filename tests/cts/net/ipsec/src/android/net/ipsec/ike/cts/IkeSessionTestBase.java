@@ -15,7 +15,13 @@
 
 package android.net.ipsec.ike.cts;
 
-import static android.app.AppOpsManager.OP_MANAGE_IPSEC_TUNNELS;
+import static android.net.ipsec.ike.IkeSessionConfiguration.EXTENSION_TYPE_FRAGMENTATION;
+import static android.system.OsConstants.AF_INET;
+import static android.system.OsConstants.AF_INET6;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
 import android.annotation.NonNull;
 import android.app.AppOpsManager;
@@ -23,6 +29,7 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.InetAddresses;
+import android.net.IpSecManager;
 import android.net.IpSecTransform;
 import android.net.LinkAddress;
 import android.net.Network;
@@ -33,7 +40,11 @@ import android.net.ipsec.ike.ChildSessionCallback;
 import android.net.ipsec.ike.ChildSessionConfiguration;
 import android.net.ipsec.ike.IkeSessionCallback;
 import android.net.ipsec.ike.IkeSessionConfiguration;
+import android.net.ipsec.ike.IkeSessionConnectionInfo;
 import android.net.ipsec.ike.IkeTrafficSelector;
+import android.net.ipsec.ike.TransportModeChildSessionParams;
+import android.net.ipsec.ike.TunnelModeChildSessionParams;
+import android.net.ipsec.ike.cts.IkeTunUtils.PortPair;
 import android.net.ipsec.ike.cts.TestNetworkUtils.TestNetworkCallback;
 import android.net.ipsec.ike.exceptions.IkeException;
 import android.net.ipsec.ike.exceptions.IkeProtocolException;
@@ -55,6 +66,11 @@ import org.junit.runner.RunWith;
 
 import java.net.Inet4Address;
 import java.net.InetAddress;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -79,13 +95,39 @@ abstract class IkeSessionTestBase extends IkeTestBase {
     // Package-wide common expected results that will be shared by all IKE/Child SA creation tests
     static final String EXPECTED_REMOTE_APP_VERSION_EMPTY = "";
     static final byte[] EXPECTED_PROTOCOL_ERROR_DATA_NONE = new byte[0];
+
+    static final InetAddress EXPECTED_DNS_SERVERS_ONE =
+            InetAddresses.parseNumericAddress("8.8.8.8");
+    static final InetAddress EXPECTED_DNS_SERVERS_TWO =
+            InetAddresses.parseNumericAddress("8.8.4.4");
+
     static final InetAddress EXPECTED_INTERNAL_ADDR =
             InetAddresses.parseNumericAddress("198.51.100.10");
     static final LinkAddress EXPECTED_INTERNAL_LINK_ADDR =
             new LinkAddress(EXPECTED_INTERNAL_ADDR, IP4_PREFIX_LEN);
-    static final IkeTrafficSelector EXPECTED_INBOUND_TS =
+    static final InetAddress EXPECTED_INTERNAL_ADDR_V6 =
+            InetAddresses.parseNumericAddress("2001:db8::2");
+    static final LinkAddress EXPECTED_INTERNAL_LINK_ADDR_V6 =
+            new LinkAddress(EXPECTED_INTERNAL_ADDR_V6, IP6_PREFIX_LEN);
+
+    static final IkeTrafficSelector TUNNEL_MODE_INBOUND_TS =
             new IkeTrafficSelector(
                     MIN_PORT, MAX_PORT, EXPECTED_INTERNAL_ADDR, EXPECTED_INTERNAL_ADDR);
+    static final IkeTrafficSelector TUNNEL_MODE_OUTBOUND_TS = DEFAULT_V4_TS;
+    static final IkeTrafficSelector TUNNEL_MODE_INBOUND_TS_V6 =
+            new IkeTrafficSelector(
+                    MIN_PORT, MAX_PORT, EXPECTED_INTERNAL_ADDR_V6, EXPECTED_INTERNAL_ADDR_V6);
+    static final IkeTrafficSelector TUNNEL_MODE_OUTBOUND_TS_V6 = DEFAULT_V6_TS;
+
+    // This value is align with the test vectors hex that are generated in an IPv4 environment
+    static final IkeTrafficSelector TRANSPORT_MODE_OUTBOUND_TS =
+            new IkeTrafficSelector(
+                    MIN_PORT,
+                    MAX_PORT,
+                    InetAddresses.parseNumericAddress("10.138.0.2"),
+                    InetAddresses.parseNumericAddress("10.138.0.2"));
+
+    static final long IKE_DETERMINISTIC_INITIATOR_SPI = Long.parseLong("46B8ECA1E0D72A18", 16);
 
     // Static state to reduce setup/teardown
     static Context sContext = InstrumentationRegistry.getContext();
@@ -124,19 +166,12 @@ abstract class IkeSessionTestBase extends IkeTestBase {
                 .getUiAutomation()
                 .adoptShellPermissionIdentity();
         sTNM = sContext.getSystemService(TestNetworkManager.class);
-
-        // Under normal circumstances, the MANAGE_IPSEC_TUNNELS appop would be auto-granted, and
-        // a standard permission is insufficient. So we shell out the appop, to give us the
-        // right appop permissions.
-        setAppOp(OP_MANAGE_IPSEC_TUNNELS, true);
     }
 
     // This method is guaranteed to run in subclasses and will run after subclasses' @AfterClass
     // methods.
     @AfterClass
     public static void tearDownPermissionAfterClass() throws Exception {
-        setAppOp(OP_MANAGE_IPSEC_TUNNELS, false);
-
         InstrumentationRegistry.getInstrumentation()
                 .getUiAutomation()
                 .dropShellPermissionIdentity();
@@ -159,7 +194,7 @@ abstract class IkeSessionTestBase extends IkeTestBase {
     }
 
     void setUpTestNetwork(InetAddress localAddr) throws Exception {
-        int prefixLen = localAddr instanceof Inet4Address ? IP4_PREFIX_LEN : IP4_PREFIX_LEN;
+        int prefixLen = localAddr instanceof Inet4Address ? IP4_PREFIX_LEN : IP6_PREFIX_LEN;
 
         TestNetworkInterface testIface =
                 sTNM.createTunInterface(new LinkAddress[] {new LinkAddress(localAddr, prefixLen)});
@@ -179,7 +214,7 @@ abstract class IkeSessionTestBase extends IkeTestBase {
         mTunFd.close();
     }
 
-    private static void setAppOp(int appop, boolean allow) {
+    static void setAppOp(int appop, boolean allow) {
         String opName = AppOpsManager.opToName(appop);
         for (String pkg : new String[] {"com.android.shell", sContext.getPackageName()}) {
             String cmd =
@@ -229,6 +264,78 @@ abstract class IkeSessionTestBase extends IkeTestBase {
             System.arraycopy(
                     nextAddressBytes, 0, initialAddressBytes, 0, initialAddressBytes.length);
         }
+    }
+
+    TransportModeChildSessionParams buildTransportModeChildParamsWithTs(
+            IkeTrafficSelector inboundTs, IkeTrafficSelector outboundTs) {
+        return new TransportModeChildSessionParams.Builder()
+                .addSaProposal(SaProposalTest.buildChildSaProposalWithCombinedModeCipher())
+                .addSaProposal(SaProposalTest.buildChildSaProposalWithNormalModeCipher())
+                .addInboundTrafficSelectors(inboundTs)
+                .addOutboundTrafficSelectors(outboundTs)
+                .build();
+    }
+
+    TunnelModeChildSessionParams buildTunnelModeChildSessionParams() {
+        return new TunnelModeChildSessionParams.Builder()
+                .addSaProposal(SaProposalTest.buildChildSaProposalWithNormalModeCipher())
+                .addSaProposal(SaProposalTest.buildChildSaProposalWithCombinedModeCipher())
+                .addInternalAddressRequest(AF_INET)
+                .addInternalAddressRequest(AF_INET6)
+                .build();
+    }
+
+    PortPair performSetupIkeAndFirstChildBlocking(String ikeInitRespHex, String... ikeAuthRespHexes)
+            throws Exception {
+        return performSetupIkeAndFirstChildBlocking(
+                ikeInitRespHex,
+                1 /* expectedAuthReqPktCnt */,
+                true /*expectedAuthUseEncap*/,
+                ikeAuthRespHexes);
+    }
+
+    PortPair performSetupIkeAndFirstChildBlocking(
+            String ikeInitRespHex, boolean expectedAuthUseEncap, String... ikeAuthRespHexes)
+            throws Exception {
+        return performSetupIkeAndFirstChildBlocking(
+                ikeInitRespHex,
+                1 /* expectedAuthReqPktCnt */,
+                expectedAuthUseEncap,
+                ikeAuthRespHexes);
+    }
+
+    PortPair performSetupIkeAndFirstChildBlocking(
+            String ikeInitRespHex,
+            int expectedAuthReqPktCnt,
+            boolean expectedAuthUseEncap,
+            String... ikeAuthRespHexes)
+            throws Exception {
+        mTunUtils.awaitReqAndInjectResp(
+                IKE_DETERMINISTIC_INITIATOR_SPI,
+                0 /* expectedMsgId */,
+                false /* expectedUseEncap */,
+                ikeInitRespHex);
+
+        byte[] ikeAuthReqPkt =
+                mTunUtils
+                        .awaitReqAndInjectResp(
+                                IKE_DETERMINISTIC_INITIATOR_SPI,
+                                1 /* expectedMsgId */,
+                                expectedAuthUseEncap,
+                                expectedAuthReqPktCnt,
+                                ikeAuthRespHexes)
+                        .get(0);
+        return IkeTunUtils.getSrcDestPortPair(ikeAuthReqPkt);
+    }
+
+    void performCloseIkeBlocking(int expectedMsgId, String deleteIkeRespHex) throws Exception {
+        performCloseIkeBlocking(expectedMsgId, true /* expectedUseEncap*/, deleteIkeRespHex);
+    }
+
+    void performCloseIkeBlocking(
+            int expectedMsgId, boolean expectedUseEncap, String deleteIkeRespHex) throws Exception {
+        mTunUtils.awaitReqAndInjectResp(
+                IKE_DETERMINISTIC_INITIATOR_SPI, expectedMsgId, expectedUseEncap, deleteIkeRespHex);
     }
 
     /** Testing callback that allows caller to block current thread until a method get called */
@@ -370,14 +477,115 @@ abstract class IkeSessionTestBase extends IkeTestBase {
             this.ipSecTransform = ipSecTransform;
             this.direction = direction;
         }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(ipSecTransform, direction);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof IpSecTransformCallRecord)) return false;
+
+            IpSecTransformCallRecord record = (IpSecTransformCallRecord) o;
+            return ipSecTransform.equals(record.ipSecTransform) && direction == record.direction;
+        }
+    }
+
+    void verifyIkeSessionSetupBlocking() throws Exception {
+        IkeSessionConfiguration ikeConfig = mIkeSessionCallback.awaitIkeConfig();
+        assertNotNull(ikeConfig);
+        assertEquals(EXPECTED_REMOTE_APP_VERSION_EMPTY, ikeConfig.getRemoteApplicationVersion());
+        assertTrue(ikeConfig.getRemoteVendorIds().isEmpty());
+        assertTrue(ikeConfig.getPcscfServers().isEmpty());
+        assertTrue(ikeConfig.isIkeExtensionEnabled(EXTENSION_TYPE_FRAGMENTATION));
+
+        IkeSessionConnectionInfo ikeConnectInfo = ikeConfig.getIkeSessionConnectionInfo();
+        assertNotNull(ikeConnectInfo);
+        assertEquals(mLocalAddress, ikeConnectInfo.getLocalAddress());
+        assertEquals(mRemoteAddress, ikeConnectInfo.getRemoteAddress());
+        assertEquals(mTunNetwork, ikeConnectInfo.getNetwork());
+    }
+
+    void verifyChildSessionSetupBlocking(
+            TestChildSessionCallback childCallback,
+            List<IkeTrafficSelector> expectedInboundTs,
+            List<IkeTrafficSelector> expectedOutboundTs,
+            List<LinkAddress> expectedInternalAddresses)
+            throws Exception {
+        verifyChildSessionSetupBlocking(
+                childCallback,
+                expectedInboundTs,
+                expectedOutboundTs,
+                expectedInternalAddresses,
+                new ArrayList<InetAddress>() /* expectedDnsServers */);
+    }
+
+    void verifyChildSessionSetupBlocking(
+            TestChildSessionCallback childCallback,
+            List<IkeTrafficSelector> expectedInboundTs,
+            List<IkeTrafficSelector> expectedOutboundTs,
+            List<LinkAddress> expectedInternalAddresses,
+            List<InetAddress> expectedDnsServers)
+            throws Exception {
+        ChildSessionConfiguration childConfig = childCallback.awaitChildConfig();
+        assertNotNull(childConfig);
+        assertEquals(expectedInboundTs, childConfig.getInboundTrafficSelectors());
+        assertEquals(expectedOutboundTs, childConfig.getOutboundTrafficSelectors());
+        assertEquals(expectedInternalAddresses, childConfig.getInternalAddresses());
+        assertEquals(expectedDnsServers, childConfig.getInternalDnsServers());
+        assertTrue(childConfig.getInternalSubnets().isEmpty());
+        assertTrue(childConfig.getInternalDhcpServers().isEmpty());
+    }
+
+    void verifyCloseIkeAndChildBlocking(
+            IpSecTransformCallRecord expectedTransformRecordA,
+            IpSecTransformCallRecord expectedTransformRecordB)
+            throws Exception {
+        verifyDeleteIpSecTransformPair(
+                mFirstChildSessionCallback, expectedTransformRecordA, expectedTransformRecordB);
+        mFirstChildSessionCallback.awaitOnClosed();
+        mIkeSessionCallback.awaitOnClosed();
+    }
+
+    static void verifyCreateIpSecTransformPair(
+            IpSecTransformCallRecord transformRecordA, IpSecTransformCallRecord transformRecordB) {
+        IpSecTransform transformA = transformRecordA.ipSecTransform;
+        IpSecTransform transformB = transformRecordB.ipSecTransform;
+
+        assertNotNull(transformA);
+        assertNotNull(transformB);
+
+        Set<Integer> expectedDirections = new HashSet<>();
+        expectedDirections.add(IpSecManager.DIRECTION_IN);
+        expectedDirections.add(IpSecManager.DIRECTION_OUT);
+
+        Set<Integer> resultDirections = new HashSet<>();
+        resultDirections.add(transformRecordA.direction);
+        resultDirections.add(transformRecordB.direction);
+
+        assertEquals(expectedDirections, resultDirections);
+    }
+
+    static void verifyDeleteIpSecTransformPair(
+            TestChildSessionCallback childCb,
+            IpSecTransformCallRecord expectedTransformRecordA,
+            IpSecTransformCallRecord expectedTransformRecordB) {
+        Set<IpSecTransformCallRecord> expectedTransforms = new HashSet<>();
+        expectedTransforms.add(expectedTransformRecordA);
+        expectedTransforms.add(expectedTransformRecordB);
+
+        Set<IpSecTransformCallRecord> resultTransforms = new HashSet<>();
+        resultTransforms.add(childCb.awaitNextDeletedIpSecTransform());
+        resultTransforms.add(childCb.awaitNextDeletedIpSecTransform());
+
+        assertEquals(expectedTransforms, resultTransforms);
     }
 
     /** Package private method to check if device has IPsec tunnels feature */
     static boolean hasTunnelsFeature() {
         return sContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_IPSEC_TUNNELS);
     }
-
-    // TODO(b/148689509): Verify IKE Session setup using EAP and digital-signature-based auth
 
     // TODO(b/148689509): Verify hostname based creation
 }

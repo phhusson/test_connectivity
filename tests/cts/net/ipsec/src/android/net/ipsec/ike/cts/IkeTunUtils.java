@@ -26,6 +26,8 @@ import static android.net.ipsec.ike.cts.PacketUtils.UDP_HDRLEN;
 import static android.net.ipsec.ike.cts.PacketUtils.UdpHeader;
 import static android.system.OsConstants.IPPROTO_UDP;
 
+import static com.android.internal.util.HexDump.hexStringToByteArray;
+
 import static org.junit.Assert.fail;
 
 import android.os.ParcelFileDescriptor;
@@ -34,7 +36,10 @@ import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
+import java.util.function.Predicate;
 
 public class IkeTunUtils extends TunUtils {
     private static final int PORT_LEN = 2;
@@ -42,63 +47,132 @@ public class IkeTunUtils extends TunUtils {
     private static final int NON_ESP_MARKER_LEN = 4;
     private static final byte[] NON_ESP_MARKER = new byte[NON_ESP_MARKER_LEN];
 
-    private static final int IKE_HEADER_LEN = 28;
     private static final int IKE_INIT_SPI_OFFSET = 0;
+    private static final int IKE_FIRST_PAYLOAD_OFFSET = 16;
     private static final int IKE_IS_RESP_BYTE_OFFSET = 19;
     private static final int IKE_MSG_ID_OFFSET = 20;
+    private static final int IKE_HEADER_LEN = 28;
+    private static final int IKE_FRAG_NUM_OFFSET = 32;
+    private static final int IKE_PAYLOAD_TYPE_SKF = 53;
+
+    private static final int RSP_FLAG_MASK = 0x20;
 
     public IkeTunUtils(ParcelFileDescriptor tunFd) {
         super(tunFd);
     }
 
     /**
-     * Await the expected IKE request and inject an IKE response.
+     * Await the expected IKE request inject an IKE response (or a list of response fragments)
      *
-     * @param respIkePkt IKE response packet without IP/UDP headers or NON ESP MARKER.
+     * @param ikeRespDataFragmentsHex IKE response hex (or a list of response fragments) without
+     *     IP/UDP headers or NON ESP MARKER.
      */
     public byte[] awaitReqAndInjectResp(
-            long expectedInitIkeSpi, int expectedMsgId, boolean expectedUseEncap, byte[] respIkePkt)
+            long expectedInitIkeSpi,
+            int expectedMsgId,
+            boolean expectedUseEncap,
+            String... ikeRespDataFragmentsHex)
             throws Exception {
-        byte[] request =
-                awaitIkePacket(
+        return awaitReqAndInjectResp(
                         expectedInitIkeSpi,
                         expectedMsgId,
-                        false /* expectedResp */,
-                        expectedUseEncap);
+                        expectedUseEncap,
+                        1 /* expectedReqPktCnt */,
+                        ikeRespDataFragmentsHex)
+                .get(0);
+    }
+
+    /**
+     * Await the expected IKE request (or the list of IKE request fragments) and inject an IKE
+     * response (or a list of response fragments)
+     *
+     * @param ikeRespDataFragmentsHex IKE response hex (or a list of response fragments) without
+     *     IP/UDP headers or NON ESP MARKER.
+     */
+    public List<byte[]> awaitReqAndInjectResp(
+            long expectedInitIkeSpi,
+            int expectedMsgId,
+            boolean expectedUseEncap,
+            int expectedReqPktCnt,
+            String... ikeRespDataFragmentsHex)
+            throws Exception {
+        List<byte[]> reqList = new ArrayList<>(expectedReqPktCnt);
+        if (expectedReqPktCnt == 1) {
+            // Expecting one complete IKE packet
+            byte[] req =
+                    awaitIkePacket(
+                            (pkt) -> {
+                                return isExpectedIkePkt(
+                                        pkt,
+                                        expectedInitIkeSpi,
+                                        expectedMsgId,
+                                        false /* expectedResp */,
+                                        expectedUseEncap);
+                            });
+            reqList.add(req);
+        } else {
+            // Expecting "expectedReqPktCnt" number of request fragments
+            for (int i = 0; i < expectedReqPktCnt; i++) {
+                // IKE Fragment number always starts from 1
+                int expectedFragNum = i + 1;
+                byte[] req =
+                        awaitIkePacket(
+                                (pkt) -> {
+                                    return isExpectedIkeFragPkt(
+                                            pkt,
+                                            expectedInitIkeSpi,
+                                            expectedMsgId,
+                                            false /* expectedResp */,
+                                            expectedUseEncap,
+                                            expectedFragNum);
+                                });
+                reqList.add(req);
+            }
+        }
+
+        // All request fragments have the same addresses and ports
+        byte[] request = reqList.get(0);
 
         // Build response header by flipping address and port
         InetAddress srcAddr = getAddress(request, false /* shouldGetSource */);
         InetAddress dstAddr = getAddress(request, true /* shouldGetSource */);
         int srcPort = getPort(request, false /* shouldGetSource */);
         int dstPort = getPort(request, true /* shouldGetSource */);
+        for (String resp : ikeRespDataFragmentsHex) {
+            byte[] response =
+                    buildIkePacket(
+                            srcAddr,
+                            dstAddr,
+                            srcPort,
+                            dstPort,
+                            expectedUseEncap,
+                            hexStringToByteArray(resp));
+            injectPacket(response);
+        }
 
-        byte[] response =
-                buildIkePacket(srcAddr, dstAddr, srcPort, dstPort, expectedUseEncap, respIkePkt);
-        injectPacket(response);
-        return request;
+        return reqList;
     }
 
-    private byte[] awaitIkePacket(
-            long expectedInitIkeSpi,
-            int expectedMsgId,
-            boolean expectedResp,
-            boolean expectedUseEncap)
+    /** Await the expected IKE response */
+    public byte[] awaitResp(long expectedInitIkeSpi, int expectedMsgId, boolean expectedUseEncap)
             throws Exception {
+        return awaitIkePacket(
+                (pkt) -> {
+                    return isExpectedIkePkt(
+                            pkt,
+                            expectedInitIkeSpi,
+                            expectedMsgId,
+                            true /* expectedResp*/,
+                            expectedUseEncap);
+                });
+    }
+
+    private byte[] awaitIkePacket(Predicate<byte[]> pktVerifier) throws Exception {
         long endTime = System.currentTimeMillis() + TIMEOUT;
         int startIndex = 0;
         synchronized (mPackets) {
             while (System.currentTimeMillis() < endTime) {
-                byte[] ikePkt =
-                        getFirstMatchingPacket(
-                                (pkt) -> {
-                                    return isIke(
-                                            pkt,
-                                            expectedInitIkeSpi,
-                                            expectedMsgId,
-                                            expectedResp,
-                                            expectedUseEncap);
-                                },
-                                startIndex);
+                byte[] ikePkt = getFirstMatchingPacket(pktVerifier, startIndex);
                 if (ikePkt != null) {
                     return ikePkt; // We've found the packet we're looking for.
                 }
@@ -112,49 +186,49 @@ public class IkeTunUtils extends TunUtils {
                 }
             }
 
-            String direction = expectedResp ? "response" : "request";
-            fail(
-                    "No such IKE "
-                            + direction
-                            + " found with Initiator SPI "
-                            + expectedInitIkeSpi
-                            + " and message ID "
-                            + expectedMsgId);
+            fail("No matching packet found");
         }
 
         throw new IllegalStateException(
                 "Hit an impossible case where fail() didn't throw an exception");
     }
 
-    private static boolean isIke(
+    private static boolean isExpectedIkePkt(
             byte[] pkt,
             long expectedInitIkeSpi,
             int expectedMsgId,
             boolean expectedResp,
             boolean expectedUseEncap) {
-        int ipProtocolOffset = 0;
-        int ikeOffset = 0;
-        if (isIpv6(pkt)) {
-            // IPv6 UDP expectedUseEncap not supported by kernels; assume non-expectedUseEncap.
-            ipProtocolOffset = IP6_PROTO_OFFSET;
-            ikeOffset = IP6_HDRLEN + UDP_HDRLEN;
-        } else {
-            // Use default IPv4 header length (assuming no options)
-            ipProtocolOffset = IP4_PROTO_OFFSET;
-            ikeOffset = IP4_HDRLEN + UDP_HDRLEN;
-
-            if (expectedUseEncap) {
-                if (hasNonEspMarker(pkt)) {
-                    ikeOffset += NON_ESP_MARKER_LEN;
-                } else {
-                    return false;
-                }
-            }
-        }
+        int ipProtocolOffset = isIpv6(pkt) ? IP6_PROTO_OFFSET : IP4_PROTO_OFFSET;
+        int ikeOffset = getIkeOffset(pkt, expectedUseEncap);
 
         return pkt[ipProtocolOffset] == IPPROTO_UDP
-                && areSpiAndMsgIdEqual(
+                && expectedUseEncap == hasNonEspMarker(pkt)
+                && isExpectedSpiAndMsgId(
                         pkt, ikeOffset, expectedInitIkeSpi, expectedMsgId, expectedResp);
+    }
+
+    private static boolean isExpectedIkeFragPkt(
+            byte[] pkt,
+            long expectedInitIkeSpi,
+            int expectedMsgId,
+            boolean expectedResp,
+            boolean expectedUseEncap,
+            int expectedFragNum) {
+        return isExpectedIkePkt(
+                        pkt, expectedInitIkeSpi, expectedMsgId, expectedResp, expectedUseEncap)
+                && isExpectedFragNum(pkt, getIkeOffset(pkt, expectedUseEncap), expectedFragNum);
+    }
+
+    private static int getIkeOffset(byte[] pkt, boolean useEncap) {
+        if (isIpv6(pkt)) {
+            // IPv6 UDP expectedUseEncap not supported by kernels; assume non-expectedUseEncap.
+            return IP6_HDRLEN + UDP_HDRLEN;
+        } else {
+            // Use default IPv4 header length (assuming no options)
+            int ikeOffset = IP4_HDRLEN + UDP_HDRLEN;
+            return useEncap ? ikeOffset + NON_ESP_MARKER_LEN : ikeOffset;
+        }
     }
 
     private static boolean hasNonEspMarker(byte[] pkt) {
@@ -170,23 +244,81 @@ public class IkeTunUtils extends TunUtils {
         return Arrays.equals(NON_ESP_MARKER, nonEspMarker);
     }
 
-    private static boolean areSpiAndMsgIdEqual(
+    private static boolean isExpectedSpiAndMsgId(
             byte[] pkt,
             int ikeOffset,
-            long expectedIkeInitSpi,
+            long expectedInitIkeSpi,
             int expectedMsgId,
             boolean expectedResp) {
         if (pkt.length <= ikeOffset + IKE_HEADER_LEN) return false;
 
         ByteBuffer buffer = ByteBuffer.wrap(pkt);
         buffer.get(new byte[ikeOffset]); // Skip IP, UDP header (and NON_ESP_MARKER)
+        buffer.mark(); // Mark this position so that later we can reset back here
 
-        // Check message ID.
+        // Check SPI
+        buffer.get(new byte[IKE_INIT_SPI_OFFSET]);
+        long initSpi = buffer.getLong();
+        if (expectedInitIkeSpi != initSpi) {
+            return false;
+        }
+
+        // Check direction
+        buffer.reset();
+        buffer.get(new byte[IKE_IS_RESP_BYTE_OFFSET]);
+        byte flagsByte = buffer.get();
+        boolean isResp = ((flagsByte & RSP_FLAG_MASK) != 0);
+        if (expectedResp != isResp) {
+            return false;
+        }
+
+        // Check message ID
+        buffer.reset();
         buffer.get(new byte[IKE_MSG_ID_OFFSET]);
-        int msgId = buffer.getInt();
-        return expectedMsgId == msgId;
 
-        // TODO: Check SPI and packet direction
+        // Both the expected message ID and the packet's msgId are signed integers, so directly
+        // compare them.
+        int msgId = buffer.getInt();
+        if (expectedMsgId != msgId) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static boolean isExpectedFragNum(byte[] pkt, int ikeOffset, int expectedFragNum) {
+        ByteBuffer buffer = ByteBuffer.wrap(pkt);
+        buffer.get(new byte[ikeOffset]);
+        buffer.mark(); // Mark this position so that later we can reset back here
+
+        // Check if it is a fragment packet
+        buffer.get(new byte[IKE_FIRST_PAYLOAD_OFFSET]);
+        int firstPayload = Byte.toUnsignedInt(buffer.get());
+        if (firstPayload != IKE_PAYLOAD_TYPE_SKF) {
+            return false;
+        }
+
+        // Check fragment number
+        buffer.reset();
+        buffer.get(new byte[IKE_FRAG_NUM_OFFSET]);
+        int fragNum = Short.toUnsignedInt(buffer.getShort());
+        return expectedFragNum == fragNum;
+    }
+
+    public static class PortPair {
+        public final int srcPort;
+        public final int dstPort;
+
+        public PortPair(int sourcePort, int destinationPort) {
+            srcPort = sourcePort;
+            dstPort = destinationPort;
+        }
+    }
+
+    public static PortPair getSrcDestPortPair(byte[] outboundIkePkt) throws Exception {
+        return new PortPair(
+                getPort(outboundIkePkt, true /* shouldGetSource */),
+                getPort(outboundIkePkt, false /* shouldGetSource */));
     }
 
     private static InetAddress getAddress(byte[] pkt, boolean shouldGetSource) throws Exception {
@@ -210,7 +342,7 @@ public class IkeTunUtils extends TunUtils {
         return Short.toUnsignedInt(buffer.getShort());
     }
 
-    private static byte[] buildIkePacket(
+    public static byte[] buildIkePacket(
             InetAddress srcAddr,
             InetAddress dstAddr,
             int srcPort,
