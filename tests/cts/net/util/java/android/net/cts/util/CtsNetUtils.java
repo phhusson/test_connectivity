@@ -20,6 +20,7 @@ import static android.Manifest.permission.NETWORK_SETTINGS;
 import static android.net.ConnectivityManager.PRIVATE_DNS_MODE_OPPORTUNISTIC;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
 import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
+import static android.net.NetworkCapabilities.TRANSPORT_TEST;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -27,11 +28,13 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import android.annotation.NonNull;
+import android.app.AppOpsManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.ContentResolver;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.NetworkCallback;
 import android.net.LinkProperties;
@@ -40,7 +43,12 @@ import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
 import android.net.NetworkInfo.State;
 import android.net.NetworkRequest;
+import android.net.TestNetworkManager;
 import android.net.wifi.WifiManager;
+import android.os.Binder;
+import android.os.Build;
+import android.os.IBinder;
+import android.os.SystemProperties;
 import android.provider.Settings;
 import android.system.Os;
 import android.system.OsConstants;
@@ -73,6 +81,7 @@ public final class CtsNetUtils {
     public static final String NETWORK_CALLBACK_ACTION =
             "ConnectivityManagerTest.NetworkCallbackAction";
 
+    private final IBinder mBinder = new Binder();
     private final Context mContext;
     private final ConnectivityManager mCm;
     private final ContentResolver mCR;
@@ -86,6 +95,51 @@ public final class CtsNetUtils {
         mCm = (ConnectivityManager) mContext.getSystemService(Context.CONNECTIVITY_SERVICE);
         mWifiManager = (WifiManager) mContext.getSystemService(Context.WIFI_SERVICE);
         mCR = context.getContentResolver();
+    }
+
+    /** Checks if FEATURE_IPSEC_TUNNELS is enabled on the device */
+    public boolean hasIpsecTunnelsFeature() {
+        return mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_IPSEC_TUNNELS)
+                || SystemProperties.getInt("ro.product.first_api_level", 0)
+                        >= Build.VERSION_CODES.Q;
+    }
+
+    /**
+     * Sets the given appop using shell commands
+     *
+     * <p>Expects caller to hold the shell permission identity.
+     */
+    public void setAppopPrivileged(int appop, boolean allow) {
+        final String opName = AppOpsManager.opToName(appop);
+        for (final String pkg : new String[] {"com.android.shell", mContext.getPackageName()}) {
+            final String cmd =
+                    String.format(
+                            "appops set %s %s %s",
+                            pkg, // Package name
+                            opName, // Appop
+                            (allow ? "allow" : "deny")); // Action
+            SystemUtil.runShellCommand(cmd);
+        }
+    }
+
+    /** Sets up a test network using the provided interface name */
+    public TestNetworkCallback setupAndGetTestNetwork(String ifname) throws Exception {
+        // Build a network request
+        final NetworkRequest nr =
+                new NetworkRequest.Builder()
+                        .clearCapabilities()
+                        .addTransportType(TRANSPORT_TEST)
+                        .setNetworkSpecifier(ifname)
+                        .build();
+
+        final TestNetworkCallback cb = new TestNetworkCallback();
+        mCm.requestNetwork(nr, cb);
+
+        // Setup the test network after network request is filed to prevent Network from being
+        // reaped due to no requests matching it.
+        mContext.getSystemService(TestNetworkManager.class).setupTestNetwork(ifname, mBinder);
+
+        return cb;
     }
 
     // Toggle WiFi twice, leaving it in the state it started in
