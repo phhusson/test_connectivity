@@ -286,8 +286,9 @@ public class TetheringManagerTest {
         assertTrue(tetheredIfaces.length == 0);
 
         final StartTetheringCallback startTetheringCallback = new StartTetheringCallback();
-        mTM.startTethering(new TetheringRequest.Builder(TETHERING_WIFI).build(),
-                c -> c.run() /* executor */, startTetheringCallback);
+        final TetheringRequest request = new TetheringRequest.Builder(TETHERING_WIFI)
+                .setShouldShowEntitlementUi(false).build();
+        mTM.startTethering(request, c -> c.run() /* executor */, startTetheringCallback);
         startTetheringCallback.verifyTetheringStarted();
 
         mTetherChangeReceiver.expectTethering(true /* active */, wifiRegexs);
@@ -529,8 +530,9 @@ public class TetheringManagerTest {
         assertFalse(isIfaceMatch(wifiRegexs, callback.getTetheredInterfaces()));
 
         final StartTetheringCallback startTetheringCallback = new StartTetheringCallback();
-        mTM.startTethering(new TetheringRequest.Builder(TETHERING_WIFI).build(),
-                c -> c.run() /* executor */, startTetheringCallback);
+        final TetheringRequest request = new TetheringRequest.Builder(TETHERING_WIFI)
+                .setShouldShowEntitlementUi(false).build();
+        mTM.startTethering(request, c -> c.run() /* executor */, startTetheringCallback);
         startTetheringCallback.verifyTetheringStarted();
 
         callback.expectTetheredInterfacesChanged(wifiRegexs);
