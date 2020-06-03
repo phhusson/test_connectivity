@@ -46,13 +46,15 @@ import android.net.TestNetworkInterface;
 import android.net.TestNetworkManager;
 import android.net.VpnManager;
 import android.net.cts.util.CtsNetUtils;
+import android.os.Build;
 import android.platform.test.annotations.AppModeFull;
 
 import androidx.test.InstrumentationRegistry;
-import androidx.test.runner.AndroidJUnit4;
 
 import com.android.internal.util.HexDump;
 import com.android.org.bouncycastle.x509.X509V1CertificateGenerator;
+import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
+import com.android.testutils.DevSdkIgnoreRunner;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -70,7 +72,8 @@ import java.util.concurrent.TimeUnit;
 
 import javax.security.auth.x500.X500Principal;
 
-@RunWith(AndroidJUnit4.class)
+@RunWith(DevSdkIgnoreRunner.class)
+@IgnoreUpTo(Build.VERSION_CODES.Q)
 @AppModeFull(reason = "Appops state changes disallowed for instant apps (OP_ACTIVATE_PLATFORM_VPN)")
 public class Ikev2VpnTest {
     private static final String TAG = Ikev2VpnTest.class.getSimpleName();
