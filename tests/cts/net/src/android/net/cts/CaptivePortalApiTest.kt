@@ -61,7 +61,6 @@ import org.junit.runner.RunWith
 import java.net.Inet4Address
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
-import kotlin.reflect.KClass
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -90,7 +89,7 @@ class CaptivePortalApiTest {
     private val eth by lazy { context.assertHasService(EthernetManager::class.java) }
     private val cm by lazy { context.assertHasService(ConnectivityManager::class.java) }
 
-    private val handlerThread = HandlerThread(CaptivePortalApiTest::class.simpleName)
+    private val handlerThread = HandlerThread(CaptivePortalApiTest::class.java.simpleName)
     private val serverIpAddr = InetAddresses.parseNumericAddress("192.0.2.222") as Inet4Address
     private val clientIpAddr = InetAddresses.parseNumericAddress("192.0.2.111") as Inet4Address
     private val httpServer = HttpServer()
@@ -155,11 +154,11 @@ class CaptivePortalApiTest {
     fun testApiCallbacks() {
         // Handle the DHCP handshake that includes the capport API URL
         val discover = reader.assertDhcpPacketReceived(
-                DhcpDiscoverPacket::class, TEST_TIMEOUT_MS, DHCP_MESSAGE_TYPE_DISCOVER)
+                DhcpDiscoverPacket::class.java, TEST_TIMEOUT_MS, DHCP_MESSAGE_TYPE_DISCOVER)
         reader.sendResponse(makeOfferPacket(discover.clientMac, discover.transactionId))
 
         val request = reader.assertDhcpPacketReceived(
-                DhcpRequestPacket::class, TEST_TIMEOUT_MS, DHCP_MESSAGE_TYPE_REQUEST)
+                DhcpRequestPacket::class.java, TEST_TIMEOUT_MS, DHCP_MESSAGE_TYPE_REQUEST)
         assertEquals(discover.transactionId, request.transactionId)
         assertEquals(clientIpAddr, request.mRequestedIp)
         reader.sendResponse(makeAckPacket(request.clientMac, request.transactionId))
@@ -244,7 +243,7 @@ private class HttpServer : NanoHTTPD("localhost", 0 /* auto-select the port */) 
 }
 
 private fun <T : DhcpPacket> TapPacketReader.assertDhcpPacketReceived(
-    packetType: KClass<T>,
+    packetType: Class<T>,
     timeoutMs: Long,
     type: Byte
 ): T {
@@ -254,7 +253,7 @@ private fun <T : DhcpPacket> TapPacketReader.assertDhcpPacketReceived(
     val packet = DhcpPacket.decodeFullPacket(packetBytes, packetBytes.size, DhcpPacket.ENCAP_L2)
     assertTrue(packetType.isInstance(packet),
             "Expected ${packetType.simpleName} but got ${packet.javaClass.simpleName}")
-    return packetType.java.cast(packet)
+    return packetType.cast(packet)
 }
 
 private fun <T> Context.assertHasService(manager: Class<T>): T {
