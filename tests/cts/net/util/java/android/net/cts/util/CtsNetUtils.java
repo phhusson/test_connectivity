@@ -30,8 +30,8 @@ import static org.junit.Assert.fail;
 import android.annotation.NonNull;
 import android.app.AppOpsManager;
 import android.content.BroadcastReceiver;
-import android.content.Context;
 import android.content.ContentResolver;
+import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
@@ -44,6 +44,8 @@ import android.net.NetworkInfo;
 import android.net.NetworkInfo.State;
 import android.net.NetworkRequest;
 import android.net.TestNetworkManager;
+import android.net.wifi.WifiConfiguration;
+import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Binder;
 import android.os.Build;
@@ -169,6 +171,7 @@ public final class CtsNetUtils {
 
         boolean connected = false;
         try {
+            clearWifiBlacklist();
             SystemUtil.runShellCommand("svc wifi enable");
             SystemUtil.runWithShellPermissionIdentity(() -> mWifiManager.reconnect(),
                     NETWORK_SETTINGS);
@@ -188,11 +191,23 @@ public final class CtsNetUtils {
         return wifiNetwork;
     }
 
+    /**
+     * Re-enable wifi networks that were blacklisted, typically because no internet connection was
+     * detected the last time they were connected. This is necessary to make sure wifi can reconnect
+     * to them.
+     */
+    private void clearWifiBlacklist() {
+        SystemUtil.runWithShellPermissionIdentity(() -> {
+            for (WifiConfiguration config : mWifiManager.getConfiguredNetworks()) {
+                mWifiManager.enableNetwork(config.networkId, false /* attemptConnect */);
+            }
+        });
+    }
+
     /** Disable WiFi and wait for it to become disconnected from the network. */
     public void disconnectFromWifi(Network wifiNetworkToCheck) {
         final TestNetworkCallback callback = new TestNetworkCallback();
         mCm.registerNetworkCallback(makeWifiNetworkRequest(), callback);
-        Network lostWifiNetwork = null;
 
         ConnectivityActionReceiver receiver = new ConnectivityActionReceiver(
                 mCm, ConnectivityManager.TYPE_WIFI, NetworkInfo.State.DISCONNECTED);
@@ -200,9 +215,15 @@ public final class CtsNetUtils {
         filter.addAction(ConnectivityManager.CONNECTIVITY_ACTION);
         mContext.registerReceiver(receiver, filter);
 
+        final WifiInfo wifiInfo = mWifiManager.getConnectionInfo();
+        final boolean wasWifiConnected = wifiInfo != null && wifiInfo.getNetworkId() != -1;
         // Assert that we can establish a TCP connection on wifi.
         Socket wifiBoundSocket = null;
         if (wifiNetworkToCheck != null) {
+            assertTrue("Cannot check network " + wifiNetworkToCheck + ": wifi is not connected",
+                    wasWifiConnected);
+            final NetworkCapabilities nc = mCm.getNetworkCapabilities(wifiNetworkToCheck);
+            assertNotNull("Network " + wifiNetworkToCheck + " is not connected", nc);
             try {
                 wifiBoundSocket = getBoundSocket(wifiNetworkToCheck, TEST_HOST, HTTP_PORT);
                 testHttpRequest(wifiBoundSocket);
@@ -211,21 +232,20 @@ public final class CtsNetUtils {
             }
         }
 
-        boolean disconnected = false;
         try {
             SystemUtil.runShellCommand("svc wifi disable");
-            // Ensure we get both an onLost callback and a CONNECTIVITY_ACTION.
-            lostWifiNetwork = callback.waitForLost();
-            assertNotNull(lostWifiNetwork);
-            disconnected = receiver.waitForState();
+            if (wasWifiConnected) {
+                // Ensure we get both an onLost callback and a CONNECTIVITY_ACTION.
+                assertNotNull("Did not receive onLost callback after disabling wifi",
+                        callback.waitForLost());
+                assertTrue("Wifi failed to reach DISCONNECTED state.", receiver.waitForState());
+            }
         } catch (InterruptedException ex) {
             fail("disconnectFromWifi was interrupted");
         } finally {
             mCm.unregisterNetworkCallback(callback);
             mContext.unregisterReceiver(receiver);
         }
-
-        assertTrue("Wifi failed to reach DISCONNECTED state.", disconnected);
 
         // Check that the socket is closed when wifi disconnects.
         if (wifiBoundSocket != null) {
