@@ -82,6 +82,7 @@ android_test {
     min_sdk_version: "29",
     target_sdk_version: "29",
     test_suites: [
+        "device-tests",
         "mts",
     ],
     test_config_template: "AndroidTestTemplate.xml",
