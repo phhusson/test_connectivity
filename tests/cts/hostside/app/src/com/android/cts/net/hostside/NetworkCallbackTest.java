@@ -83,6 +83,7 @@ public class NetworkCallbackTest extends AbstractRestrictBackgroundNetworkTestCa
     }
 
     private class TestNetworkCallback extends INetworkCallback.Stub {
+        private static final int TEST_CONNECT_TIMEOUT_MS = 30_000;
         private static final int TEST_CALLBACK_TIMEOUT_MS = 5_000;
 
         private final LinkedBlockingQueue<CallbackInfo> mCallbacks = new LinkedBlockingQueue<>();
@@ -131,7 +132,7 @@ public class NetworkCallbackTest extends AbstractRestrictBackgroundNetworkTestCa
         }
 
         public Network expectAvailableCallbackAndGetNetwork() {
-            final CallbackInfo cb = nextCallback(TEST_CALLBACK_TIMEOUT_MS);
+            final CallbackInfo cb = nextCallback(TEST_CONNECT_TIMEOUT_MS);
             if (cb.state != CallbackState.AVAILABLE) {
                 fail("Network is not available. Instead obtained the following callback :"
                         + cb);
