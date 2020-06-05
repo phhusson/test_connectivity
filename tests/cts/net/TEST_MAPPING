@@ -1,0 +1,13 @@
+{
+  // TODO: move to mainline-presubmit once supported
+  "postsubmit": [
+    {
+      "name": "CtsNetTestCasesLatestSdk",
+      "options": [
+        {
+          "exclude-annotation": "com.android.testutils.SkipPresubmit"
+        }
+      ]
+    }
+  ]
+}
