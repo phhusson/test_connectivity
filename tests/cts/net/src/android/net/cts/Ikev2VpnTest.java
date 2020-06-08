@@ -16,6 +16,7 @@
 
 package android.net.cts;
 
+import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
 import static android.net.NetworkCapabilities.TRANSPORT_VPN;
 import static android.net.cts.util.CtsNetUtils.TestNetworkCallback;
 
@@ -40,6 +41,7 @@ import android.net.Ikev2VpnProfile;
 import android.net.IpSecAlgorithm;
 import android.net.LinkAddress;
 import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.net.ProxyInfo;
 import android.net.TestNetworkInterface;
@@ -47,6 +49,7 @@ import android.net.TestNetworkManager;
 import android.net.VpnManager;
 import android.net.cts.util.CtsNetUtils;
 import android.os.Build;
+import android.os.Process;
 import android.platform.test.annotations.AppModeFull;
 
 import androidx.test.InstrumentationRegistry;
@@ -418,6 +421,11 @@ public class Ikev2VpnTest {
         cb.waitForAvailable();
         final Network vpnNetwork = cb.currentNetwork;
         assertNotNull(vpnNetwork);
+
+        final NetworkCapabilities caps = sCM.getNetworkCapabilities(vpnNetwork);
+        assertTrue(caps.hasTransport(TRANSPORT_VPN));
+        assertTrue(caps.hasCapability(NET_CAPABILITY_INTERNET));
+        assertEquals(Process.myUid(), caps.getOwnerUid());
 
         sVpnMgr.stopProvisionedVpnProfile();
         cb.waitForLost();
