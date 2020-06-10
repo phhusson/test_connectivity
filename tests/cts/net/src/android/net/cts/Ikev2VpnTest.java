@@ -56,6 +56,7 @@ import com.android.org.bouncycastle.x509.X509V1CertificateGenerator;
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
 import com.android.testutils.DevSdkIgnoreRunner;
 
+import org.junit.After;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -173,6 +174,12 @@ public class Ikev2VpnTest {
         // Build certificates
         mServerRootCa = generateRandomCertAndKeyPair().cert;
         mUserCertKey = generateRandomCertAndKeyPair();
+    }
+
+    @After
+    public void tearDown() {
+        setAppop(AppOpsManager.OP_ACTIVATE_VPN, false);
+        setAppop(AppOpsManager.OP_ACTIVATE_PLATFORM_VPN, false);
     }
 
     /**
