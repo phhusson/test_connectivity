@@ -68,7 +68,6 @@ public class MultinetworkApiTest extends AndroidTestCase {
         mCM = (ConnectivityManager) getContext().getSystemService(Context.CONNECTIVITY_SERVICE);
         mCR = getContext().getContentResolver();
         mCtsNetUtils = new CtsNetUtils(getContext());
-        mCtsNetUtils.storePrivateDnsSetting();
     }
 
     @Override
@@ -223,6 +222,7 @@ public class MultinetworkApiTest extends AndroidTestCase {
 
     @AppModeFull(reason = "WRITE_SECURE_SETTINGS permission can't be granted to instant apps")
     public void testResNApiNXDomainPrivateDns() throws InterruptedException {
+        mCtsNetUtils.storePrivateDnsSetting();
         // Enable private DNS strict mode and set server to dns.google before doing NxDomain test.
         // b/144521720
         try {
