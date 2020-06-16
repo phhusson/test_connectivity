@@ -18,13 +18,14 @@ package android.net.ipsec.ike.cts;
 
 import static android.app.AppOpsManager.OP_MANAGE_IPSEC_TUNNELS;
 import static android.net.ipsec.ike.exceptions.IkeProtocolException.ERROR_TYPE_AUTHENTICATION_FAILED;
-import static android.net.ipsec.ike.exceptions.IkeProtocolException.ERROR_TYPE_INTERNAL_ADDRESS_FAILURE;
 import static android.net.ipsec.ike.exceptions.IkeProtocolException.ERROR_TYPE_NO_PROPOSAL_CHOSEN;
+import static android.net.ipsec.ike.exceptions.IkeProtocolException.ERROR_TYPE_TS_UNACCEPTABLE;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 
 import android.net.LinkAddress;
+import android.net.ipsec.ike.ChildSessionParams;
 import android.net.ipsec.ike.IkeFqdnIdentification;
 import android.net.ipsec.ike.IkeSession;
 import android.net.ipsec.ike.IkeSessionParams;
@@ -84,7 +85,15 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
                     + "9352D71100777B00ABCC6BD7DBEA697827FFAAA48DF9A54D1D68161939F5DC8"
                     + "6743A7CEB2BE34AC00095A5B8";
 
-    private IkeSession openIkeSessionWithRemoteAddress(InetAddress remoteAddress) {
+    private IkeSession openIkeSessionWithTunnelModeChild(InetAddress remoteAddress) {
+        return openIkeSession(remoteAddress, buildTunnelModeChildSessionParams());
+    }
+
+    private IkeSession openIkeSessionWithTransportModeChild(InetAddress remoteAddress) {
+        return openIkeSession(remoteAddress, buildTransportModeChildParamsWithDefaultTs());
+    }
+
+    private IkeSession openIkeSession(InetAddress remoteAddress, ChildSessionParams childParams) {
         IkeSessionParams ikeParams =
                 new IkeSessionParams.Builder(sContext)
                         .setNetwork(mTunNetwork)
@@ -98,7 +107,7 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
         return new IkeSession(
                 sContext,
                 ikeParams,
-                buildTunnelModeChildSessionParams(),
+                childParams,
                 mUserCbExecutor,
                 mIkeSessionCallback,
                 mFirstChildSessionCallback);
@@ -124,7 +133,7 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
         if (!hasTunnelsFeature()) return;
 
         // Open IKE Session
-        IkeSession ikeSession = openIkeSessionWithRemoteAddress(mRemoteAddress);
+        IkeSession ikeSession = openIkeSessionWithTunnelModeChild(mRemoteAddress);
         performSetupIkeAndFirstChildBlocking(SUCCESS_IKE_INIT_RESP, SUCCESS_IKE_AUTH_RESP);
 
         // IKE INIT and IKE AUTH takes two exchanges. Message ID starts from 2
@@ -222,7 +231,7 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
         setUpTestNetwork(mLocalAddress);
 
         // Open IKE Session
-        IkeSession ikeSession = openIkeSessionWithRemoteAddress(mRemoteAddress);
+        IkeSession ikeSession = openIkeSessionWithTunnelModeChild(mRemoteAddress);
         performSetupIkeAndFirstChildBlocking(
                 ikeInitResp,
                 1 /* expectedAuthReqPktCnt */,
@@ -258,7 +267,7 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
         if (!hasTunnelsFeature()) return;
 
         // Open IKE Session
-        IkeSession ikeSession = openIkeSessionWithRemoteAddress(mRemoteAddress);
+        IkeSession ikeSession = openIkeSessionWithTunnelModeChild(mRemoteAddress);
         performSetupIkeAndFirstChildBlocking(SUCCESS_IKE_INIT_RESP, SUCCESS_IKE_AUTH_RESP);
 
         ikeSession.kill();
@@ -272,7 +281,7 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
                 "46B8ECA1E0D72A180000000000000000292022200000000000000024000000080000000E";
 
         // Open IKE Session
-        IkeSession ikeSession = openIkeSessionWithRemoteAddress(mRemoteAddress);
+        IkeSession ikeSession = openIkeSessionWithTransportModeChild(mRemoteAddress);
         int expectedMsgId = 0;
         mTunUtils.awaitReqAndInjectResp(
                 IKE_DETERMINISTIC_INITIATOR_SPI,
@@ -309,7 +318,7 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
                         + "AB6E4808BAC0CA1DAD6ADD0A126A41BD";
 
         // Open IKE Session
-        IkeSession ikeSession = openIkeSessionWithRemoteAddress(mRemoteAddress);
+        IkeSession ikeSession = openIkeSessionWithTransportModeChild(mRemoteAddress);
         performSetupIkeAndFirstChildBlocking(ikeInitRespHex, ikeAuthFailRespHex);
 
         mFirstChildSessionCallback.awaitOnClosed();
@@ -322,27 +331,28 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
     @Test
     public void testIkeAuthHandlesFirstChildCreationFail() throws Exception {
         final String ikeInitRespHex =
-                "46B8ECA1E0D72A182B300285DA19E6452120222000000000000001502200"
-                        + "00300000002C010100040300000C0100000C800E01000300000803000005"
-                        + "0300000802000004000000080400000228000088000200005C9DE629981F"
-                        + "DB1FC45DB6CCF15D076C1F51BD9F63C771DC089F05CCDE6247965D15C616"
-                        + "C7B5A62342491715E4D1FEA19326477D24143E8E56AB6AD93F54B19BC32A"
-                        + "44BC0A5B5632E57D0A3C43E466E1547D8E4EF65EA4B864A348161666E229"
-                        + "84975A486251A17C4F096A6D5CF3DB83874B70324A31AA7ADDE2D73BADD8"
-                        + "238029000024CF06260F7C4923295E7C91F2B8479212892DA7A519A0322F"
-                        + "F5B2BF570B92972B2900001C00004004C7ACC2C7D58CF8C9F5E953993AF4"
-                        + "6CAC976635B42900001C00004005B64B190DFE7BDE8B9B1475EDE67B63D6"
-                        + "F1DBBF44290000080000402E290000100000402F00020003000400050000"
+                "46B8ECA1E0D72A18F5ABBF896A1240BE2120222000000000000001502200"
+                        + "00300000002C010100040300000C0100000C800E0100030000080300000C"
+                        + "03000008020000050000000804000002280000880002000074950F016B85"
+                        + "605E57E24651843AB70E41B552EDEE227DFE51E6CBEC00E75FFEFC7D5453"
+                        + "109B15F721FCD811FC9F113BE06050882F2FC5F5FF25857E555CCFB5AB64"
+                        + "8B0D1D7A819A3B05DE1FE89A4A627C60D5AA06CD0F66ACD3748722F9CD4F"
+                        + "F30AE7477CBC12049821F07AD6C9F0ED732321A6A36FA817722E025AC34B"
+                        + "ABE62900002432E3807F595070E95EDA341A787599B24B1151B535B0222B"
+                        + "65C003401B9B38F82900001C000040043BB760DB3037B51768DFFAB4B21D"
+                        + "B1716EA1C1382900001C0000400531098EB04DF1BE3F304606BD59B454A8"
+                        + "CC7E7311290000080000402E290000100000402F00020003000400050000"
                         + "000800004014";
         final String ikeAuthCreateChildFailHex =
-                "46B8ECA1E0D72A182B300285DA19E6452E202320000000010000008C2400"
-                        + "0070386FC9CCC67495A17915D0544390A2963A769F4A42C6FA668CEEC07F"
-                        + "EC0C87D681DE34267023DD394F1401B5A563E71002C0CE0928D0ABC0C4570"
-                        + "E39C2EDEF820F870AB71BD70A3F3EB5C96CA294B6D3F01677690DCF9F8CFC"
-                        + "9584650957573502BA83E32F18207A9ADEB1FA";
+                "46B8ECA1E0D72A18F5ABBF896A1240BE2E20232000000001000000B02400"
+                        + "009400B0861242E0C88ECB3848D772B560CAD65B6AC9DFFDC8622A394B8E"
+                        + "64E550BDD69FCD7E768129787ED9062992C1D6DB0F0631C2E05765B403CF"
+                        + "EF1D0A055B32F6698FF7DB5B8FB1B6A83A81634D00E22C86E35B3BFBEC73"
+                        + "EAC6806678926945BC7A57003DC1A3528A1EC423EE56C1075B36C0B57A6B"
+                        + "C6DD990182F6FABFFA167D199C7D629E5B830AAD2AFBD31CEBA6";
 
         // Open IKE Session
-        IkeSession ikeSession = openIkeSessionWithRemoteAddress(mRemoteAddress);
+        IkeSession ikeSession = openIkeSessionWithTransportModeChild(mRemoteAddress);
         performSetupIkeAndFirstChildBlocking(ikeInitRespHex, ikeAuthCreateChildFailHex);
 
         // Even though the child creation failed, the authentication succeeded, so the IKE Session's
@@ -352,7 +362,7 @@ public class IkeSessionPskTest extends IkeSessionTestBase {
         // Verify Child Creation failed
         IkeProtocolException protocolException =
                 (IkeProtocolException) mFirstChildSessionCallback.awaitOnClosedException();
-        assertEquals(ERROR_TYPE_INTERNAL_ADDRESS_FAILURE, protocolException.getErrorType());
+        assertEquals(ERROR_TYPE_TS_UNACCEPTABLE, protocolException.getErrorType());
         assertArrayEquals(EXPECTED_PROTOCOL_ERROR_DATA_NONE, protocolException.getErrorData());
 
         ikeSession.kill();
