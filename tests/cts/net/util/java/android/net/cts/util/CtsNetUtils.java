@@ -157,8 +157,36 @@ public final class CtsNetUtils {
         }
     }
 
-    /** Enable WiFi and wait for it to become connected to a network. */
+    /**
+     * Enable WiFi and wait for it to become connected to a network.
+     *
+     * This method expects to receive a legacy broadcast on connect, which may not be sent if the
+     * network does not become default or if it is not the first network.
+     */
     public Network connectToWifi() {
+        return connectToWifi(true /* expectLegacyBroadcast */);
+    }
+
+    /**
+     * Enable WiFi and wait for it to become connected to a network.
+     *
+     * A network is considered connected when a {@link NetworkCallback#onAvailable(Network)}
+     * callback is received.
+     */
+    public Network ensureWifiConnected() {
+        return connectToWifi(false /* expectLegacyBroadcast */);
+    }
+
+    /**
+     * Enable WiFi and wait for it to become connected to a network.
+     *
+     * @param expectLegacyBroadcast Whether to check for a legacy CONNECTIVITY_ACTION connected
+     *                              broadcast. The broadcast is typically not sent if the network
+     *                              does not become the default network, and is not the first
+     *                              network to appear.
+     * @return The network that was newly connected.
+     */
+    private Network connectToWifi(boolean expectLegacyBroadcast) {
         final TestNetworkCallback callback = new TestNetworkCallback();
         mCm.registerNetworkCallback(makeWifiNetworkRequest(), callback);
         Network wifiNetwork = null;
@@ -170,15 +198,16 @@ public final class CtsNetUtils {
         mContext.registerReceiver(receiver, filter);
 
         boolean connected = false;
+        final String err = "Wifi must be configured to connect to an access point for this test.";
         try {
             clearWifiBlacklist();
             SystemUtil.runShellCommand("svc wifi enable");
             SystemUtil.runWithShellPermissionIdentity(() -> mWifiManager.reconnect(),
                     NETWORK_SETTINGS);
-            // Ensure we get both an onAvailable callback and a CONNECTIVITY_ACTION.
+            // Ensure we get an onAvailable callback and possibly a CONNECTIVITY_ACTION.
             wifiNetwork = callback.waitForAvailable();
-            assertNotNull(wifiNetwork);
-            connected = receiver.waitForState();
+            assertNotNull(err, wifiNetwork);
+            connected = !expectLegacyBroadcast || receiver.waitForState();
         } catch (InterruptedException ex) {
             fail("connectToWifi was interrupted");
         } finally {
@@ -186,8 +215,7 @@ public final class CtsNetUtils {
             mContext.unregisterReceiver(receiver);
         }
 
-        assertTrue("Wifi must be configured to connect to an access point for this test.",
-                connected);
+        assertTrue(err, connected);
         return wifiNetwork;
     }
 
@@ -204,8 +232,47 @@ public final class CtsNetUtils {
         });
     }
 
-    /** Disable WiFi and wait for it to become disconnected from the network. */
+    /**
+     * Disable WiFi and wait for it to become disconnected from the network.
+     *
+     * This method expects to receive a legacy broadcast on disconnect, which may not be sent if the
+     * network was not default, or was not the first network.
+     *
+     * @param wifiNetworkToCheck If non-null, a network that should be disconnected. This network
+     *                           is expected to be able to establish a TCP connection to a remote
+     *                           server before disconnecting, and to have that connection closed in
+     *                           the process.
+     */
     public void disconnectFromWifi(Network wifiNetworkToCheck) {
+        disconnectFromWifi(wifiNetworkToCheck, true /* expectLegacyBroadcast */);
+    }
+
+    /**
+     * Disable WiFi and wait for it to become disconnected from the network.
+     *
+     * @param wifiNetworkToCheck If non-null, a network that should be disconnected. This network
+     *                           is expected to be able to establish a TCP connection to a remote
+     *                           server before disconnecting, and to have that connection closed in
+     *                           the process.
+     */
+    public void ensureWifiDisconnected(Network wifiNetworkToCheck) {
+        disconnectFromWifi(wifiNetworkToCheck, false /* expectLegacyBroadcast */);
+    }
+
+    /**
+     * Disable WiFi and wait for it to become disconnected from the network.
+     *
+     * @param wifiNetworkToCheck If non-null, a network that should be disconnected. This network
+     *                           is expected to be able to establish a TCP connection to a remote
+     *                           server before disconnecting, and to have that connection closed in
+     *                           the process.
+     * @param expectLegacyBroadcast Whether to check for a legacy CONNECTIVITY_ACTION disconnected
+     *                              broadcast. The broadcast is typically not sent if the network
+     *                              was not the default network and not the first network to appear.
+     *                              The check will always be skipped if the device was not connected
+     *                              to wifi in the first place.
+     */
+    private void disconnectFromWifi(Network wifiNetworkToCheck, boolean expectLegacyBroadcast) {
         final TestNetworkCallback callback = new TestNetworkCallback();
         mCm.registerNetworkCallback(makeWifiNetworkRequest(), callback);
 
@@ -238,6 +305,8 @@ public final class CtsNetUtils {
                 // Ensure we get both an onLost callback and a CONNECTIVITY_ACTION.
                 assertNotNull("Did not receive onLost callback after disabling wifi",
                         callback.waitForLost());
+            }
+            if (wasWifiConnected && expectLegacyBroadcast) {
                 assertTrue("Wifi failed to reach DISCONNECTED state.", receiver.waitForState());
             }
         } catch (InterruptedException ex) {
