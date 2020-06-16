@@ -276,6 +276,13 @@ abstract class IkeSessionTestBase extends IkeTestBase {
                 .build();
     }
 
+    TransportModeChildSessionParams buildTransportModeChildParamsWithDefaultTs() {
+        return new TransportModeChildSessionParams.Builder()
+                .addSaProposal(SaProposalTest.buildChildSaProposalWithCombinedModeCipher())
+                .addSaProposal(SaProposalTest.buildChildSaProposalWithNormalModeCipher())
+                .build();
+    }
+
     TunnelModeChildSessionParams buildTunnelModeChildSessionParams() {
         return new TunnelModeChildSessionParams.Builder()
                 .addSaProposal(SaProposalTest.buildChildSaProposalWithNormalModeCipher())
