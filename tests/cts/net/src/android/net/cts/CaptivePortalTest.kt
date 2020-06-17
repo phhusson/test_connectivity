@@ -41,6 +41,7 @@ import android.text.TextUtils
 import androidx.test.platform.app.InstrumentationRegistry.getInstrumentation
 import androidx.test.runner.AndroidJUnit4
 import com.android.compatibility.common.util.SystemUtil
+import com.android.testutils.isDevSdkInRange
 import fi.iki.elonen.NanoHTTPD
 import fi.iki.elonen.NanoHTTPD.Response.IStatus
 import fi.iki.elonen.NanoHTTPD.Response.Status
@@ -105,6 +106,9 @@ class CaptivePortalTest {
     @After
     fun tearDown() {
         clearTestUrls()
+        if (pm.hasSystemFeature(FEATURE_WIFI)) {
+            reconnectWifi()
+        }
         server.stop()
     }
 
@@ -167,7 +171,7 @@ class CaptivePortalTest {
             assertNotEquals(network, cm.activeNetwork, wifiDefaultMessage)
 
             val startPortalAppPermission =
-                    if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) CONNECTIVITY_INTERNAL
+                    if (isDevSdkInRange(0, Build.VERSION_CODES.Q)) CONNECTIVITY_INTERNAL
                     else NETWORK_SETTINGS
             doAsShell(startPortalAppPermission) { cm.startCaptivePortalApp(network) }
             assertTrue(portalContentRequestCv.block(TEST_TIMEOUT_MS), "The captive portal login " +
@@ -180,9 +184,6 @@ class CaptivePortalTest {
             // disconnectFromCell should be called after connectToCell
             utils.disconnectFromCell()
         }
-
-        clearTestUrls()
-        reconnectWifi()
     }
 
     private fun setHttpsUrl(url: String?) = setConfig(TEST_CAPTIVE_PORTAL_HTTPS_URL_SETTING, url)
@@ -203,10 +204,8 @@ class CaptivePortalTest {
     }
 
     private fun reconnectWifi() {
-        doAsShell(NETWORK_SETTINGS) {
-            assertTrue(wm.disconnect())
-            assertTrue(wm.reconnect())
-        }
+        utils.ensureWifiDisconnected(null /* wifiNetworkToCheck */)
+        utils.ensureWifiConnected()
     }
 
     /**
