@@ -30,7 +30,6 @@ import android.content.Context;
 import android.content.ContentResolver;
 import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.NetworkCallback;
-import android.net.DnsPacket;
 import android.net.DnsResolver;
 import android.net.LinkProperties;
 import android.net.Network;
@@ -46,6 +45,8 @@ import android.provider.Settings;
 import android.system.ErrnoException;
 import android.test.AndroidTestCase;
 import android.util.Log;
+
+import com.android.net.module.util.DnsPacket;
 
 import java.net.Inet4Address;
 import java.net.Inet6Address;
