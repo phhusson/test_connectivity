@@ -57,6 +57,7 @@ import android.os.Build;
 import android.os.IBinder;
 import android.os.PersistableBundle;
 import android.os.Process;
+import android.platform.test.annotations.AppModeFull;
 import android.util.Pair;
 
 import androidx.test.InstrumentationRegistry;
@@ -74,6 +75,7 @@ import java.util.concurrent.Executor;
 
 @RunWith(DevSdkIgnoreRunner.class)
 @IgnoreUpTo(Build.VERSION_CODES.Q) // ConnectivityDiagnosticsManager did not exist in Q
+@AppModeFull(reason = "CHANGE_NETWORK_STATE, MANAGE_TEST_NETWORKS not grantable to instant apps")
 public class ConnectivityDiagnosticsManagerTest {
     private static final int CALLBACK_TIMEOUT_MILLIS = 5000;
     private static final int NO_CALLBACK_INVOKED_TIMEOUT = 500;
