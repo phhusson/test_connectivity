@@ -35,8 +35,6 @@ import android.net.dhcp.DhcpPacket.DHCP_MESSAGE_TYPE
 import android.net.dhcp.DhcpPacket.DHCP_MESSAGE_TYPE_DISCOVER
 import android.net.dhcp.DhcpPacket.DHCP_MESSAGE_TYPE_REQUEST
 import android.net.dhcp.DhcpRequestPacket
-import android.net.shared.Inet4AddressUtils.getBroadcastAddress
-import android.net.shared.Inet4AddressUtils.getPrefixMaskAsInet4Address
 import android.os.Build
 import android.os.HandlerThread
 import android.platform.test.annotations.AppModeFull
@@ -44,6 +42,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.AndroidJUnit4
 import com.android.compatibility.common.util.SystemUtil.runWithShellPermissionIdentity
 import com.android.compatibility.common.util.ThrowingRunnable
+import com.android.net.module.util.Inet4AddressUtils.getBroadcastAddress
+import com.android.net.module.util.Inet4AddressUtils.getPrefixMaskAsInet4Address
 import com.android.server.util.NetworkStackConstants.IPV4_ADDR_ANY
 import com.android.testutils.DevSdkIgnoreRule
 import com.android.testutils.DhcpClientPacketFilter
