@@ -16,6 +16,7 @@
 
 package android.net.cts;
 
+import static android.content.pm.PackageManager.FEATURE_TELEPHONY;
 import static android.net.ConnectivityDiagnosticsManager.ConnectivityDiagnosticsCallback;
 import static android.net.ConnectivityDiagnosticsManager.ConnectivityReport;
 import static android.net.ConnectivityDiagnosticsManager.ConnectivityReport.KEY_NETWORK_PROBES_ATTEMPTED_BITMASK;
@@ -31,6 +32,7 @@ import static android.net.ConnectivityDiagnosticsManager.DataStallReport.KEY_TCP
 import static android.net.ConnectivityDiagnosticsManager.persistableBundleEquals;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_VPN;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_TRUSTED;
+import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 import static android.net.NetworkCapabilities.TRANSPORT_TEST;
 import static android.net.cts.util.CtsNetUtils.TestNetworkCallback;
 
@@ -41,9 +43,15 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.junit.Assume.assumeTrue;
 
 import android.annotation.NonNull;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.net.ConnectivityDiagnosticsManager;
 import android.net.ConnectivityManager;
 import android.net.LinkAddress;
@@ -57,10 +65,15 @@ import android.os.Build;
 import android.os.IBinder;
 import android.os.PersistableBundle;
 import android.os.Process;
+import android.telephony.CarrierConfigManager;
+import android.telephony.SubscriptionManager;
+import android.telephony.TelephonyManager;
 import android.util.Pair;
 
 import androidx.test.InstrumentationRegistry;
 
+import com.android.internal.telephony.uicc.IccUtils;
+import com.android.internal.util.ArrayUtils;
 import com.android.testutils.ArrayTrackRecord;
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
 import com.android.testutils.DevSdkIgnoreRunner;
@@ -70,7 +83,10 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import java.security.MessageDigest;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 
 @RunWith(DevSdkIgnoreRunner.class)
 @IgnoreUpTo(Build.VERSION_CODES.Q) // ConnectivityDiagnosticsManager did not exist in Q
@@ -83,6 +99,7 @@ public class ConnectivityDiagnosticsManagerTest {
     private static final int FAIL_RATE_PERCENTAGE = 100;
     private static final int UNKNOWN_DETECTION_METHOD = 4;
     private static final int FILTERED_UNKNOWN_DETECTION_METHOD = 0;
+    private static final int CARRIER_CONFIG_CHANGED_BROADCAST_TIMEOUT = 5000;
 
     private static final Executor INLINE_EXECUTOR = x -> x.run();
 
@@ -93,15 +110,23 @@ public class ConnectivityDiagnosticsManagerTest {
                     .removeCapability(NET_CAPABILITY_NOT_VPN)
                     .build();
 
+    private static final String SHA_256 = "SHA-256";
+
     // Callback used to keep TestNetworks up when there are no other outstanding NetworkRequests
     // for it.
     private static final TestNetworkCallback TEST_NETWORK_CALLBACK = new TestNetworkCallback();
+
+    private static final NetworkRequest CELLULAR_NETWORK_REQUEST =
+            new NetworkRequest.Builder().addTransportType(TRANSPORT_CELLULAR).build();
 
     private static final IBinder BINDER = new Binder();
 
     private Context mContext;
     private ConnectivityManager mConnectivityManager;
     private ConnectivityDiagnosticsManager mCdm;
+    private CarrierConfigManager mCarrierConfigManager;
+    private PackageManager mPackageManager;
+    private TelephonyManager mTelephonyManager;
     private Network mTestNetwork;
 
     @Before
@@ -109,6 +134,9 @@ public class ConnectivityDiagnosticsManagerTest {
         mContext = InstrumentationRegistry.getContext();
         mConnectivityManager = mContext.getSystemService(ConnectivityManager.class);
         mCdm = mContext.getSystemService(ConnectivityDiagnosticsManager.class);
+        mCarrierConfigManager = mContext.getSystemService(CarrierConfigManager.class);
+        mPackageManager = mContext.getPackageManager();
+        mTelephonyManager = mContext.getSystemService(TelephonyManager.class);
 
         mConnectivityManager.requestNetwork(TEST_NETWORK_REQUEST, TEST_NETWORK_CALLBACK);
     }
@@ -137,6 +165,98 @@ public class ConnectivityDiagnosticsManagerTest {
 
         cb.expectOnConnectivityReportAvailable(mTestNetwork, interfaceName);
         cb.assertNoCallback();
+    }
+
+    @Test
+    public void testRegisterCallbackWithCarrierPrivileges() throws Exception {
+        assumeTrue(mPackageManager.hasSystemFeature(FEATURE_TELEPHONY));
+
+        final int subId = SubscriptionManager.getDefaultSubscriptionId();
+        if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+            fail("Need an active subscription. Please ensure that the device has working mobile"
+                    + " data.");
+        }
+
+        final CarrierConfigReceiver carrierConfigReceiver = new CarrierConfigReceiver(subId);
+        mContext.registerReceiver(
+                carrierConfigReceiver,
+                new IntentFilter(CarrierConfigManager.ACTION_CARRIER_CONFIG_CHANGED));
+
+        final TestNetworkCallback testNetworkCallback = new TestNetworkCallback();
+        final TestConnectivityDiagnosticsCallback connDiagsCallback =
+                new TestConnectivityDiagnosticsCallback();
+        try {
+            doBroadcastCarrierConfigsAndVerifyOnConnectivityReportAvailable(
+                    subId, carrierConfigReceiver, testNetworkCallback, connDiagsCallback);
+        } finally {
+            runWithShellPermissionIdentity(
+                    () -> mCarrierConfigManager.overrideConfig(subId, null),
+                    android.Manifest.permission.MODIFY_PHONE_STATE);
+            mConnectivityManager.unregisterNetworkCallback(testNetworkCallback);
+            mCdm.unregisterConnectivityDiagnosticsCallback(connDiagsCallback);
+            mContext.unregisterReceiver(carrierConfigReceiver);
+        }
+    }
+
+    private String getCertHashForThisPackage() throws Exception {
+        final PackageInfo pkgInfo =
+                mPackageManager.getPackageInfo(
+                        mContext.getOpPackageName(), PackageManager.GET_SIGNATURES);
+        final MessageDigest md = MessageDigest.getInstance(SHA_256);
+        final byte[] certHash = md.digest(pkgInfo.signatures[0].toByteArray());
+        return IccUtils.bytesToHexString(certHash);
+    }
+
+    private void doBroadcastCarrierConfigsAndVerifyOnConnectivityReportAvailable(
+            int subId,
+            @NonNull CarrierConfigReceiver carrierConfigReceiver,
+            @NonNull TestNetworkCallback testNetworkCallback,
+            @NonNull TestConnectivityDiagnosticsCallback connDiagsCallback)
+            throws Exception {
+        final PersistableBundle carrierConfigs = new PersistableBundle();
+        carrierConfigs.putStringArray(
+                CarrierConfigManager.KEY_CARRIER_CERTIFICATE_STRING_ARRAY,
+                new String[] {getCertHashForThisPackage()});
+
+        runWithShellPermissionIdentity(
+                () -> {
+                    mCarrierConfigManager.overrideConfig(subId, carrierConfigs);
+                    mCarrierConfigManager.notifyConfigChangedForSubId(subId);
+                },
+                android.Manifest.permission.MODIFY_PHONE_STATE);
+
+        // TODO(b/157779832): This should use android.permission.CHANGE_NETWORK_STATE. However, the
+        // shell does not have CHANGE_NETWORK_STATE, so use CONNECTIVITY_INTERNAL until the shell
+        // permissions are updated.
+        runWithShellPermissionIdentity(
+                () -> mConnectivityManager.requestNetwork(
+                        CELLULAR_NETWORK_REQUEST, testNetworkCallback),
+                android.Manifest.permission.CONNECTIVITY_INTERNAL);
+
+        final Network network = testNetworkCallback.waitForAvailable();
+        assertNotNull(network);
+
+        assertTrue("Didn't receive broadcast for ACTION_CARRIER_CONFIG_CHANGED for subId=" + subId,
+                carrierConfigReceiver.waitForCarrierConfigChanged());
+        assertTrue("Don't have Carrier Privileges after adding cert for this package",
+                mTelephonyManager.createForSubscriptionId(subId).hasCarrierPrivileges());
+
+        // Wait for CarrierPrivilegesTracker to receive the ACTION_CARRIER_CONFIG_CHANGED
+        // broadcast. CPT then needs to update the corresponding DataConnection, which then
+        // updates ConnectivityService. Unfortunately, this update to the NetworkCapabilities in
+        // CS does not trigger NetworkCallback#onCapabilitiesChanged as changing the
+        // administratorUids is not a publicly visible change. In lieu of a better signal to
+        // detministically wait for, use Thread#sleep here.
+        Thread.sleep(500);
+
+        mCdm.registerConnectivityDiagnosticsCallback(
+                CELLULAR_NETWORK_REQUEST, INLINE_EXECUTOR, connDiagsCallback);
+
+        final String interfaceName =
+                mConnectivityManager.getLinkProperties(network).getInterfaceName();
+        connDiagsCallback.expectOnConnectivityReportAvailable(
+                network, interfaceName, TRANSPORT_CELLULAR);
+        connDiagsCallback.assertNoCallback();
     }
 
     @Test
@@ -324,13 +444,18 @@ public class ConnectivityDiagnosticsManagerTest {
 
         public void expectOnConnectivityReportAvailable(
                 @NonNull Network network, @NonNull String interfaceName) {
+            expectOnConnectivityReportAvailable(network, interfaceName, TRANSPORT_TEST);
+        }
+
+        public void expectOnConnectivityReportAvailable(
+                @NonNull Network network, @NonNull String interfaceName, int transportType) {
             final ConnectivityReport result =
                     (ConnectivityReport) mHistory.poll(CALLBACK_TIMEOUT_MILLIS, x -> true);
             assertEquals(network, result.getNetwork());
 
             final NetworkCapabilities nc = result.getNetworkCapabilities();
             assertNotNull(nc);
-            assertTrue(nc.hasTransport(TRANSPORT_TEST));
+            assertTrue(nc.hasTransport(transportType));
             assertNotNull(result.getLinkProperties());
             assertEquals(interfaceName, result.getLinkProperties().getInterfaceName());
 
@@ -382,6 +507,45 @@ public class ConnectivityDiagnosticsManagerTest {
             // If no more callbacks exist, there should be nothing left in the ReadHead
             assertNull("Unexpected event in history",
                     mHistory.poll(NO_CALLBACK_INVOKED_TIMEOUT, x -> true));
+        }
+    }
+
+    private class CarrierConfigReceiver extends BroadcastReceiver {
+        private final CountDownLatch mLatch = new CountDownLatch(1);
+        private final int mSubId;
+
+        CarrierConfigReceiver(int subId) {
+            mSubId = subId;
+        }
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (!CarrierConfigManager.ACTION_CARRIER_CONFIG_CHANGED.equals(intent.getAction())) {
+                return;
+            }
+
+            final int subId =
+                    intent.getIntExtra(
+                            CarrierConfigManager.EXTRA_SUBSCRIPTION_INDEX,
+                            SubscriptionManager.INVALID_SUBSCRIPTION_ID);
+            if (mSubId != subId) return;
+
+            final PersistableBundle carrierConfigs = mCarrierConfigManager.getConfigForSubId(subId);
+            if (!CarrierConfigManager.isConfigForIdentifiedCarrier(carrierConfigs)) return;
+
+            final String[] certs =
+                    carrierConfigs.getStringArray(
+                            CarrierConfigManager.KEY_CARRIER_CERTIFICATE_STRING_ARRAY);
+            try {
+                if (ArrayUtils.contains(certs, getCertHashForThisPackage())) {
+                    mLatch.countDown();
+                }
+            } catch (Exception e) {
+            }
+        }
+
+        boolean waitForCarrierConfigChanged() throws Exception {
+            return mLatch.await(CARRIER_CONFIG_CHANGED_BROADCAST_TIMEOUT, TimeUnit.MILLISECONDS);
         }
     }
 }
