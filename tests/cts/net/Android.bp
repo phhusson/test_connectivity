@@ -36,19 +36,20 @@ java_defaults {
         "src/**/*.java",
         "src/**/*.kt",
     ],
-
+    jarjar_rules: "jarjar-rules-shared.txt",
     static_libs: [
         "FrameworksNetCommonTests",
         "TestNetworkStackLib",
-        "core-tests-support",
         "compatibility-device-util-axt",
+        "core-tests-support",
         "cts-net-utils",
         "ctstestrunner-axt",
         "ctstestserver",
-        "mockwebserver",
         "junit",
         "junit-params",
         "libnanohttpd",
+        "mockwebserver",
+        "net-utils-framework-common",
         "truth-prebuilt",
     ],
 
