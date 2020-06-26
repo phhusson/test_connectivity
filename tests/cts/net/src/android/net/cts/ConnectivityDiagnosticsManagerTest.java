@@ -106,6 +106,7 @@ public class ConnectivityDiagnosticsManagerTest {
     private static final int UNKNOWN_DETECTION_METHOD = 4;
     private static final int FILTERED_UNKNOWN_DETECTION_METHOD = 0;
     private static final int CARRIER_CONFIG_CHANGED_BROADCAST_TIMEOUT = 5000;
+    private static final int DELAY_FOR_ADMIN_UIDS_MILLIS = 2000;
 
     private static final Executor INLINE_EXECUTOR = x -> x.run();
 
@@ -266,7 +267,8 @@ public class ConnectivityDiagnosticsManagerTest {
         // CS does not trigger NetworkCallback#onCapabilitiesChanged as changing the
         // administratorUids is not a publicly visible change. In lieu of a better signal to
         // detministically wait for, use Thread#sleep here.
-        Thread.sleep(500);
+        // TODO(b/157949581): replace this Thread#sleep with a deterministic signal
+        Thread.sleep(DELAY_FOR_ADMIN_UIDS_MILLIS);
 
         final TestConnectivityDiagnosticsCallback connDiagsCallback =
                 createAndRegisterConnectivityDiagnosticsCallback(CELLULAR_NETWORK_REQUEST);
