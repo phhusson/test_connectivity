@@ -21,7 +21,7 @@ android_test {
 
     libs: [
         "android.net.ipsec.ike.stubs.system",
-        "android.test.base.stubs",
+        "android.test.base",
     ],
 
     srcs: [
