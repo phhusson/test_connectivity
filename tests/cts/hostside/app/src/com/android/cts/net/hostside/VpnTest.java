@@ -1016,7 +1016,8 @@ public class VpnTest extends InstrumentationTestCase {
         final Thread[] threads = new Thread[NUM_THREADS];
         startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
                  new String[] {"0.0.0.0/0", "::/0"},
-                 "", "", null, null /* underlyingNetworks */, false /* isAlwaysMetered */);
+                 "" /* allowedApplications */, "com.android.shell" /* disallowedApplications */,
+                null /* proxyInfo */, null /* underlyingNetworks */, false /* isAlwaysMetered */);
 
         for (int i = 0; i < NUM_THREADS; i++) {
             threads[i] = new Thread(() -> {
