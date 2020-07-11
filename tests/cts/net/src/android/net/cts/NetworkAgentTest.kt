@@ -495,8 +495,8 @@ class NetworkAgentTest {
                 .addTransportType(NetworkCapabilities.TRANSPORT_TEST)
                 .setNetworkSpecifier(StringNetworkSpecifier(name2))
                 .build()
-        val callback1 = TestableNetworkCallback()
-        val callback2 = TestableNetworkCallback()
+        val callback1 = TestableNetworkCallback(timeoutMs = DEFAULT_TIMEOUT_MS)
+        val callback2 = TestableNetworkCallback(timeoutMs = DEFAULT_TIMEOUT_MS)
         requestNetwork(request1, callback1)
         requestNetwork(request2, callback2)
 
@@ -505,7 +505,7 @@ class NetworkAgentTest {
                 .clearCapabilities()
                 .addTransportType(NetworkCapabilities.TRANSPORT_TEST)
                 .build()
-        val callback = TestableNetworkCallback()
+        val callback = TestableNetworkCallback(timeoutMs = DEFAULT_TIMEOUT_MS)
         requestNetwork(request, callback)
 
         // Connect the first Network
@@ -602,7 +602,7 @@ class NetworkAgentTest {
                 .clearCapabilities()
                 .addTransportType(NetworkCapabilities.TRANSPORT_TEST)
                 .build()
-        val callback1 = TestableNetworkCallback(DEFAULT_TIMEOUT_MS).also {
+        val callback1 = TestableNetworkCallback(timeoutMs = DEFAULT_TIMEOUT_MS).also {
             registerNetworkCallback(request1, it)
         }
         requestNetwork(request1, callback1)
@@ -612,7 +612,7 @@ class NetworkAgentTest {
                 .clearCapabilities()
                 .addTransportType(NetworkCapabilities.TRANSPORT_TEST)
                 .build()
-        val callback = TestableNetworkCallback()
+        val callback = TestableNetworkCallback(timeoutMs = DEFAULT_TIMEOUT_MS)
         requestNetwork(request, callback)
 
         // Connect the network
