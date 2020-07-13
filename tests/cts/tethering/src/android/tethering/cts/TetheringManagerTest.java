@@ -697,6 +697,7 @@ public class TetheringManagerTest {
 
     @Test
     public void testRequestLatestEntitlementResult() throws Exception {
+        assumeTrue(mTM.isTetheringSupported());
         // Verify that requestLatestTetheringEntitlementResult() can get entitlement
         // result(TETHER_ERROR_ENTITLEMENT_UNKNOWN due to invalid downstream type) via listener.
         assertEntitlementResult(listener -> mTM.requestLatestTetheringEntitlementResult(
@@ -714,6 +715,9 @@ public class TetheringManagerTest {
                     }
                 }, false),
                 TETHER_ERROR_ENTITLEMENT_UNKNOWN);
+
+        // Do not request TETHERING_WIFI entitlement result if TETHERING_WIFI is not available.
+        assumeTrue(mTM.getTetherableWifiRegexs().length > 0);
 
         // Verify that null listener will cause IllegalArgumentException.
         try {
