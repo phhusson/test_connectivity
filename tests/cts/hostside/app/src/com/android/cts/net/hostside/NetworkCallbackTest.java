@@ -29,6 +29,7 @@ import static org.junit.Assert.fail;
 
 import android.net.Network;
 import android.net.NetworkCapabilities;
+import android.util.Log;
 
 import org.junit.After;
 import org.junit.Before;
@@ -141,15 +142,16 @@ public class NetworkCallbackTest extends AbstractRestrictBackgroundNetworkTestCa
         }
 
         public void expectBlockedStatusCallback(Network expectedNetwork, boolean expectBlocked) {
-            expectCallback(CallbackState.BLOCKED_STATUS, expectedNetwork,
-                    expectBlocked);
+            expectCallback(CallbackState.BLOCKED_STATUS, expectedNetwork, expectBlocked);
         }
 
-        public void waitBlockedStatusCallback(Network expectedNetwork, boolean expectBlocked) {
+        public void expectBlockedStatusCallbackEventually(Network expectedNetwork,
+                boolean expectBlocked) {
             final long deadline = System.currentTimeMillis() + TEST_CALLBACK_TIMEOUT_MS;
             do {
                 final CallbackInfo cb = nextCallback((int) (deadline - System.currentTimeMillis()));
-                if (cb.state == CallbackState.BLOCKED_STATUS) {
+                if (cb.state == CallbackState.BLOCKED_STATUS
+                        && cb.network.equals(expectedNetwork)) {
                     assertEquals(expectBlocked, cb.arg);
                     return;
                 }
@@ -157,17 +159,23 @@ public class NetworkCallbackTest extends AbstractRestrictBackgroundNetworkTestCa
             fail("Didn't receive onBlockedStatusChanged()");
         }
 
-        public void expectCapabilitiesCallback(Network expectedNetwork, boolean hasCapability,
-                int capability) {
-            final CallbackInfo cb = nextCallback(TEST_CALLBACK_TIMEOUT_MS);
-            final NetworkCapabilities cap = (NetworkCapabilities) cb.arg;
-            assertEquals(expectedNetwork, cb.network);
-            assertEquals(CallbackState.CAPABILITIES, cb.state);
-            if (hasCapability != cap.hasCapability(capability)) {
-                fail("NetworkCapabilities callback "
-                        + (hasCapability ? "missing expected" : "has unexpected")
-                        + " capability. " + cb);
-            }
+        public void expectCapabilitiesCallbackEventually(Network expectedNetwork, boolean hasCap,
+                int cap) {
+            final long deadline = System.currentTimeMillis() + TEST_CALLBACK_TIMEOUT_MS;
+            do {
+                final CallbackInfo cb = nextCallback((int) (deadline - System.currentTimeMillis()));
+                if (cb.state != CallbackState.CAPABILITIES
+                        || !expectedNetwork.equals(cb.network)
+                        || (hasCap != ((NetworkCapabilities) cb.arg).hasCapability(cap))) {
+                    Log.i("NetworkCallbackTest#expectCapabilitiesCallback",
+                            "Ignoring non-matching callback : " + cb);
+                    continue;
+                }
+                // Found a match, return
+                return;
+            } while (System.currentTimeMillis() <= deadline);
+            fail("Didn't receive the expected callback to onCapabilitiesChanged(). Check the "
+                    + "log for a list of received callbacks, if any.");
         }
     }
 
@@ -194,8 +202,8 @@ public class NetworkCallbackTest extends AbstractRestrictBackgroundNetworkTestCa
         // callback to ensure wifi is connected before the test and store the default network.
         mNetwork = mTestNetworkCallback.expectAvailableCallbackAndGetNetwork();
         // Check that the network is metered.
-        mTestNetworkCallback.expectCapabilitiesCallback(mNetwork, false /* hasCapability */,
-                NET_CAPABILITY_NOT_METERED);
+        mTestNetworkCallback.expectCapabilitiesCallbackEventually(mNetwork,
+                false /* hasCapability */, NET_CAPABILITY_NOT_METERED);
         mTestNetworkCallback.expectBlockedStatusCallback(mNetwork, false);
     }
 
@@ -215,28 +223,28 @@ public class NetworkCallbackTest extends AbstractRestrictBackgroundNetworkTestCa
             // Enable restrict background
             setRestrictBackground(true);
             assertBackgroundNetworkAccess(false);
-            mTestNetworkCallback.waitBlockedStatusCallback(mNetwork, true);
+            mTestNetworkCallback.expectBlockedStatusCallbackEventually(mNetwork, true);
 
             // Add to whitelist
             addRestrictBackgroundWhitelist(mUid);
             assertBackgroundNetworkAccess(true);
-            mTestNetworkCallback.waitBlockedStatusCallback(mNetwork, false);
+            mTestNetworkCallback.expectBlockedStatusCallbackEventually(mNetwork, false);
 
             // Remove from whitelist
             removeRestrictBackgroundWhitelist(mUid);
             assertBackgroundNetworkAccess(false);
-            mTestNetworkCallback.waitBlockedStatusCallback(mNetwork, true);
+            mTestNetworkCallback.expectBlockedStatusCallbackEventually(mNetwork, true);
         } finally {
             mMeterednessConfiguration.resetNetworkMeteredness();
         }
 
         // Set to non-metered network
         mMeterednessConfiguration.configureNetworkMeteredness(false);
-        mTestNetworkCallback.expectCapabilitiesCallback(mNetwork, true /* hasCapability */,
-                NET_CAPABILITY_NOT_METERED);
+        mTestNetworkCallback.expectCapabilitiesCallbackEventually(mNetwork,
+                true /* hasCapability */, NET_CAPABILITY_NOT_METERED);
         try {
             assertBackgroundNetworkAccess(true);
-            mTestNetworkCallback.waitBlockedStatusCallback(mNetwork, false);
+            mTestNetworkCallback.expectBlockedStatusCallbackEventually(mNetwork, false);
 
             // Disable restrict background, should not trigger callback
             setRestrictBackground(false);
@@ -253,30 +261,30 @@ public class NetworkCallbackTest extends AbstractRestrictBackgroundNetworkTestCa
             // Enable Power Saver
             setBatterySaverMode(true);
             assertBackgroundNetworkAccess(false);
-            mTestNetworkCallback.waitBlockedStatusCallback(mNetwork, true);
+            mTestNetworkCallback.expectBlockedStatusCallbackEventually(mNetwork, true);
 
             // Disable Power Saver
             setBatterySaverMode(false);
             assertBackgroundNetworkAccess(true);
-            mTestNetworkCallback.waitBlockedStatusCallback(mNetwork, false);
+            mTestNetworkCallback.expectBlockedStatusCallbackEventually(mNetwork, false);
         } finally {
             mMeterednessConfiguration.resetNetworkMeteredness();
         }
 
         // Set to non-metered network
         mMeterednessConfiguration.configureNetworkMeteredness(false);
-        mTestNetworkCallback.expectCapabilitiesCallback(mNetwork, true /* hasCapability */,
-                NET_CAPABILITY_NOT_METERED);
+        mTestNetworkCallback.expectCapabilitiesCallbackEventually(mNetwork,
+                true /* hasCapability */, NET_CAPABILITY_NOT_METERED);
         try {
             // Enable Power Saver
             setBatterySaverMode(true);
             assertBackgroundNetworkAccess(false);
-            mTestNetworkCallback.waitBlockedStatusCallback(mNetwork, true);
+            mTestNetworkCallback.expectBlockedStatusCallbackEventually(mNetwork, true);
 
             // Disable Power Saver
             setBatterySaverMode(false);
             assertBackgroundNetworkAccess(true);
-            mTestNetworkCallback.waitBlockedStatusCallback(mNetwork, false);
+            mTestNetworkCallback.expectBlockedStatusCallbackEventually(mNetwork, false);
         } finally {
             mMeterednessConfiguration.resetNetworkMeteredness();
         }
