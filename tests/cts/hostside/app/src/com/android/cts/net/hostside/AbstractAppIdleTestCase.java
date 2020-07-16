@@ -89,14 +89,19 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
         assertAppIdle(false); // Sanity check - not idle anymore, since whitelisted
         assertBackgroundNetworkAccess(true);
 
+        setAppIdleNoAssert(true);
+        assertAppIdle(false); // app is still whitelisted
         removePowerSaveModeWhitelist(TEST_APP2_PKG);
         assertAppIdle(true); // Sanity check - idle again, once whitelisted was removed
         assertBackgroundNetworkAccess(false);
 
+        setAppIdle(true);
         addPowerSaveModeExceptIdleWhitelist(TEST_APP2_PKG);
         assertAppIdle(false); // Sanity check - not idle anymore, since whitelisted
         assertBackgroundNetworkAccess(true);
 
+        setAppIdleNoAssert(true);
+        assertAppIdle(false); // app is still whitelisted
         removePowerSaveModeExceptIdleWhitelist(TEST_APP2_PKG);
         assertAppIdle(true); // Sanity check - idle again, once whitelisted was removed
         assertBackgroundNetworkAccess(false);
