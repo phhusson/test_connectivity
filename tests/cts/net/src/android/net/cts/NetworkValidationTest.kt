@@ -31,6 +31,7 @@ import android.net.NetworkRequest
 import android.net.TestNetworkInterface
 import android.net.TestNetworkManager
 import android.net.Uri
+import android.net.cts.NetworkValidationTestUtil.runAsShell
 import android.net.dhcp.DhcpDiscoverPacket
 import android.net.dhcp.DhcpPacket
 import android.net.dhcp.DhcpPacket.DHCP_MESSAGE_TYPE
@@ -42,18 +43,18 @@ import android.os.HandlerThread
 import android.platform.test.annotations.AppModeFull
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.AndroidJUnit4
-import com.android.compatibility.common.util.SystemUtil.runWithShellPermissionIdentity
-import com.android.compatibility.common.util.ThrowingRunnable
 import com.android.net.module.util.Inet4AddressUtils.getBroadcastAddress
 import com.android.net.module.util.Inet4AddressUtils.getPrefixMaskAsInet4Address
 import com.android.server.util.NetworkStackConstants.IPV4_ADDR_ANY
+import com.android.testutils.ArpResponder
 import com.android.testutils.DevSdkIgnoreRule
 import com.android.testutils.DhcpClientPacketFilter
 import com.android.testutils.DhcpOptionFilter
 import com.android.testutils.RecorderCallback.CallbackEntry
 import com.android.testutils.TapPacketReader
+import com.android.testutils.TestHttpServer
 import com.android.testutils.TestableNetworkCallback
-import fi.iki.elonen.NanoHTTPD
+import fi.iki.elonen.NanoHTTPD.Response.Status
 import org.junit.After
 import org.junit.Assume.assumeFalse
 import org.junit.Assume.assumeTrue
@@ -62,8 +63,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.net.Inet4Address
-import java.util.concurrent.ArrayBlockingQueue
-import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -82,7 +81,7 @@ private const val TEST_MTU = 1500.toShort()
 
 @AppModeFull(reason = "Instant apps cannot create test networks")
 @RunWith(AndroidJUnit4::class)
-class CaptivePortalApiTest {
+class NetworkValidationTest {
     @JvmField
     @Rule
     val ignoreRule = DevSdkIgnoreRule(ignoreClassUpTo = Build.VERSION_CODES.Q)
@@ -92,10 +91,10 @@ class CaptivePortalApiTest {
     private val eth by lazy { context.assertHasService(EthernetManager::class.java) }
     private val cm by lazy { context.assertHasService(ConnectivityManager::class.java) }
 
-    private val handlerThread = HandlerThread(CaptivePortalApiTest::class.java.simpleName)
+    private val handlerThread = HandlerThread(NetworkValidationTest::class.java.simpleName)
     private val serverIpAddr = InetAddresses.parseNumericAddress("192.0.2.222") as Inet4Address
     private val clientIpAddr = InetAddresses.parseNumericAddress("192.0.2.111") as Inet4Address
-    private val httpServer = HttpServer()
+    private val httpServer = TestHttpServer()
     private val ethRequest = NetworkRequest.Builder()
             // ETHERNET|TEST transport networks do not have NET_CAPABILITY_TRUSTED
             .removeCapability(NET_CAPABILITY_TRUSTED)
@@ -156,7 +155,15 @@ class CaptivePortalApiTest {
     }
 
     @Test
-    fun testApiCallbacks() {
+    fun testCapportApiCallbacks() {
+        httpServer.addResponse(capportUrl, Status.OK, content = """
+                |{
+                |  "captive": true,
+                |  "user-portal-url": "$TEST_LOGIN_URL",
+                |  "venue-info-url": "$TEST_VENUE_INFO_URL"
+                |}
+            """.trimMargin())
+
         // Handle the DHCP handshake that includes the capport API URL
         val discover = reader.assertDhcpPacketReceived(
                 DhcpDiscoverPacket::class.java, TEST_TIMEOUT_MS, DHCP_MESSAGE_TYPE_DISCOVER)
@@ -168,11 +175,9 @@ class CaptivePortalApiTest {
         assertEquals(clientIpAddr, request.mRequestedIp)
         reader.sendResponse(makeAckPacket(request.clientMac, request.transactionId))
 
-        // Expect a request to the capport API
-        val capportReq = httpServer.recordedRequests.poll(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-        assertNotNull(capportReq, "The device did not fetch captive portal API data within timeout")
-        assertEquals(capportUrl.path, capportReq.uri)
-        assertEquals(capportUrl.query, capportReq.queryParameterString)
+        // The first request received by the server should be for the portal API
+        assertTrue(httpServer.requestsRecord.poll(TEST_TIMEOUT_MS, 0)?.matches(capportUrl) ?: false,
+                "The device did not fetch captive portal API data within timeout")
 
         // Expect network callbacks with capport info
         val testCb = TestableNetworkCallback(TEST_TIMEOUT_MS)
@@ -221,30 +226,6 @@ class CaptivePortalApiTest {
                     listOf(serverIpAddr) /* gateways */, listOf(serverIpAddr) /* dnsServers */,
                     serverIpAddr, TEST_DOMAIN_NAME, null /* hostname */, true /* metered */,
                     TEST_MTU, false /* rapidCommit */, capportUrl.toString())
-
-    private fun parseDhcpPacket(bytes: ByteArray) = DhcpPacket.decodeFullPacket(
-            bytes, MAX_PACKET_LENGTH, DhcpPacket.ENCAP_L2)
-}
-
-/**
- * A minimal HTTP server running on localhost (loopback), on a random available port.
- *
- * The server records each request in [recordedRequests] and will not serve any further request
- * until the last one is removed from the queue for verification.
- */
-private class HttpServer : NanoHTTPD("localhost", 0 /* auto-select the port */) {
-    val recordedRequests = ArrayBlockingQueue<IHTTPSession>(1 /* capacity */)
-
-    override fun serve(session: IHTTPSession): Response {
-        recordedRequests.offer(session)
-        return newFixedLengthResponse("""
-                |{
-                |  "captive": true,
-                |  "user-portal-url": "$TEST_LOGIN_URL",
-                |  "venue-info-url": "$TEST_VENUE_INFO_URL"
-                |}
-            """.trimMargin())
-    }
 }
 
 private fun <T : DhcpPacket> TapPacketReader.assertDhcpPacketReceived(
@@ -263,13 +244,4 @@ private fun <T : DhcpPacket> TapPacketReader.assertDhcpPacketReceived(
 
 private fun <T> Context.assertHasService(manager: Class<T>): T {
     return getSystemService(manager) ?: fail("Service $manager not found")
-}
-
-/**
- * Wrapper around runWithShellPermissionIdentity with kotlin-like syntax.
- */
-private fun <T> runAsShell(vararg permissions: String, task: () -> T): T {
-    var ret: T? = null
-    runWithShellPermissionIdentity(ThrowingRunnable { ret = task() }, *permissions)
-    return ret ?: fail("ThrowingRunnable was not run")
 }

@@ -47,7 +47,6 @@ java_defaults {
         "ctstestserver",
         "junit",
         "junit-params",
-        "libnanohttpd",
         "mockwebserver",
         "net-utils-framework-common",
         "truth-prebuilt",

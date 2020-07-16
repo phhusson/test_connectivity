@@ -19,7 +19,6 @@ package android.net.cts
 import android.Manifest.permission.CONNECTIVITY_INTERNAL
 import android.Manifest.permission.NETWORK_SETTINGS
 import android.Manifest.permission.READ_DEVICE_CONFIG
-import android.Manifest.permission.WRITE_DEVICE_CONFIG
 import android.content.pm.PackageManager.FEATURE_TELEPHONY
 import android.content.pm.PackageManager.FEATURE_WIFI
 import android.net.ConnectivityManager
@@ -30,20 +29,25 @@ import android.net.NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL
 import android.net.NetworkCapabilities.TRANSPORT_WIFI
 import android.net.NetworkRequest
 import android.net.Uri
+import android.net.cts.NetworkValidationTestUtil.clearValidationTestUrlsDeviceConfig
+import android.net.cts.NetworkValidationTestUtil.runAsShell
+import android.net.cts.NetworkValidationTestUtil.setHttpUrlDeviceConfig
+import android.net.cts.NetworkValidationTestUtil.setHttpsUrlDeviceConfig
+import android.net.cts.NetworkValidationTestUtil.setUrlExpirationDeviceConfig
+import com.android.testutils.TestHttpServer.Request
 import android.net.cts.util.CtsNetUtils
+import android.net.util.NetworkStackUtils.TEST_CAPTIVE_PORTAL_HTTPS_URL
+import android.net.util.NetworkStackUtils.TEST_CAPTIVE_PORTAL_HTTP_URL
 import android.net.wifi.WifiManager
 import android.os.Build
-import android.os.ConditionVariable
 import android.platform.test.annotations.AppModeFull
 import android.provider.DeviceConfig
 import android.provider.DeviceConfig.NAMESPACE_CONNECTIVITY
 import android.text.TextUtils
 import androidx.test.platform.app.InstrumentationRegistry.getInstrumentation
 import androidx.test.runner.AndroidJUnit4
-import com.android.compatibility.common.util.SystemUtil
+import com.android.testutils.TestHttpServer
 import com.android.testutils.isDevSdkInRange
-import fi.iki.elonen.NanoHTTPD
-import fi.iki.elonen.NanoHTTPD.Response.IStatus
 import fi.iki.elonen.NanoHTTPD.Response.Status
 import junit.framework.AssertionFailedError
 import org.junit.After
@@ -55,15 +59,12 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import kotlin.test.Test
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-private const val TEST_CAPTIVE_PORTAL_HTTPS_URL_SETTING = "test_captive_portal_https_url"
-private const val TEST_CAPTIVE_PORTAL_HTTP_URL_SETTING = "test_captive_portal_http_url"
-private const val TEST_URL_EXPIRATION_TIME = "test_url_expiration_time"
-
-private const val TEST_HTTPS_URL_PATH = "https_path"
-private const val TEST_HTTP_URL_PATH = "http_path"
-private const val TEST_PORTAL_URL_PATH = "portal_path"
+private const val TEST_HTTPS_URL_PATH = "/https_path"
+private const val TEST_HTTP_URL_PATH = "/http_path"
+private const val TEST_PORTAL_URL_PATH = "/portal_path"
 
 private const val LOCALHOST_HOSTNAME = "localhost"
 
@@ -88,24 +89,24 @@ class CaptivePortalTest {
     private val pm by lazy { context.packageManager }
     private val utils by lazy { CtsNetUtils(context) }
 
-    private val server = HttpServer()
+    private val server = TestHttpServer("localhost")
 
     @Before
     fun setUp() {
-        doAsShell(READ_DEVICE_CONFIG) {
+        runAsShell(READ_DEVICE_CONFIG) {
             // Verify that the test URLs are not normally set on the device, but do not fail if the
             // test URLs are set to what this test uses (URLs on localhost), in case the test was
             // interrupted manually and rerun.
-            assertEmptyOrLocalhostUrl(TEST_CAPTIVE_PORTAL_HTTPS_URL_SETTING)
-            assertEmptyOrLocalhostUrl(TEST_CAPTIVE_PORTAL_HTTP_URL_SETTING)
+            assertEmptyOrLocalhostUrl(TEST_CAPTIVE_PORTAL_HTTPS_URL)
+            assertEmptyOrLocalhostUrl(TEST_CAPTIVE_PORTAL_HTTP_URL)
         }
-        clearTestUrls()
+        clearValidationTestUrlsDeviceConfig()
         server.start()
     }
 
     @After
     fun tearDown() {
-        clearTestUrls()
+        clearValidationTestUrlsDeviceConfig()
         if (pm.hasSystemFeature(FEATURE_WIFI)) {
             reconnectWifi()
         }
@@ -118,12 +119,6 @@ class CaptivePortalTest {
                 "$urlKey must not be set in production scenarios (current value: $url)")
     }
 
-    private fun clearTestUrls() {
-        setHttpsUrl(null)
-        setHttpUrl(null)
-        setUrlExpiration(null)
-    }
-
     @Test
     fun testCaptivePortalIsNotDefaultNetwork() {
         assumeTrue(pm.hasSystemFeature(FEATURE_TELEPHONY))
@@ -132,19 +127,15 @@ class CaptivePortalTest {
         utils.connectToCell()
 
         // Have network validation use a local server that serves a HTTPS error / HTTP redirect
-        server.addResponse(TEST_PORTAL_URL_PATH, Status.OK,
+        server.addResponse(Request(TEST_PORTAL_URL_PATH), Status.OK,
                 content = "Test captive portal content")
-        server.addResponse(TEST_HTTPS_URL_PATH, Status.INTERNAL_ERROR)
-        server.addResponse(TEST_HTTP_URL_PATH, Status.REDIRECT,
-                locationHeader = server.makeUrl(TEST_PORTAL_URL_PATH))
-        setHttpsUrl(server.makeUrl(TEST_HTTPS_URL_PATH))
-        setHttpUrl(server.makeUrl(TEST_HTTP_URL_PATH))
+        server.addResponse(Request(TEST_HTTPS_URL_PATH), Status.INTERNAL_ERROR)
+        server.addResponse(Request(TEST_HTTP_URL_PATH), Status.REDIRECT,
+                locationHeader = makeUrl(TEST_PORTAL_URL_PATH))
+        setHttpsUrlDeviceConfig(makeUrl(TEST_HTTPS_URL_PATH))
+        setHttpUrlDeviceConfig(makeUrl(TEST_HTTP_URL_PATH))
         // URL expiration needs to be in the next 10 minutes
-        setUrlExpiration(System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(9))
-
-        // Expect the portal content to be fetched at some point after detecting the portal.
-        // Some implementations may fetch the URL before startCaptivePortalApp is called.
-        val portalContentRequestCv = server.addExpectRequestCv(TEST_PORTAL_URL_PATH)
+        setUrlExpirationDeviceConfig(System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(9))
 
         // Wait for a captive portal to be detected on the network
         val wifiNetworkFuture = CompletableFuture<Network>()
@@ -173,9 +164,14 @@ class CaptivePortalTest {
             val startPortalAppPermission =
                     if (isDevSdkInRange(0, Build.VERSION_CODES.Q)) CONNECTIVITY_INTERNAL
                     else NETWORK_SETTINGS
-            doAsShell(startPortalAppPermission) { cm.startCaptivePortalApp(network) }
-            assertTrue(portalContentRequestCv.block(TEST_TIMEOUT_MS), "The captive portal login " +
-                    "page was still not fetched ${TEST_TIMEOUT_MS}ms after startCaptivePortalApp.")
+            runAsShell(startPortalAppPermission) { cm.startCaptivePortalApp(network) }
+
+            // Expect the portal content to be fetched at some point after detecting the portal.
+            // Some implementations may fetch the URL before startCaptivePortalApp is called.
+            assertNotNull(server.requestsRecord.poll(TEST_TIMEOUT_MS, pos = 0) {
+                it.path == TEST_PORTAL_URL_PATH
+            }, "The captive portal login page was still not fetched ${TEST_TIMEOUT_MS}ms " +
+                    "after startCaptivePortalApp.")
 
             assertNotEquals(network, cm.activeNetwork, wifiDefaultMessage)
         } finally {
@@ -186,73 +182,13 @@ class CaptivePortalTest {
         }
     }
 
-    private fun setHttpsUrl(url: String?) = setConfig(TEST_CAPTIVE_PORTAL_HTTPS_URL_SETTING, url)
-    private fun setHttpUrl(url: String?) = setConfig(TEST_CAPTIVE_PORTAL_HTTP_URL_SETTING, url)
-    private fun setUrlExpiration(timestamp: Long?) = setConfig(TEST_URL_EXPIRATION_TIME,
-            timestamp?.toString())
-
-    private fun setConfig(configKey: String, value: String?) {
-        doAsShell(WRITE_DEVICE_CONFIG) {
-            DeviceConfig.setProperty(
-                    NAMESPACE_CONNECTIVITY, configKey, value, false /* makeDefault */)
-        }
-    }
-
-    private fun doAsShell(vararg permissions: String, action: () -> Unit) {
-        // Wrap the below call to allow for more kotlin-like syntax
-        SystemUtil.runWithShellPermissionIdentity(action, permissions)
-    }
+    /**
+     * Create a URL string that, when fetched, will hit the test server with the given URL [path].
+     */
+    private fun makeUrl(path: String) = "http://localhost:${server.listeningPort}" + path
 
     private fun reconnectWifi() {
         utils.ensureWifiDisconnected(null /* wifiNetworkToCheck */)
         utils.ensureWifiConnected()
-    }
-
-    /**
-     * A minimal HTTP server running on localhost (loopback), on a random available port.
-     */
-    private class HttpServer : NanoHTTPD("localhost", 0 /* auto-select the port */) {
-        // Map of URL path -> HTTP response code
-        private val responses = HashMap<String, Response>()
-
-        // Map of path -> CV to open as soon as a request to the path is received
-        private val waitForRequestCv = HashMap<String, ConditionVariable>()
-
-        /**
-         * Create a URL string that, when fetched, will hit this server with the given URL [path].
-         */
-        fun makeUrl(path: String): String {
-            return Uri.Builder()
-                    .scheme("http")
-                    .encodedAuthority("localhost:$listeningPort")
-                    .query(path)
-                    .build()
-                    .toString()
-        }
-
-        fun addResponse(
-            path: String,
-            statusCode: IStatus,
-            locationHeader: String? = null,
-            content: String = ""
-        ) {
-            val response = newFixedLengthResponse(statusCode, "text/plain", content)
-            locationHeader?.let { response.addHeader("Location", it) }
-            responses[path] = response
-        }
-
-        /**
-         * Create a [ConditionVariable] that will open when a request to [path] is received.
-         */
-        fun addExpectRequestCv(path: String): ConditionVariable {
-            return ConditionVariable().apply { waitForRequestCv[path] = this }
-        }
-
-        override fun serve(session: IHTTPSession): Response {
-            waitForRequestCv[session.queryParameterString]?.open()
-            return responses[session.queryParameterString]
-                    // Default response is a 404
-                    ?: super.serve(session)
-        }
     }
 }
