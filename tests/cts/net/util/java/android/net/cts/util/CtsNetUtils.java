@@ -21,6 +21,9 @@ import static android.net.ConnectivityManager.PRIVATE_DNS_MODE_OPPORTUNISTIC;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
 import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 import static android.net.NetworkCapabilities.TRANSPORT_TEST;
+import static android.net.wifi.WifiManager.SCAN_RESULTS_AVAILABLE_ACTION;
+
+import static com.android.compatibility.common.util.ShellIdentityUtils.invokeWithShellPermissions;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -44,6 +47,7 @@ import android.net.NetworkInfo;
 import android.net.NetworkInfo.State;
 import android.net.NetworkRequest;
 import android.net.TestNetworkManager;
+import android.net.wifi.ScanResult;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
@@ -58,13 +62,21 @@ import android.util.Log;
 
 import com.android.compatibility.common.util.SystemUtil;
 
+import junit.framework.AssertionFailedError;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 public final class CtsNetUtils {
     private static final String TAG = CtsNetUtils.class.getSimpleName();
@@ -72,7 +84,8 @@ public final class CtsNetUtils {
     private static final int SOCKET_TIMEOUT_MS = 2000;
     private static final int PRIVATE_DNS_PROBE_MS = 1_000;
 
-    public static final int PRIVATE_DNS_SETTING_TIMEOUT_MS = 6_000;
+    private static final int PRIVATE_DNS_SETTING_TIMEOUT_MS = 6_000;
+    private static final int CONNECTIVITY_CHANGE_TIMEOUT_SECS = 30;
     public static final int HTTP_PORT = 80;
     public static final String TEST_HOST = "connectivitycheck.gstatic.com";
     public static final String HTTP_REQUEST =
@@ -170,8 +183,8 @@ public final class CtsNetUtils {
     /**
      * Enable WiFi and wait for it to become connected to a network.
      *
-     * A network is considered connected when a {@link NetworkCallback#onAvailable(Network)}
-     * callback is received.
+     * A network is considered connected when a {@link NetworkRequest} with TRANSPORT_WIFI
+     * receives a {@link NetworkCallback#onAvailable(Network)} callback.
      */
     public Network ensureWifiConnected() {
         return connectToWifi(false /* expectLegacyBroadcast */);
@@ -202,8 +215,18 @@ public final class CtsNetUtils {
         try {
             clearWifiBlacklist();
             SystemUtil.runShellCommand("svc wifi enable");
-            SystemUtil.runWithShellPermissionIdentity(() -> mWifiManager.reconnect(),
-                    NETWORK_SETTINGS);
+            final WifiConfiguration config = maybeAddVirtualWifiConfiguration();
+            if (config == null) {
+                // TODO: this may not clear the BSSID blacklist, as opposed to
+                // mWifiManager.connect(config)
+                SystemUtil.runWithShellPermissionIdentity(() -> mWifiManager.reconnect(),
+                        NETWORK_SETTINGS);
+            } else {
+                // When running CTS, devices are expected to have wifi networks pre-configured.
+                // This condition is only hit on virtual devices.
+                SystemUtil.runWithShellPermissionIdentity(
+                        () -> mWifiManager.connect(config, null /* listener */), NETWORK_SETTINGS);
+            }
             // Ensure we get an onAvailable callback and possibly a CONNECTIVITY_ACTION.
             wifiNetwork = callback.waitForAvailable();
             assertNotNull(err, wifiNetwork);
@@ -219,6 +242,68 @@ public final class CtsNetUtils {
         return wifiNetwork;
     }
 
+    private WifiConfiguration maybeAddVirtualWifiConfiguration() {
+        final List<WifiConfiguration> configs = invokeWithShellPermissions(
+                mWifiManager::getConfiguredNetworks);
+        // If no network is configured, add a config for virtual access points if applicable
+        if (configs.size() == 0) {
+            final List<ScanResult> scanResults = getWifiScanResults();
+            final WifiConfiguration virtualConfig = maybeConfigureVirtualNetwork(scanResults);
+            assertNotNull("The device has no configured wifi network", virtualConfig);
+
+            return virtualConfig;
+        }
+        // No need to add a configuration: there is already one
+        return null;
+    }
+
+    private List<ScanResult> getWifiScanResults() {
+        final CompletableFuture<List<ScanResult>> scanResultsFuture = new CompletableFuture<>();
+        SystemUtil.runWithShellPermissionIdentity(() -> {
+            final BroadcastReceiver receiver = new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, Intent intent) {
+                    scanResultsFuture.complete(mWifiManager.getScanResults());
+                }
+            };
+            mContext.registerReceiver(receiver, new IntentFilter(SCAN_RESULTS_AVAILABLE_ACTION));
+            mWifiManager.startScan();
+        });
+
+        try {
+            return scanResultsFuture.get(CONNECTIVITY_CHANGE_TIMEOUT_SECS, TimeUnit.SECONDS);
+        } catch (ExecutionException | InterruptedException | TimeoutException e) {
+            throw new AssertionFailedError("Wifi scan results not received within timeout");
+        }
+    }
+
+    /**
+     * If a virtual wifi network is detected, add a configuration for that network.
+     * TODO(b/158150376): have the test infrastructure add virtual wifi networks when appropriate.
+     */
+    private WifiConfiguration maybeConfigureVirtualNetwork(List<ScanResult> scanResults) {
+        // Virtual wifi networks used on the emulator and cloud testing infrastructure
+        final List<String> virtualSsids = Arrays.asList("VirtWifi", "AndroidWifi");
+        Log.d(TAG, "Wifi scan results: " + scanResults);
+        final ScanResult virtualScanResult = scanResults.stream().filter(
+                s -> virtualSsids.contains(s.SSID)).findFirst().orElse(null);
+
+        // Only add the virtual configuration if the virtual AP is detected in scans
+        if (virtualScanResult == null) return null;
+
+        final WifiConfiguration virtualConfig = new WifiConfiguration();
+        // ASCII SSIDs need to be surrounded by double quotes
+        virtualConfig.SSID = "\"" + virtualScanResult.SSID + "\"";
+        virtualConfig.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
+
+        SystemUtil.runWithShellPermissionIdentity(() -> {
+            final int networkId = mWifiManager.addNetwork(virtualConfig);
+            assertTrue(networkId >= 0);
+            assertTrue(mWifiManager.enableNetwork(networkId, false /* attemptConnect */));
+        });
+        return virtualConfig;
+    }
+
     /**
      * Re-enable wifi networks that were blacklisted, typically because no internet connection was
      * detected the last time they were connected. This is necessary to make sure wifi can reconnect
@@ -226,8 +311,8 @@ public final class CtsNetUtils {
      */
     private void clearWifiBlacklist() {
         SystemUtil.runWithShellPermissionIdentity(() -> {
-            for (WifiConfiguration config : mWifiManager.getConfiguredNetworks()) {
-                mWifiManager.enableNetwork(config.networkId, false /* attemptConnect */);
+            for (WifiConfiguration cfg : mWifiManager.getConfiguredNetworks()) {
+                assertTrue(mWifiManager.enableNetwork(cfg.networkId, false /* attemptConnect */));
             }
         });
     }
@@ -533,7 +618,7 @@ public final class CtsNetUtils {
         }
 
         public boolean waitForState() throws InterruptedException {
-            return mReceiveLatch.await(30, TimeUnit.SECONDS);
+            return mReceiveLatch.await(CONNECTIVITY_CHANGE_TIMEOUT_SECS, TimeUnit.SECONDS);
         }
     }
 
@@ -550,11 +635,13 @@ public final class CtsNetUtils {
         public Network lastLostNetwork;
 
         public Network waitForAvailable() throws InterruptedException {
-            return mAvailableLatch.await(30, TimeUnit.SECONDS) ? currentNetwork : null;
+            return mAvailableLatch.await(CONNECTIVITY_CHANGE_TIMEOUT_SECS, TimeUnit.SECONDS)
+                    ? currentNetwork : null;
         }
 
         public Network waitForLost() throws InterruptedException {
-            return mLostLatch.await(30, TimeUnit.SECONDS) ? lastLostNetwork : null;
+            return mLostLatch.await(CONNECTIVITY_CHANGE_TIMEOUT_SECS, TimeUnit.SECONDS)
+                    ? lastLostNetwork : null;
         }
 
         public boolean waitForUnavailable() throws InterruptedException {
