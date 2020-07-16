@@ -55,6 +55,7 @@ import android.annotation.NonNull;
 import android.app.Instrumentation;
 import android.app.PendingIntent;
 import android.app.UiAutomation;
+import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
@@ -122,6 +123,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -151,6 +153,9 @@ public class ConnectivityManagerTest {
     private static final long INTERVAL_MULTIPATH_PREF_CHECK_MS = 500;
     // device could have only one interface: data, wifi.
     private static final int MIN_NUM_NETWORK_TYPES = 1;
+
+    // Airplane Mode BroadcastReceiver Timeout
+    private static final int AIRPLANE_MODE_CHANGE_TIMEOUT_MS = 5000;
 
     // Minimum supported keepalive counts for wifi and cellular.
     public static final int MIN_SUPPORTED_CELLULAR_KEEPALIVE_COUNT = 1;
@@ -1370,5 +1375,85 @@ public class ConnectivityManagerTest {
                 } catch (IOException expected) {}
             }
         }
+    }
+
+    /**
+     * Verifies that apps are allowed to call setAirplaneMode if they declare
+     * NETWORK_AIRPLANE_MODE permission in their manifests.
+     * See b/145164696.
+     */
+    @AppModeFull(reason = "NETWORK_AIRPLANE_MODE permission can't be granted to instant apps")
+    @Test
+    public void testSetAirplaneMode() throws Exception{
+        // store the current state of airplane mode
+        final boolean isAirplaneModeEnabled = isAirplaneModeEnabled();
+
+        // disable airplane mode to reach a known state
+        runShellCommand("cmd connectivity airplane-mode disable");
+
+        try {
+            // Verify we cannot set Airplane Mode without correct permission:
+            try {
+                setAndVerifyAirplaneMode(true);
+                fail("SecurityException should have been thrown when setAirplaneMode was called"
+                        + "without holding permission NETWORK_AIRPLANE_MODE.");
+            } catch (SecurityException expected) {}
+
+            // disable airplane mode again to reach a known state
+            runShellCommand("cmd connectivity airplane-mode disable");
+
+            // adopt shell permission which holds NETWORK_AIRPLANE_MODE
+            mUiAutomation.adoptShellPermissionIdentity();
+
+            // Verify we can enable Airplane Mode with correct permission:
+            try {
+                setAndVerifyAirplaneMode(true);
+            } catch (SecurityException e) {
+                fail("SecurityException should not have been thrown when setAirplaneMode(true) was"
+                        + "called whilst holding the NETWORK_AIRPLANE_MODE permission.");
+            }
+
+            // Verify we can disable Airplane Mode with correct permission:
+            try {
+                setAndVerifyAirplaneMode(false);
+            } catch (SecurityException e) {
+                fail("SecurityException should not have been thrown when setAirplaneMode(false) was"
+                        + "called whilst holding the NETWORK_AIRPLANE_MODE permission.");
+            }
+
+        } finally {
+            // Restore the previous state of airplane mode and permissions:
+            runShellCommand("cmd connectivity airplane-mode "
+                    + (isAirplaneModeEnabled ? "enable" : "disable"));
+            mUiAutomation.dropShellPermissionIdentity();
+        }
+    }
+
+    private void setAndVerifyAirplaneMode(Boolean expectedResult)
+            throws Exception {
+        final CompletableFuture<Boolean> actualResult = new CompletableFuture();
+        BroadcastReceiver receiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                // The defaultValue of getExtraBoolean should be the opposite of what is
+                // expected, thus ensuring a test failure if the extra is absent.
+                actualResult.complete(intent.getBooleanExtra("state", !expectedResult));
+            }
+        };
+        try {
+            mContext.registerReceiver(receiver,
+                    new IntentFilter(Intent.ACTION_AIRPLANE_MODE_CHANGED));
+            mCm.setAirplaneMode(expectedResult);
+            final String msg = "Setting Airplane Mode failed,";
+            assertEquals(msg, expectedResult, actualResult.get(AIRPLANE_MODE_CHANGE_TIMEOUT_MS,
+                    TimeUnit.MILLISECONDS));
+        } finally {
+            mContext.unregisterReceiver(receiver);
+        }
+    }
+
+    private static boolean isAirplaneModeEnabled() {
+        return runShellCommand("cmd connectivity airplane-mode")
+                .trim().equals("enabled");
     }
 }
