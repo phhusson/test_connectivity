@@ -662,6 +662,11 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         assertAppIdle(enabled); // Sanity check
     }
 
+    protected void setAppIdleNoAssert(boolean enabled) throws Exception {
+        Log.i(TAG, "Setting app idle to " + enabled);
+        executeSilentShellCommand("am set-inactive " + TEST_APP2_PKG + " " + enabled );
+    }
+
     protected void assertAppIdle(boolean enabled) throws Exception {
         try {
             assertDelayedShellCommand("am get-inactive " + TEST_APP2_PKG, 15, 2, "Idle=" + enabled);
