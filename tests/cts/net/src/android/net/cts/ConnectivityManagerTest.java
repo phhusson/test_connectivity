@@ -352,8 +352,8 @@ public class ConnectivityManagerTest {
                 wifiAddressString, wifiNetwork, cellNetwork),
                 wifiAddressString.equals(cellAddressString));
 
-        // Sanity check that the IP addresses that the requests appeared to come from
-        // are actually on the respective networks.
+        // Verify that the IP addresses that the requests appeared to come from are actually on the
+        // respective networks.
         assertOnNetwork(wifiAddressString, wifiNetwork);
         assertOnNetwork(cellAddressString, cellNetwork);
 
@@ -709,7 +709,7 @@ public class ConnectivityManagerTest {
 
     private void assertMultipathPreferenceIsEventually(Network network, int oldValue,
             int expectedValue) {
-        // Sanity check : if oldValue == expectedValue, there is no way to guarantee the test
+        // Quick check : if oldValue == expectedValue, there is no way to guarantee the test
         // is not flaky.
         assertNotSame(oldValue, expectedValue);
 
@@ -1013,7 +1013,7 @@ public class ConnectivityManagerTest {
         // NAT-T keepalive. If keepalive limits from resource overlay is not zero, TCP keepalive
         // needs to be supported except if the kernel doesn't support it.
         if (!isTcpKeepaliveSupportedByKernel()) {
-            // Sanity check to ensure the callback result is expected.
+            // Verify that the callback result is expected.
             runWithShellPermissionIdentity(() -> {
                 assertEquals(0, createConcurrentSocketKeepalives(network, srcAddr, 0, 1));
             });
