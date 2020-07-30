@@ -67,7 +67,7 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
         setAppIdle(true);
         launchComponentAndAssertNetworkAccess(TYPE_COMPONENT_ACTIVTIY);
         finishActivity();
-        assertAppIdle(false); // Sanity check - not idle anymore, since activity was launched...
+        assertAppIdle(false); // verify - not idle anymore, since activity was launched...
         assertBackgroundNetworkAccess(true);
         setAppIdle(true);
         assertBackgroundNetworkAccess(false);
@@ -86,29 +86,29 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
         assertBackgroundNetworkAccess(false);
 
         addPowerSaveModeWhitelist(TEST_APP2_PKG);
-        assertAppIdle(false); // Sanity check - not idle anymore, since whitelisted
+        assertAppIdle(false); // verify - not idle anymore, since whitelisted
         assertBackgroundNetworkAccess(true);
 
         setAppIdleNoAssert(true);
         assertAppIdle(false); // app is still whitelisted
         removePowerSaveModeWhitelist(TEST_APP2_PKG);
-        assertAppIdle(true); // Sanity check - idle again, once whitelisted was removed
+        assertAppIdle(true); // verify - idle again, once whitelisted was removed
         assertBackgroundNetworkAccess(false);
 
         setAppIdle(true);
         addPowerSaveModeExceptIdleWhitelist(TEST_APP2_PKG);
-        assertAppIdle(false); // Sanity check - not idle anymore, since whitelisted
+        assertAppIdle(false); // verify - not idle anymore, since whitelisted
         assertBackgroundNetworkAccess(true);
 
         setAppIdleNoAssert(true);
         assertAppIdle(false); // app is still whitelisted
         removePowerSaveModeExceptIdleWhitelist(TEST_APP2_PKG);
-        assertAppIdle(true); // Sanity check - idle again, once whitelisted was removed
+        assertAppIdle(true); // verify - idle again, once whitelisted was removed
         assertBackgroundNetworkAccess(false);
 
         assertsForegroundAlwaysHasNetworkAccess();
 
-        // Sanity check - no whitelist, no access!
+        // verify - no whitelist, no access!
         setAppIdle(true);
         assertBackgroundNetworkAccess(false);
     }
