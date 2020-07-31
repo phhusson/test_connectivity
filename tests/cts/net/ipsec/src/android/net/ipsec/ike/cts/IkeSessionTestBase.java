@@ -56,7 +56,7 @@ import androidx.test.InstrumentationRegistry;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 
 import com.android.compatibility.common.util.SystemUtil;
-import com.android.testutils.ArrayTrackRecord;
+import com.android.net.module.util.ArrayTrackRecord;
 
 import org.junit.After;
 import org.junit.AfterClass;
