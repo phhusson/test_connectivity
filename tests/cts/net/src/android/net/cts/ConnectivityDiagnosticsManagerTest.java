@@ -77,7 +77,7 @@ import androidx.test.InstrumentationRegistry;
 
 import com.android.internal.telephony.uicc.IccUtils;
 import com.android.internal.util.ArrayUtils;
-import com.android.testutils.ArrayTrackRecord;
+import com.android.net.module.util.ArrayTrackRecord;
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
 import com.android.testutils.DevSdkIgnoreRunner;
 import com.android.testutils.SkipPresubmit;
