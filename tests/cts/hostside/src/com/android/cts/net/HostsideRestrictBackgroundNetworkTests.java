@@ -367,7 +367,7 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
         // TODO: currently the power-save mode is behaving like idle, but once it changes, we'll
         // need to use netpolicy for whitelisting
         runCommand("dumpsys deviceidle whitelist +" + packageName);
-        assertPowerSaveModeWhitelist(packageName, true); // Sanity check
+        assertPowerSaveModeWhitelist(packageName, true);
     }
 
     protected boolean isDozeModeEnabled() throws Exception {
