@@ -229,12 +229,12 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     }
 
     protected void assertBackgroundNetworkAccess(boolean expectAllowed) throws Exception {
-        assertBackgroundState(); // Sanity check.
+        assertBackgroundState();
         assertNetworkAccess(expectAllowed /* expectAvailable */, false /* needScreenOn */);
     }
 
     protected void assertForegroundNetworkAccess() throws Exception {
-        assertForegroundState(); // Sanity check.
+        assertForegroundState();
         // We verified that app is in foreground state but if the screen turns-off while
         // verifying for network access, the app will go into background state (in case app's
         // foreground status was due to top activity). So, turn the screen on when verifying
@@ -243,7 +243,7 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     }
 
     protected void assertForegroundServiceNetworkAccess() throws Exception {
-        assertForegroundServiceState(); // Sanity check.
+        assertForegroundServiceState();
         assertNetworkAccess(true /* expectAvailable */, false /* needScreenOn */);
     }
 
@@ -374,7 +374,7 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         }
         // Network status format is described on MyBroadcastReceiver.checkNetworkStatus()
         final String[] parts = resultData.split(NETWORK_STATUS_SEPARATOR);
-        assertEquals("Wrong network status: " + resultData, 5, parts.length); // Sanity check
+        assertEquals("Wrong network status: " + resultData, 5, parts.length);
         final State state = parts[0].equals("null") ? null : State.valueOf(parts[0]);
         final DetailedState detailedState = parts[1].equals("null")
                 ? null : DetailedState.valueOf(parts[1]);
@@ -547,7 +547,7 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         // TODO: currently the power-save mode is behaving like idle, but once it changes, we'll
         // need to use netpolicy for whitelisting
         executeShellCommand("dumpsys deviceidle whitelist +" + packageName);
-        assertPowerSaveModeWhitelist(packageName, true); // Sanity check
+        assertPowerSaveModeWhitelist(packageName, true);
     }
 
     protected void removePowerSaveModeWhitelist(String packageName) throws Exception {
@@ -555,7 +555,7 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         // TODO: currently the power-save mode is behaving like idle, but once it changes, we'll
         // need to use netpolicy for whitelisting
         executeShellCommand("dumpsys deviceidle whitelist -" + packageName);
-        assertPowerSaveModeWhitelist(packageName, false); // Sanity check
+        assertPowerSaveModeWhitelist(packageName, false);
     }
 
     protected void assertPowerSaveModeExceptIdleWhitelist(String packageName, boolean expected)
@@ -571,7 +571,7 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         // TODO: currently the power-save mode is behaving like idle, but once it changes, we'll
         // need to use netpolicy for whitelisting
         executeShellCommand("dumpsys deviceidle except-idle-whitelist +" + packageName);
-        assertPowerSaveModeExceptIdleWhitelist(packageName, true); // Sanity check
+        assertPowerSaveModeExceptIdleWhitelist(packageName, true);
     }
 
     protected void removePowerSaveModeExceptIdleWhitelist(String packageName) throws Exception {
@@ -580,7 +580,7 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         // TODO: currently the power-save mode is behaving like idle, but once it changes, we'll
         // need to use netpolicy for whitelisting
         executeShellCommand("dumpsys deviceidle except-idle-whitelist reset");
-        assertPowerSaveModeExceptIdleWhitelist(packageName, false); // Sanity check
+        assertPowerSaveModeExceptIdleWhitelist(packageName, false);
     }
 
     protected void turnBatteryOn() throws Exception {
@@ -635,7 +635,7 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     }
 
     protected void setDozeMode(boolean enabled) throws Exception {
-        // Sanity check, since tests should check beforehand....
+        // Check doze mode is supported.
         assertTrue("Device does not support Doze Mode", isDozeModeSupported());
 
         Log.i(TAG, "Setting Doze Mode to " + enabled);
@@ -648,7 +648,6 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
             turnBatteryOff();
             executeShellCommand("dumpsys deviceidle unforce");
         }
-        // Sanity check.
         assertDozeMode(enabled);
     }
 
@@ -659,7 +658,7 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     protected void setAppIdle(boolean enabled) throws Exception {
         Log.i(TAG, "Setting app idle to " + enabled);
         executeSilentShellCommand("am set-inactive " + TEST_APP2_PKG + " " + enabled );
-        assertAppIdle(enabled); // Sanity check
+        assertAppIdle(enabled);
     }
 
     protected void setAppIdleNoAssert(boolean enabled) throws Exception {
