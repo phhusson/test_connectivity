@@ -20,7 +20,7 @@ import static android.net.MacAddress.TYPE_BROADCAST;
 import static android.net.MacAddress.TYPE_MULTICAST;
 import static android.net.MacAddress.TYPE_UNICAST;
 
-import static com.android.testutils.ParcelUtilsKt.assertParcelSane;
+import static com.android.testutils.ParcelUtils.assertParcelSane;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertFalse;
