@@ -25,7 +25,6 @@ import static com.android.cts.net.hostside.NetworkPolicyTestUtils.executeShellCo
 import static com.android.cts.net.hostside.NetworkPolicyTestUtils.getConnectivityManager;
 import static com.android.cts.net.hostside.NetworkPolicyTestUtils.getContext;
 import static com.android.cts.net.hostside.NetworkPolicyTestUtils.getInstrumentation;
-import static com.android.cts.net.hostside.NetworkPolicyTestUtils.getWifiManager;
 import static com.android.cts.net.hostside.NetworkPolicyTestUtils.isDozeModeSupported;
 import static com.android.cts.net.hostside.NetworkPolicyTestUtils.restrictBackgroundValueToString;
 
@@ -46,14 +45,16 @@ import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo.DetailedState;
 import android.net.NetworkInfo.State;
-import android.net.wifi.WifiManager;
 import android.os.BatteryManager;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.provider.DeviceConfig;
 import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
 import android.util.Log;
+
+import com.android.compatibility.common.util.SystemUtil;
 
 import org.junit.Rule;
 import org.junit.rules.RuleChain;
@@ -130,7 +131,6 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     protected int mUid;
     private int mMyUid;
     private MyServiceClient mServiceClient;
-    private String mDeviceIdleConstantsSetting;
 
     @Rule
     public final RuleChain mRuleChain = RuleChain.outerRule(new RequiredPropertiesRule())
@@ -147,7 +147,6 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         mMyUid = getUid(mContext.getPackageName());
         mServiceClient = new MyServiceClient(mContext);
         mServiceClient.bind();
-        mDeviceIdleConstantsSetting = "device_idle_constants";
         executeShellCommand("cmd netpolicy start-watching " + mUid);
         setAppIdle(false);
 
@@ -721,15 +720,18 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
                 nm.isNotificationListenerAccessGranted(listenerComponent));
     }
 
-    protected void setPendingIntentWhitelistDuration(int durationMs) throws Exception {
-        executeSilentShellCommand(String.format(
-                "settings put global %s %s=%d", mDeviceIdleConstantsSetting,
-                "notification_whitelist_duration", durationMs));
+    protected void setPendingIntentAllowlistDuration(long durationMs) {
+        SystemUtil.runWithShellPermissionIdentity(() -> {
+            DeviceConfig.setProperty(
+                    DeviceConfig.NAMESPACE_DEVICE_IDLE, "notification_allowlist_duration_ms",
+                    String.valueOf(durationMs), /* makeDefault */ false);
+        });
     }
 
-    protected void resetDeviceIdleSettings() throws Exception {
-        executeShellCommand(String.format("settings delete global %s",
-                mDeviceIdleConstantsSetting));
+    protected void resetDeviceIdleSettings() {
+        SystemUtil.runWithShellPermissionIdentity(() ->
+                DeviceConfig.resetToDefaults(Settings.RESET_MODE_PACKAGE_DEFAULTS,
+                        DeviceConfig.NAMESPACE_DEVICE_IDLE));
     }
 
     protected void launchComponentAndAssertNetworkAccess(int type) throws Exception {
