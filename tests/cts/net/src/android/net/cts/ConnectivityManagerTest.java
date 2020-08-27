@@ -204,6 +204,8 @@ public class ConnectivityManagerTest {
             } catch (Exception e) {}
         }
         mUiAutomation = mInstrumentation.getUiAutomation();
+
+        assertNotNull("CTS requires a working Internet connection", mCm.getActiveNetwork());
     }
 
     @After
