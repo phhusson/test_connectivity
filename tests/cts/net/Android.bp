@@ -72,15 +72,15 @@ android_test {
     test_config_template: "AndroidTestTemplate.xml",
 }
 
-// Networking CTS tests that have a min_sdk_version of the latest released SDK. These tests can
-// be installed on release devices at any point in the release cycle and are useful for qualifying
-// mainline modules on release devices.
+// Networking CTS tests that target the latest released SDK. These tests can be installed on release
+// devices at any point in the Android release cycle and are useful for qualifying mainline modules
+// on release devices.
 android_test {
     name: "CtsNetTestCasesLatestSdk",
     defaults: ["CtsNetTestCasesDefaults"],
     jni_uses_sdk_apis: true,
     min_sdk_version: "29",
-    target_sdk_version: "29",
+    target_sdk_version: "30",
     test_suites: [
         "general-tests",
         "mts",

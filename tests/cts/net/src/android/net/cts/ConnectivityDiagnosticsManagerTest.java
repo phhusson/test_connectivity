@@ -80,6 +80,7 @@ import com.android.internal.util.ArrayUtils;
 import com.android.net.module.util.ArrayTrackRecord;
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
 import com.android.testutils.DevSdkIgnoreRunner;
+import com.android.testutils.SkipPresubmit;
 
 import org.junit.After;
 import org.junit.Before;
@@ -190,6 +191,7 @@ public class ConnectivityDiagnosticsManagerTest {
         cb.assertNoCallback();
     }
 
+    @SkipPresubmit(reason = "Flaky: b/159718782; add to presubmit after fixing")
     @Test
     public void testRegisterCallbackWithCarrierPrivileges() throws Exception {
         assumeTrue(mPackageManager.hasSystemFeature(FEATURE_TELEPHONY));

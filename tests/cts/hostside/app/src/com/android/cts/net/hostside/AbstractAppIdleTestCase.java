@@ -50,7 +50,7 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
     public final void tearDown() throws Exception {
         super.tearDown();
 
-        turnBatteryOff();
+        executeSilentShellCommand("cmd battery reset");
         setAppIdle(false);
     }
 
@@ -89,14 +89,19 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
         assertAppIdle(false); // verify - not idle anymore, since whitelisted
         assertBackgroundNetworkAccess(true);
 
+        setAppIdleNoAssert(true);
+        assertAppIdle(false); // app is still whitelisted
         removePowerSaveModeWhitelist(TEST_APP2_PKG);
         assertAppIdle(true); // verify - idle again, once whitelisted was removed
         assertBackgroundNetworkAccess(false);
 
+        setAppIdle(true);
         addPowerSaveModeExceptIdleWhitelist(TEST_APP2_PKG);
         assertAppIdle(false); // verify - not idle anymore, since whitelisted
         assertBackgroundNetworkAccess(true);
 
+        setAppIdleNoAssert(true);
+        assertAppIdle(false); // app is still whitelisted
         removePowerSaveModeExceptIdleWhitelist(TEST_APP2_PKG);
         assertAppIdle(true); // verify - idle again, once whitelisted was removed
         assertBackgroundNetworkAccess(false);
