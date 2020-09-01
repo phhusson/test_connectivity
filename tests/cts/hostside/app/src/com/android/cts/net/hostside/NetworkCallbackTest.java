@@ -17,7 +17,9 @@
 package com.android.cts.net.hostside;
 
 import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED;
+import static com.android.cts.net.hostside.NetworkPolicyTestUtils.canChangeActiveNetworkMeteredness;
 import static com.android.cts.net.hostside.NetworkPolicyTestUtils.setRestrictBackground;
+import static com.android.cts.net.hostside.NetworkPolicyTestUtils.isActiveNetworkMetered;
 import static com.android.cts.net.hostside.Property.BATTERY_SAVER_MODE;
 import static com.android.cts.net.hostside.Property.DATA_SAVER_MODE;
 
@@ -26,6 +28,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.junit.Assume.assumeTrue;
 
 import android.net.Network;
 import android.net.NetworkCapabilities;
@@ -182,6 +185,8 @@ public class NetworkCallbackTest extends AbstractRestrictBackgroundNetworkTestCa
     @Before
     public void setUp() throws Exception {
         super.setUp();
+
+        assumeTrue(isActiveNetworkMetered(true) || canChangeActiveNetworkMeteredness());
 
         registerBroadcastReceiver();
 
