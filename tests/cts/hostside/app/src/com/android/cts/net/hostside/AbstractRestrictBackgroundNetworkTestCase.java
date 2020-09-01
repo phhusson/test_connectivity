@@ -63,13 +63,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-import androidx.test.platform.app.InstrumentationRegistry;
-import androidx.test.runner.AndroidJUnit4;
-
 /**
  * Superclass for tests related to background network restrictions.
  */
-@RunWith(AndroidJUnit4.class)
+@RunWith(NetworkPolicyTestRunner.class)
 public abstract class AbstractRestrictBackgroundNetworkTestCase {
     public static final String TAG = "RestrictBackgroundNetworkTests";
 
@@ -80,7 +77,6 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     private static final String TEST_APP2_SERVICE_CLASS = TEST_APP2_PKG + ".MyForegroundService";
 
     private static final int SLEEP_TIME_SEC = 1;
-    private static final boolean DEBUG = true;
 
     // Constants below must match values defined on app2's Common.java
     private static final String MANIFEST_RECEIVER = "ManifestReceiver";
@@ -137,8 +133,7 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     private String mDeviceIdleConstantsSetting;
 
     @Rule
-    public final RuleChain mRuleChain = RuleChain.outerRule(new DumpOnFailureRule())
-            .around(new RequiredPropertiesRule())
+    public final RuleChain mRuleChain = RuleChain.outerRule(new RequiredPropertiesRule())
             .around(new MeterednessConfigurationRule());
 
     protected void setUp() throws Exception {
@@ -153,22 +148,16 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         mServiceClient = new MyServiceClient(mContext);
         mServiceClient.bind();
         mDeviceIdleConstantsSetting = "device_idle_constants";
+        executeShellCommand("cmd netpolicy start-watching " + mUid);
         setAppIdle(false);
 
         Log.i(TAG, "Apps status:\n"
                 + "\ttest app: uid=" + mMyUid + ", state=" + getProcessStateByUid(mMyUid) + "\n"
                 + "\tapp2: uid=" + mUid + ", state=" + getProcessStateByUid(mUid));
-
-        // app_idle_constants set in NetPolicyTestsPreparer.setUp() is not always sucessful (suspect
-        // timing issue), here we set it again to make sure.
-        final String appIdleConstants = "parole_duration=0,stable_charging_threshold=0";
-        executeShellCommand("settings put global app_idle_constants " + appIdleConstants);
-        final String currentConstants =
-                executeShellCommand("settings get global app_idle_constants");
-        assertEquals(appIdleConstants, currentConstants);
     }
 
     protected void tearDown() throws Exception {
+        executeShellCommand("cmd netpolicy stop-watching");
         mServiceClient.unbind();
     }
 
@@ -670,6 +659,11 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         Log.i(TAG, "Setting app idle to " + enabled);
         executeSilentShellCommand("am set-inactive " + TEST_APP2_PKG + " " + enabled );
         assertAppIdle(enabled);
+    }
+
+    protected void setAppIdleNoAssert(boolean enabled) throws Exception {
+        Log.i(TAG, "Setting app idle to " + enabled);
+        executeSilentShellCommand("am set-inactive " + TEST_APP2_PKG + " " + enabled );
     }
 
     protected void assertAppIdle(boolean enabled) throws Exception {
