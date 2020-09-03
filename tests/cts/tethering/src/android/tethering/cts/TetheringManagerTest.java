@@ -72,7 +72,7 @@ import androidx.annotation.NonNull;
 import androidx.test.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
-import com.android.testutils.ArrayTrackRecord;
+import com.android.net.module.util.ArrayTrackRecord;
 
 import org.junit.After;
 import org.junit.Before;
