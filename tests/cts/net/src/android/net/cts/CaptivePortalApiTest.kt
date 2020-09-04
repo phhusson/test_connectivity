@@ -19,12 +19,14 @@ package android.net.cts
 import android.Manifest.permission.MANAGE_TEST_NETWORKS
 import android.Manifest.permission.NETWORK_SETTINGS
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.EthernetManager
 import android.net.InetAddresses
 import android.net.NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL
 import android.net.NetworkCapabilities.NET_CAPABILITY_TRUSTED
 import android.net.NetworkCapabilities.TRANSPORT_ETHERNET
+import android.net.NetworkCapabilities.TRANSPORT_TEST
 import android.net.NetworkRequest
 import android.net.TestNetworkInterface
 import android.net.TestNetworkManager
@@ -54,6 +56,7 @@ import com.android.testutils.TestableNetworkCallback
 import fi.iki.elonen.NanoHTTPD
 import org.junit.After
 import org.junit.Assume.assumeFalse
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -96,7 +99,8 @@ class CaptivePortalApiTest {
     private val ethRequest = NetworkRequest.Builder()
             // ETHERNET|TEST transport networks do not have NET_CAPABILITY_TRUSTED
             .removeCapability(NET_CAPABILITY_TRUSTED)
-            .addTransportType(TRANSPORT_ETHERNET).build()
+            .addTransportType(TRANSPORT_ETHERNET)
+            .addTransportType(TRANSPORT_TEST).build()
     private val ethRequestCb = TestableNetworkCallback()
 
     private lateinit var iface: TestNetworkInterface
@@ -107,9 +111,10 @@ class CaptivePortalApiTest {
 
     @Before
     fun setUp() {
-        // This test requires using a tap interface as the default ethernet interface: skip if there
-        // is already an ethernet interface connected.
-        testSkipped = eth.isAvailable()
+        // This test requires using a tap interface as an ethernet interface.
+        val pm = context.getPackageManager()
+        testSkipped = !pm.hasSystemFeature(PackageManager.FEATURE_ETHERNET) &&
+                context.getSystemService(EthernetManager::class.java) == null
         assumeFalse(testSkipped)
 
         // Register a request so the network does not get torn down
