@@ -1009,6 +1009,9 @@ public class VpnTest extends InstrumentationTestCase {
     }
 
     public void testB141603906() throws Exception {
+        if (!supportedHardware()) {
+            return;
+        }
         final InetSocketAddress src = new InetSocketAddress(0);
         final InetSocketAddress dst = new InetSocketAddress(0);
         final int NUM_THREADS = 8;
