@@ -95,4 +95,9 @@ public class HostsideVpnTests extends HostsideNetworkTestCase {
     public void testB141603906() throws Exception {
         runDeviceTests(TEST_PKG, TEST_PKG + ".VpnTest", "testB141603906");
     }
+
+    public void testDownloadWithDownloadManagerDisallowed() throws Exception {
+        runDeviceTests(TEST_PKG, TEST_PKG + ".VpnTest",
+                "testDownloadWithDownloadManagerDisallowed");
+    }
 }
