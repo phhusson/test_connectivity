@@ -17,13 +17,26 @@
 package com.android.cts.net.hostside;
 
 import static android.os.Process.INVALID_UID;
-import static android.system.OsConstants.*;
+import static android.system.OsConstants.AF_INET;
+import static android.system.OsConstants.AF_INET6;
+import static android.system.OsConstants.ECONNABORTED;
+import static android.system.OsConstants.IPPROTO_ICMP;
+import static android.system.OsConstants.IPPROTO_ICMPV6;
+import static android.system.OsConstants.IPPROTO_TCP;
+import static android.system.OsConstants.POLLIN;
+import static android.system.OsConstants.SOCK_DGRAM;
 
 import android.annotation.Nullable;
+import android.app.DownloadManager;
+import android.app.DownloadManager.Query;
+import android.app.DownloadManager.Request;
+import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.NetworkCallback;
 import android.net.LinkProperties;
@@ -32,12 +45,13 @@ import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.net.Proxy;
 import android.net.ProxyInfo;
+import android.net.Uri;
 import android.net.VpnService;
 import android.net.wifi.WifiManager;
-import android.provider.Settings;
 import android.os.ParcelFileDescriptor;
 import android.os.Process;
 import android.os.SystemProperties;
+import android.provider.Settings;
 import android.support.test.uiautomator.UiDevice;
 import android.support.test.uiautomator.UiObject;
 import android.support.test.uiautomator.UiSelector;
@@ -64,12 +78,12 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Objects;
 import java.util.Random;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -1085,6 +1099,64 @@ public class VpnTest extends InstrumentationTestCase {
                 super.onReceive(context, intent);
             }
             received = true;
+        }
+    }
+
+    /**
+     * Verifies that DownloadManager has CONNECTIVITY_USE_RESTRICTED_NETWORKS permission that can
+     * bind socket to VPN when it is in VPN disallowed list but requested downloading app is in VPN
+     * allowed list.
+     * See b/165774987.
+     */
+    public void testDownloadWithDownloadManagerDisallowed() throws Exception {
+        if (!supportedHardware()) return;
+
+        // Start a VPN with DownloadManager package in disallowed list.
+        startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
+                new String[] {"192.0.2.0/24", "2001:db8::/32"},
+                "" /* allowedApps */, "com.android.providers.downloads", null /* proxyInfo */,
+                null /* underlyingNetworks */, false /* isAlwaysMetered */);
+
+        final Context context = VpnTest.this.getInstrumentation().getContext();
+        final DownloadManager dm = context.getSystemService(DownloadManager.class);
+        final DownloadCompleteReceiver receiver = new DownloadCompleteReceiver();
+        try {
+            context.registerReceiver(receiver,
+                    new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
+
+            // Enqueue a request and check only one download.
+            final long id = dm.enqueue(new Request(Uri.parse("https://www.google.com")));
+            assertEquals(1, getTotalNumberDownloads(dm, new Query()));
+            assertEquals(1, getTotalNumberDownloads(dm, new Query().setFilterById(id)));
+
+            // Wait for download complete and check status.
+            assertEquals(id, receiver.get(TIMEOUT_MS, TimeUnit.MILLISECONDS));
+            assertEquals(1, getTotalNumberDownloads(dm,
+                    new Query().setFilterByStatus(DownloadManager.STATUS_SUCCESSFUL)));
+
+            // Remove download.
+            assertEquals(1, dm.remove(id));
+            assertEquals(0, getTotalNumberDownloads(dm, new Query()));
+        } finally {
+            context.unregisterReceiver(receiver);
+        }
+    }
+
+    private static int getTotalNumberDownloads(final DownloadManager dm, final Query query) {
+        try (Cursor cursor = dm.query(query)) { return cursor.getCount(); }
+    }
+
+    private static class DownloadCompleteReceiver extends BroadcastReceiver {
+        private final CompletableFuture<Long> future = new CompletableFuture<>();
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            future.complete(intent.getLongExtra(
+                    DownloadManager.EXTRA_DOWNLOAD_ID, -1 /* defaultValue */));
+        }
+
+        public long get(long timeout, TimeUnit unit) throws Exception {
+            return future.get(timeout, unit);
         }
     }
 }
