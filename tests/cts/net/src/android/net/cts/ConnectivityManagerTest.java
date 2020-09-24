@@ -607,7 +607,7 @@ public class ConnectivityManagerTest {
     public void testRequestNetworkCallback_onUnavailable() {
         final boolean previousWifiEnabledState = mWifiManager.isWifiEnabled();
         if (previousWifiEnabledState) {
-            mCtsNetUtils.disconnectFromWifi(null);
+            mCtsNetUtils.ensureWifiDisconnected(null);
         }
 
         final TestNetworkCallback callback = new TestNetworkCallback();
