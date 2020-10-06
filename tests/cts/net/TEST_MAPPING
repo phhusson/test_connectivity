@@ -1,6 +1,6 @@
 {
   // TODO: move to mainline-presubmit once supported
-  "postsubmit": [
+  "presubmit": [
     {
       "name": "CtsNetTestCasesLatestSdk",
       "options": [
