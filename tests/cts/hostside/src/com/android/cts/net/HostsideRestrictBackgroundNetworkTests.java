@@ -16,6 +16,8 @@
 
 package com.android.cts.net;
 
+import android.platform.test.annotations.FlakyTest;
+
 import com.android.ddmlib.Log;
 import com.android.tradefed.device.DeviceNotAvailableException;
 
@@ -146,6 +148,7 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
                 "testBackgroundNetworkAccess_disabled");
     }
 
+    @FlakyTest(bugId=170180675)
     public void testAppIdleMetered_whitelisted() throws Exception {
         runDeviceTests(TEST_PKG, TEST_PKG + ".AppIdleMeteredTest",
                 "testBackgroundNetworkAccess_whitelisted");
@@ -176,6 +179,7 @@ public class HostsideRestrictBackgroundNetworkTests extends HostsideNetworkTestC
                 "testBackgroundNetworkAccess_disabled");
     }
 
+    @FlakyTest(bugId=170180675)
     public void testAppIdleNonMetered_whitelisted() throws Exception {
         runDeviceTests(TEST_PKG, TEST_PKG + ".AppIdleNonMeteredTest",
                 "testBackgroundNetworkAccess_whitelisted");
