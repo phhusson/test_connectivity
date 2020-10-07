@@ -17,6 +17,7 @@
 package android.net.cts;
 
 import static android.Manifest.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS;
+import static android.Manifest.permission.NETWORK_SETTINGS;
 import static android.content.pm.PackageManager.FEATURE_ETHERNET;
 import static android.content.pm.PackageManager.FEATURE_TELEPHONY;
 import static android.content.pm.PackageManager.FEATURE_USB_HOST;
@@ -41,6 +42,7 @@ import static android.system.OsConstants.AF_UNSPEC;
 
 import static com.android.compatibility.common.util.SystemUtil.runShellCommand;
 import static com.android.compatibility.common.util.SystemUtil.runWithShellPermissionIdentity;
+import static com.android.testutils.TestPermissionUtil.runAsShell;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -103,6 +105,8 @@ import com.android.testutils.TestableNetworkCallback;
 
 import libcore.io.Streams;
 
+import junit.framework.AssertionFailedError;
+
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -118,6 +122,7 @@ import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.MalformedURLException;
 import java.net.Socket;
 import java.net.URL;
 import java.net.UnknownHostException;
@@ -1498,5 +1503,18 @@ public class ConnectivityManagerTest {
     private static boolean isAirplaneModeEnabled() {
         return runShellCommand("cmd connectivity airplane-mode")
                 .trim().equals("enabled");
+    }
+
+    @Test
+    public void testGetCaptivePortalServerUrl() {
+        final String url = runAsShell(NETWORK_SETTINGS, mCm::getCaptivePortalServerUrl);
+        assertNotNull("getCaptivePortalServerUrl must not be null", url);
+        try {
+            final URL parsedUrl = new URL(url);
+            // As per the javadoc, the URL must be HTTP
+            assertEquals("Invalid captive portal URL protocol", "http", parsedUrl.getProtocol());
+        } catch (MalformedURLException e) {
+            throw new AssertionFailedError("Captive portal server URL is invalid: " + e);
+        }
     }
 }
