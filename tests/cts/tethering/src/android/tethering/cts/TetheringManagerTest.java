@@ -757,7 +757,7 @@ public class TetheringManagerTest {
             if (!isWifiTetheringSupported(tetherEventCallback)) return;
 
             if (previousWifiEnabledState) {
-                mCtsNetUtils.disconnectFromWifi(null);
+                mCtsNetUtils.ensureWifiDisconnected(null);
             }
 
             final TestNetworkCallback networkCallback = new TestNetworkCallback();
