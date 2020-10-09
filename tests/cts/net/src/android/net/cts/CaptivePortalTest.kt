@@ -30,11 +30,9 @@ import android.net.NetworkCapabilities.TRANSPORT_WIFI
 import android.net.NetworkRequest
 import android.net.Uri
 import android.net.cts.NetworkValidationTestUtil.clearValidationTestUrlsDeviceConfig
-import android.net.cts.NetworkValidationTestUtil.runAsShell
 import android.net.cts.NetworkValidationTestUtil.setHttpUrlDeviceConfig
 import android.net.cts.NetworkValidationTestUtil.setHttpsUrlDeviceConfig
 import android.net.cts.NetworkValidationTestUtil.setUrlExpirationDeviceConfig
-import com.android.testutils.TestHttpServer.Request
 import android.net.cts.util.CtsNetUtils
 import android.net.util.NetworkStackUtils.TEST_CAPTIVE_PORTAL_HTTPS_URL
 import android.net.util.NetworkStackUtils.TEST_CAPTIVE_PORTAL_HTTP_URL
@@ -47,7 +45,9 @@ import android.text.TextUtils
 import androidx.test.platform.app.InstrumentationRegistry.getInstrumentation
 import androidx.test.runner.AndroidJUnit4
 import com.android.testutils.TestHttpServer
+import com.android.testutils.TestHttpServer.Request
 import com.android.testutils.isDevSdkInRange
+import com.android.testutils.runAsShell
 import fi.iki.elonen.NanoHTTPD.Response.Status
 import junit.framework.AssertionFailedError
 import org.junit.After
