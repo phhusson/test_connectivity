@@ -19,9 +19,7 @@ package android.net.cts
 import android.Manifest
 import android.net.util.NetworkStackUtils
 import android.provider.DeviceConfig
-import com.android.compatibility.common.util.SystemUtil.runWithShellPermissionIdentity
-import com.android.compatibility.common.util.ThrowingRunnable
-import kotlin.test.fail
+import com.android.testutils.runAsShell
 
 /**
  * Collection of utility methods for configuring network validation.
@@ -66,14 +64,5 @@ internal object NetworkValidationTestUtil {
             DeviceConfig.setProperty(
                     DeviceConfig.NAMESPACE_CONNECTIVITY, configKey, value, false /* makeDefault */)
         }
-    }
-
-    /**
-     * Wrapper around runWithShellPermissionIdentity with kotlin-like syntax.
-     */
-    fun <T> runAsShell(vararg permissions: String, task: () -> T): T {
-        var ret: T? = null
-        runWithShellPermissionIdentity(ThrowingRunnable { ret = task() }, *permissions)
-        return ret ?: fail("ThrowingRunnable did not return")
     }
 }
