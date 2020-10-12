@@ -31,7 +31,6 @@ import android.net.NetworkRequest
 import android.net.TestNetworkInterface
 import android.net.TestNetworkManager
 import android.net.Uri
-import android.net.cts.NetworkValidationTestUtil.runAsShell
 import android.net.dhcp.DhcpDiscoverPacket
 import android.net.dhcp.DhcpPacket
 import android.net.dhcp.DhcpPacket.DHCP_MESSAGE_TYPE
@@ -45,8 +44,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.AndroidJUnit4
 import com.android.net.module.util.Inet4AddressUtils.getBroadcastAddress
 import com.android.net.module.util.Inet4AddressUtils.getPrefixMaskAsInet4Address
-import com.android.server.util.NetworkStackConstants.IPV4_ADDR_ANY
-import com.android.testutils.ArpResponder
+import com.android.net.module.util.NetworkStackConstants.IPV4_ADDR_ANY
 import com.android.testutils.DevSdkIgnoreRule
 import com.android.testutils.DhcpClientPacketFilter
 import com.android.testutils.DhcpOptionFilter
@@ -54,10 +52,10 @@ import com.android.testutils.RecorderCallback.CallbackEntry
 import com.android.testutils.TapPacketReader
 import com.android.testutils.TestHttpServer
 import com.android.testutils.TestableNetworkCallback
+import com.android.testutils.runAsShell
 import fi.iki.elonen.NanoHTTPD.Response.Status
 import org.junit.After
 import org.junit.Assume.assumeFalse
-import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -131,7 +129,7 @@ class NetworkValidationTest {
                 handlerThread.threadHandler,
                 iface.fileDescriptor.fileDescriptor,
                 MAX_PACKET_LENGTH)
-        handlerThread.threadHandler.post { reader.start() }
+        reader.startAsyncForTest()
         httpServer.start()
 
         // Pad the listening port to make sure it is always of length 5. This ensures the URL has
@@ -233,7 +231,7 @@ private fun <T : DhcpPacket> TapPacketReader.assertDhcpPacketReceived(
     timeoutMs: Long,
     type: Byte
 ): T {
-    val packetBytes = popPacket(timeoutMs, DhcpClientPacketFilter()
+    val packetBytes = poll(timeoutMs, DhcpClientPacketFilter()
             .and(DhcpOptionFilter(DHCP_MESSAGE_TYPE, type)))
             ?: fail("${packetType.simpleName} not received within timeout")
     val packet = DhcpPacket.decodeFullPacket(packetBytes, packetBytes.size, DhcpPacket.ENCAP_L2)
