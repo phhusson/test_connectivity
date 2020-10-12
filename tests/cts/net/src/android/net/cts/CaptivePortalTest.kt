@@ -123,7 +123,7 @@ class CaptivePortalTest {
     fun testCaptivePortalIsNotDefaultNetwork() {
         assumeTrue(pm.hasSystemFeature(FEATURE_TELEPHONY))
         assumeTrue(pm.hasSystemFeature(FEATURE_WIFI))
-        utils.connectToWifi()
+        utils.ensureWifiConnected()
         utils.connectToCell()
 
         // Have network validation use a local server that serves a HTTPS error / HTTP redirect
