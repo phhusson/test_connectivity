@@ -455,20 +455,16 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runDatagramCheck(
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeo, sizeof(timeo));
 
     // For reference see:
-    //     https://tools.ietf.org/html/draft-tsvwg-quic-protocol#section-6.1
+    //     https://datatracker.ietf.org/doc/html/draft-ietf-quic-invariants
     uint8_t quic_packet[1200] = {
-        0x0d,                    // public flags:
-                                 //   - version present (0x01),
-                                 //   - 64bit connection ID (0x0c),
-                                 //   - 1 byte packet number (0x00)
+        0xc0,                    // long header
+        0xaa, 0xda, 0xca, 0xca,  // reserved-space version number
+        0x08,                    // destination connection ID length
         0, 0, 0, 0, 0, 0, 0, 0,  // 64bit connection ID
-        0xaa, 0xda, 0xca, 0xaa,  // reserved-space version number
-        1,                       // 1 byte packet number
-        0x00,                    // private flags
-        0x07,                    // PING frame (cuz why not)
+        0x00,                    // source connection ID length
     };
 
-    arc4random_buf(quic_packet + 1, 8);  // random connection ID
+    arc4random_buf(quic_packet + 6, 8);  // random connection ID
 
     uint8_t response[1500];
     ssize_t sent, rcvd;
@@ -493,7 +489,7 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runDatagramCheck(
                   i + 1, MAX_RETRIES, rcvd, errnum);
         }
     }
-    if (rcvd < 9) {
+    if (rcvd < 15) {
         ALOGD("QUIC UDP %s: sent=%zd but rcvd=%zd, errno=%d", kPort, sent, rcvd, errnum);
         if (rcvd <= 0) {
             ALOGD("Does this network block UDP port %s?", kPort);
@@ -502,7 +498,7 @@ JNIEXPORT jint Java_android_net_cts_MultinetworkApiTest_runDatagramCheck(
         return -EPROTO;
     }
 
-    int conn_id_cmp = memcmp(quic_packet + 1, response + 1, 8);
+    int conn_id_cmp = memcmp(quic_packet + 6, response + 7, 8);
     if (conn_id_cmp != 0) {
         ALOGD("sent and received connection IDs do not match");
         close(fd);
