@@ -78,6 +78,17 @@ abstract class AbstractAppIdleTestCase extends AbstractRestrictBackgroundNetwork
         stopForegroundService();
         assertAppIdle(true);
         assertBackgroundNetworkAccess(false);
+
+        // Set Idle after foreground service start.
+        launchComponentAndAssertNetworkAccess(TYPE_COMPONENT_FOREGROUND_SERVICE);
+        setAppIdle(true);
+        addPowerSaveModeWhitelist(TEST_PKG);
+        removePowerSaveModeWhitelist(TEST_PKG);
+        assertForegroundServiceNetworkAccess();
+        stopForegroundService();
+        assertAppIdle(true);
+        assertBackgroundNetworkAccess(false);
+
     }
 
     @Test
