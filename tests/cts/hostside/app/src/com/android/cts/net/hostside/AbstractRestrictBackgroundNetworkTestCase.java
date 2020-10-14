@@ -50,11 +50,10 @@ import android.os.Binder;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.provider.DeviceConfig;
-import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
 import android.util.Log;
 
-import com.android.compatibility.common.util.SystemUtil;
+import com.android.compatibility.common.util.DeviceConfigStateHelper;
 
 import org.junit.Rule;
 import org.junit.rules.RuleChain;
@@ -131,18 +130,20 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     protected int mUid;
     private int mMyUid;
     private MyServiceClient mServiceClient;
+    private DeviceConfigStateHelper mDeviceIdleDeviceConfigStateHelper;
 
     @Rule
     public final RuleChain mRuleChain = RuleChain.outerRule(new RequiredPropertiesRule())
             .around(new MeterednessConfigurationRule());
 
     protected void setUp() throws Exception {
-
         PROCESS_STATE_FOREGROUND_SERVICE = (Integer) ActivityManager.class
                 .getDeclaredField("PROCESS_STATE_FOREGROUND_SERVICE").get(null);
         mInstrumentation = getInstrumentation();
         mContext = getContext();
         mCm = getConnectivityManager();
+        mDeviceIdleDeviceConfigStateHelper =
+                new DeviceConfigStateHelper(DeviceConfig.NAMESPACE_DEVICE_IDLE);
         mUid = getUid(TEST_APP2_PKG);
         mMyUid = getUid(mContext.getPackageName());
         mServiceClient = new MyServiceClient(mContext);
@@ -721,17 +722,12 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     }
 
     protected void setPendingIntentAllowlistDuration(long durationMs) {
-        SystemUtil.runWithShellPermissionIdentity(() -> {
-            DeviceConfig.setProperty(
-                    DeviceConfig.NAMESPACE_DEVICE_IDLE, "notification_allowlist_duration_ms",
-                    String.valueOf(durationMs), /* makeDefault */ false);
-        });
+        mDeviceIdleDeviceConfigStateHelper.set("notification_allowlist_duration_ms",
+                String.valueOf(durationMs));
     }
 
     protected void resetDeviceIdleSettings() {
-        SystemUtil.runWithShellPermissionIdentity(() ->
-                DeviceConfig.resetToDefaults(Settings.RESET_MODE_PACKAGE_DEFAULTS,
-                        DeviceConfig.NAMESPACE_DEVICE_IDLE));
+        mDeviceIdleDeviceConfigStateHelper.restoreOriginalValues();
     }
 
     protected void launchComponentAndAssertNetworkAccess(int type) throws Exception {
