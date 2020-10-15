@@ -1111,9 +1111,19 @@ public class IpServer extends StateMachine {
         }
     }
 
+    private void startConntrackMonitoring() {
+        mBpfCoordinator.startMonitoring(this);
+    }
+
+    private void stopConntrackMonitoring() {
+        mBpfCoordinator.stopMonitoring(this);
+    }
+
     class BaseServingState extends State {
         @Override
         public void enter() {
+            startConntrackMonitoring();
+
             if (!startIPv4()) {
                 mLastError = TetheringManager.TETHER_ERROR_IFACE_CFG_ERROR;
                 return;
@@ -1149,6 +1159,7 @@ public class IpServer extends StateMachine {
             }
 
             stopIPv4();
+            stopConntrackMonitoring();
 
             resetLinkProperties();
         }
