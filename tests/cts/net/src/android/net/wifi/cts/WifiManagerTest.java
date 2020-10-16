@@ -37,6 +37,7 @@ import android.provider.Settings;
 import android.test.AndroidTestCase;
 import android.util.Log;
 
+import com.android.compatibility.common.util.PollingCheck;
 import com.android.compatibility.common.util.WifiConfigCreator;
 
 import java.net.HttpURLConnection;
@@ -475,13 +476,14 @@ public class WifiManagerTest extends AndroidTestCase {
             assertFalse(existSSID(SSID1));
             assertFalse(existSSID(SSID2));
 
-            // wait 10 seconds to ensure that broadcast wasn't received
-            Thread.sleep(DURATION);
+            // Should receive CONFIGURED_NETWORKS_CHANGED_ACTION broadcast because CtsNetTestCases'
+            // AndroidManifest.xml has both ACCESS_WIFI_STATE & ACCESS_FINE_LOCATION permissions.
+            PollingCheck.check(
+                    "Didn't receive CONFIGURED_NETWORKS_CHANGED_ACTION broadcast!",
+                    DURATION,
+                    () -> intentHolder.intent != null);
             Intent intent = intentHolder.intent;
-            // Broadcast shouldn't be received because although CtsNetTestCases has
-            // ACCESS_WIFI_STATE permission, it doesn't have ACCESS_FINE_LOCATION permission.
-            // Receivers need both permissions to get the broadcast.
-            assertNull("Unexpected received CONFIGURED_NETWORKS_CHANGED_ACTION broadcast!", intent);
+            assertEquals(WifiManager.CONFIGURED_NETWORKS_CHANGED_ACTION, intent.getAction());
 
             assertTrue(mWifiManager.saveConfiguration());
         } finally {
