@@ -26,9 +26,8 @@ import static android.net.TetheringManager.TETHERING_WIFI_P2P;
 import static android.net.TetheringManager.TETHER_ERROR_ENTITLEMENT_UNKNOWN;
 import static android.net.TetheringManager.TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION;
 import static android.net.TetheringManager.TETHER_ERROR_NO_ERROR;
-import static android.net.TetheringManager.TETHER_HARDWARE_OFFLOAD_FAILED;
-import static android.net.TetheringManager.TETHER_HARDWARE_OFFLOAD_STARTED;
-import static android.net.TetheringManager.TETHER_HARDWARE_OFFLOAD_STOPPED;
+import static android.net.cts.util.CtsTetheringUtils.isIfaceMatch;
+import static android.net.cts.util.CtsTetheringUtils.isWifiTetheringSupported;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -49,30 +48,25 @@ import android.net.ConnectivityManager;
 import android.net.LinkAddress;
 import android.net.Network;
 import android.net.NetworkCapabilities;
-import android.net.TetheredClient;
 import android.net.TetheringManager;
 import android.net.TetheringManager.OnTetheringEntitlementResultListener;
-import android.net.TetheringManager.TetheringEventCallback;
 import android.net.TetheringManager.TetheringInterfaceRegexps;
 import android.net.TetheringManager.TetheringRequest;
 import android.net.cts.util.CtsNetUtils;
 import android.net.cts.util.CtsNetUtils.TestNetworkCallback;
-import android.net.wifi.WifiClient;
+import android.net.cts.util.CtsTetheringUtils;
+import android.net.cts.util.CtsTetheringUtils.StartTetheringCallback;
+import android.net.cts.util.CtsTetheringUtils.TestTetheringEventCallback;
 import android.net.wifi.WifiManager;
-import android.net.wifi.WifiManager.SoftApCallback;
 import android.os.Bundle;
-import android.os.ConditionVariable;
 import android.os.PersistableBundle;
 import android.os.ResultReceiver;
 import android.telephony.CarrierConfigManager;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 
-import androidx.annotation.NonNull;
 import androidx.test.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
-
-import com.android.net.module.util.ArrayTrackRecord;
 
 import org.junit.After;
 import org.junit.Before;
@@ -81,7 +75,6 @@ import org.junit.runner.RunWith;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -100,6 +93,7 @@ public class TetheringManagerTest {
 
     private TetherChangeReceiver mTetherChangeReceiver;
     private CtsNetUtils mCtsNetUtils;
+    private CtsTetheringUtils mCtsTetheringUtils;
 
     private static final int DEFAULT_TIMEOUT_MS = 60_000;
 
@@ -124,6 +118,7 @@ public class TetheringManagerTest {
         mWm = (WifiManager) mContext.getSystemService(Context.WIFI_SERVICE);
         mPm = mContext.getPackageManager();
         mCtsNetUtils = new CtsNetUtils(mContext);
+        mCtsTetheringUtils = new CtsTetheringUtils(mContext);
         mTetherChangeReceiver = new TetherChangeReceiver();
         final IntentFilter filter = new IntentFilter(
                 TetheringManager.ACTION_TETHER_STATE_CHANGED);
@@ -136,40 +131,6 @@ public class TetheringManagerTest {
         mTM.stopAllTethering();
         mContext.unregisterReceiver(mTetherChangeReceiver);
         dropShellPermissionIdentity();
-    }
-
-    private static class StopSoftApCallback implements SoftApCallback {
-        private final ConditionVariable mWaiting = new ConditionVariable();
-        @Override
-        public void onStateChanged(int state, int failureReason) {
-            if (state == WifiManager.WIFI_AP_STATE_DISABLED) mWaiting.open();
-        }
-
-        @Override
-        public void onConnectedClientsChanged(List<WifiClient> clients) { }
-
-        public void waitForSoftApStopped() {
-            if (!mWaiting.block(DEFAULT_TIMEOUT_MS)) {
-                fail("stopSoftAp Timeout");
-            }
-        }
-    }
-
-    // Wait for softAp to be disabled. This is necessary on devices where stopping softAp
-    // deletes the interface. On these devices, tethering immediately stops when the softAp
-    // interface is removed, but softAp is not yet fully disabled. Wait for softAp to be
-    // fully disabled, because otherwise the next test might fail because it attempts to
-    // start softAp before it's fully stopped.
-    private void expectSoftApDisabled() {
-        final StopSoftApCallback callback = new StopSoftApCallback();
-        try {
-            mWm.registerSoftApCallback(c -> c.run(), callback);
-            // registerSoftApCallback will immediately call the callback with the current state, so
-            // this callback will fire even if softAp is already disabled.
-            callback.waitForSoftApStopped();
-        } finally {
-            mWm.unregisterSoftApCallback(callback);
-        }
     }
 
     private class TetherChangeReceiver extends BroadcastReceiver {
@@ -241,77 +202,6 @@ public class TetheringManagerTest {
         }
     }
 
-    private static class StartTetheringCallback implements TetheringManager.StartTetheringCallback {
-        private static int TIMEOUT_MS = 30_000;
-        public static class CallbackValue {
-            public final int error;
-
-            private CallbackValue(final int e) {
-                error = e;
-            }
-
-            public static class OnTetheringStarted extends CallbackValue {
-                OnTetheringStarted() { super(TETHER_ERROR_NO_ERROR); }
-            }
-
-            public static class OnTetheringFailed extends CallbackValue {
-                OnTetheringFailed(final int error) { super(error); }
-            }
-
-            @Override
-            public String toString() {
-                return String.format("%s(%d)", getClass().getSimpleName(), error);
-            }
-        }
-
-        private final ArrayTrackRecord<CallbackValue>.ReadHead mHistory =
-                new ArrayTrackRecord<CallbackValue>().newReadHead();
-
-        @Override
-        public void onTetheringStarted() {
-            mHistory.add(new CallbackValue.OnTetheringStarted());
-        }
-
-        @Override
-        public void onTetheringFailed(final int error) {
-            mHistory.add(new CallbackValue.OnTetheringFailed(error));
-        }
-
-        public void verifyTetheringStarted() {
-            final CallbackValue cv = mHistory.poll(TIMEOUT_MS, c -> true);
-            assertNotNull("No onTetheringStarted after " + TIMEOUT_MS + " ms", cv);
-            assertTrue("Fail start tethering:" + cv,
-                    cv instanceof CallbackValue.OnTetheringStarted);
-        }
-
-        public void expectTetheringFailed(final int expected) throws InterruptedException {
-            final CallbackValue cv = mHistory.poll(TIMEOUT_MS, c -> true);
-            assertNotNull("No onTetheringFailed after " + TIMEOUT_MS + " ms", cv);
-            assertTrue("Expect fail with error code " + expected + ", but received: " + cv,
-                (cv instanceof CallbackValue.OnTetheringFailed) && (cv.error == expected));
-        }
-    }
-
-    private static boolean isIfaceMatch(final List<String> ifaceRegexs,
-            final List<String> ifaces) {
-        return isIfaceMatch(ifaceRegexs.toArray(new String[0]), ifaces);
-    }
-
-    private static boolean isIfaceMatch(final String[] ifaceRegexs, final List<String> ifaces) {
-        if (ifaceRegexs == null) fail("ifaceRegexs should not be null");
-
-        if (ifaces == null) return false;
-
-        for (String s : ifaces) {
-            for (String regex : ifaceRegexs) {
-                if (s.matches(regex)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
     @Test
     public void testStartTetheringWithStateChangeBroadcast() throws Exception {
         if (!mTM.isTetheringSupported()) return;
@@ -331,7 +221,7 @@ public class TetheringManagerTest {
         mTetherChangeReceiver.expectTethering(true /* active */, wifiRegexs);
 
         mTM.stopTethering(TETHERING_WIFI);
-        expectSoftApDisabled();
+        mCtsTetheringUtils.expectSoftApDisabled();
         mTetherChangeReceiver.expectTethering(false /* active */, wifiRegexs);
     }
 
@@ -358,252 +248,24 @@ public class TetheringManagerTest {
         assertFalse(tr2.getShouldShowEntitlementUi());
     }
 
-    // Must poll the callback before looking at the member.
-    private static class TestTetheringEventCallback implements TetheringEventCallback {
-        private static final int TIMEOUT_MS = 30_000;
-
-        public enum CallbackType {
-            ON_SUPPORTED,
-            ON_UPSTREAM,
-            ON_TETHERABLE_REGEX,
-            ON_TETHERABLE_IFACES,
-            ON_TETHERED_IFACES,
-            ON_ERROR,
-            ON_CLIENTS,
-            ON_OFFLOAD_STATUS,
-        };
-
-        public static class CallbackValue {
-            public final CallbackType callbackType;
-            public final Object callbackParam;
-            public final int callbackParam2;
-
-            private CallbackValue(final CallbackType type, final Object param, final int param2) {
-                this.callbackType = type;
-                this.callbackParam = param;
-                this.callbackParam2 = param2;
-            }
-        }
-
-        private final ArrayTrackRecord<CallbackValue> mHistory =
-                new ArrayTrackRecord<CallbackValue>();
-
-        private final ArrayTrackRecord<CallbackValue>.ReadHead mCurrent =
-                mHistory.newReadHead();
-
-        private TetheringInterfaceRegexps mTetherableRegex;
-        private List<String> mTetherableIfaces;
-        private List<String> mTetheredIfaces;
-
-        @Override
-        public void onTetheringSupported(boolean supported) {
-            mHistory.add(new CallbackValue(CallbackType.ON_SUPPORTED, null, (supported ? 1 : 0)));
-        }
-
-        @Override
-        public void onUpstreamChanged(Network network) {
-            mHistory.add(new CallbackValue(CallbackType.ON_UPSTREAM, network, 0));
-        }
-
-        @Override
-        public void onTetherableInterfaceRegexpsChanged(TetheringInterfaceRegexps reg) {
-            mTetherableRegex = reg;
-            mHistory.add(new CallbackValue(CallbackType.ON_TETHERABLE_REGEX, reg, 0));
-        }
-
-        @Override
-        public void onTetherableInterfacesChanged(List<String> interfaces) {
-            mTetherableIfaces = interfaces;
-            mHistory.add(new CallbackValue(CallbackType.ON_TETHERABLE_IFACES, interfaces, 0));
-        }
-
-        @Override
-        public void onTetheredInterfacesChanged(List<String> interfaces) {
-            mTetheredIfaces = interfaces;
-            mHistory.add(new CallbackValue(CallbackType.ON_TETHERED_IFACES, interfaces, 0));
-        }
-
-        @Override
-        public void onError(String ifName, int error) {
-            mHistory.add(new CallbackValue(CallbackType.ON_ERROR, ifName, error));
-        }
-
-        @Override
-        public void onClientsChanged(Collection<TetheredClient> clients) {
-            mHistory.add(new CallbackValue(CallbackType.ON_CLIENTS, clients, 0));
-        }
-
-        @Override
-        public void onOffloadStatusChanged(int status) {
-            mHistory.add(new CallbackValue(CallbackType.ON_OFFLOAD_STATUS, status, 0));
-        }
-
-        public void expectTetherableInterfacesChanged(@NonNull List<String> regexs) {
-            assertNotNull("No expected tetherable ifaces callback", mCurrent.poll(TIMEOUT_MS,
-                (cv) -> {
-                    if (cv.callbackType != CallbackType.ON_TETHERABLE_IFACES) return false;
-                    final List<String> interfaces = (List<String>) cv.callbackParam;
-                    return isIfaceMatch(regexs, interfaces);
-                }));
-        }
-
-        public void expectTetheredInterfacesChanged(@NonNull List<String> regexs) {
-            assertNotNull("No expected tethered ifaces callback", mCurrent.poll(TIMEOUT_MS,
-                (cv) -> {
-                    if (cv.callbackType != CallbackType.ON_TETHERED_IFACES) return false;
-
-                    final List<String> interfaces = (List<String>) cv.callbackParam;
-
-                    // Null regexs means no active tethering.
-                    if (regexs == null) return interfaces.isEmpty();
-
-                    return isIfaceMatch(regexs, interfaces);
-                }));
-        }
-
-        public void expectCallbackStarted() {
-            int receivedBitMap = 0;
-            // The each bit represent a type from CallbackType.ON_*.
-            // Expect all of callbacks except for ON_ERROR.
-            final int expectedBitMap = 0xff ^ (1 << CallbackType.ON_ERROR.ordinal());
-            // Receive ON_ERROR on started callback is not matter. It just means tethering is
-            // failed last time, should able to continue the test this time.
-            while ((receivedBitMap & expectedBitMap) != expectedBitMap) {
-                final CallbackValue cv = mCurrent.poll(TIMEOUT_MS, c -> true);
-                if (cv == null) {
-                    fail("No expected callbacks, " + "expected bitmap: "
-                            + expectedBitMap + ", actual: " + receivedBitMap);
-                }
-
-                receivedBitMap |= (1 << cv.callbackType.ordinal());
-            }
-        }
-
-        public void expectOneOfOffloadStatusChanged(int... offloadStatuses) {
-            assertNotNull("No offload status changed", mCurrent.poll(TIMEOUT_MS, (cv) -> {
-                if (cv.callbackType != CallbackType.ON_OFFLOAD_STATUS) return false;
-
-                final int status = (int) cv.callbackParam;
-                for (int offloadStatus : offloadStatuses) if (offloadStatus == status) return true;
-
-                return false;
-            }));
-        }
-
-        public void expectErrorOrTethered(final String iface) {
-            assertNotNull("No expected callback", mCurrent.poll(TIMEOUT_MS, (cv) -> {
-                if (cv.callbackType == CallbackType.ON_ERROR
-                        && iface.equals((String) cv.callbackParam)) {
-                    return true;
-                }
-                if (cv.callbackType == CallbackType.ON_TETHERED_IFACES
-                        && ((List<String>) cv.callbackParam).contains(iface)) {
-                    return true;
-                }
-
-                return false;
-            }));
-        }
-
-        public Network getCurrentValidUpstream() {
-            final CallbackValue result = mCurrent.poll(TIMEOUT_MS, (cv) -> {
-                return (cv.callbackType == CallbackType.ON_UPSTREAM)
-                        && cv.callbackParam != null;
-            });
-
-            assertNotNull("No valid upstream", result);
-            return (Network) result.callbackParam;
-        }
-
-        public void assumeTetheringSupported() {
-            final ArrayTrackRecord<CallbackValue>.ReadHead history =
-                    mHistory.newReadHead();
-            assertNotNull("No onSupported callback", history.poll(TIMEOUT_MS, (cv) -> {
-                if (cv.callbackType != CallbackType.ON_SUPPORTED) return false;
-
-                assumeTrue(cv.callbackParam2 == 1 /* supported */);
-                return true;
-            }));
-        }
-
-        public TetheringInterfaceRegexps getTetheringInterfaceRegexps() {
-            return mTetherableRegex;
-        }
-
-        public List<String> getTetherableInterfaces() {
-            return mTetherableIfaces;
-        }
-
-        public List<String> getTetheredInterfaces() {
-            return mTetheredIfaces;
-        }
-    }
-
-    private TestTetheringEventCallback registerTetheringEventCallback() {
-        final TestTetheringEventCallback tetherEventCallback =
-                new TestTetheringEventCallback();
-
-        mTM.registerTetheringEventCallback(c -> c.run() /* executor */, tetherEventCallback);
-        tetherEventCallback.expectCallbackStarted();
-
-        return tetherEventCallback;
-    }
-
-    private void unregisterTetheringEventCallback(final TestTetheringEventCallback callback) {
-        mTM.unregisterTetheringEventCallback(callback);
-    }
-
-    private List<String> getWifiTetherableInterfaceRegexps(
-            final TestTetheringEventCallback callback) {
-        return callback.getTetheringInterfaceRegexps().getTetherableWifiRegexs();
-    }
-
-    private boolean isWifiTetheringSupported(final TestTetheringEventCallback callback) {
-        return !getWifiTetherableInterfaceRegexps(callback).isEmpty();
-    }
-
-    private void startWifiTethering(final TestTetheringEventCallback callback)
-            throws InterruptedException {
-        final List<String> wifiRegexs = getWifiTetherableInterfaceRegexps(callback);
-        assertFalse(isIfaceMatch(wifiRegexs, callback.getTetheredInterfaces()));
-
-        final StartTetheringCallback startTetheringCallback = new StartTetheringCallback();
-        final TetheringRequest request = new TetheringRequest.Builder(TETHERING_WIFI)
-                .setShouldShowEntitlementUi(false).build();
-        mTM.startTethering(request, c -> c.run() /* executor */, startTetheringCallback);
-        startTetheringCallback.verifyTetheringStarted();
-
-        callback.expectTetheredInterfacesChanged(wifiRegexs);
-
-        callback.expectOneOfOffloadStatusChanged(
-                TETHER_HARDWARE_OFFLOAD_STARTED,
-                TETHER_HARDWARE_OFFLOAD_FAILED);
-    }
-
-    private void stopWifiTethering(final TestTetheringEventCallback callback) {
-        mTM.stopTethering(TETHERING_WIFI);
-        expectSoftApDisabled();
-        callback.expectTetheredInterfacesChanged(null);
-        callback.expectOneOfOffloadStatusChanged(TETHER_HARDWARE_OFFLOAD_STOPPED);
-    }
-
     @Test
     public void testRegisterTetheringEventCallback() throws Exception {
-        final TestTetheringEventCallback tetherEventCallback = registerTetheringEventCallback();
+        final TestTetheringEventCallback tetherEventCallback =
+                mCtsTetheringUtils.registerTetheringEventCallback();
         tetherEventCallback.assumeTetheringSupported();
 
         if (!isWifiTetheringSupported(tetherEventCallback)) {
-            unregisterTetheringEventCallback(tetherEventCallback);
+            mCtsTetheringUtils.unregisterTetheringEventCallback(tetherEventCallback);
             return;
         }
 
-        startWifiTethering(tetherEventCallback);
+        mCtsTetheringUtils.startWifiTethering(tetherEventCallback);
 
         final List<String> tetheredIfaces = tetherEventCallback.getTetheredInterfaces();
         assertEquals(1, tetheredIfaces.size());
         final String wifiTetheringIface = tetheredIfaces.get(0);
 
-        stopWifiTethering(tetherEventCallback);
+        mCtsTetheringUtils.stopWifiTethering(tetherEventCallback);
 
         try {
             final int ret = mTM.tether(wifiTetheringIface);
@@ -617,13 +279,14 @@ public class TetheringManagerTest {
             tetherEventCallback.expectErrorOrTethered(wifiTetheringIface);
         } finally {
             mTM.untether(wifiTetheringIface);
-            unregisterTetheringEventCallback(tetherEventCallback);
+            mCtsTetheringUtils.unregisterTetheringEventCallback(tetherEventCallback);
         }
     }
 
     @Test
     public void testGetTetherableInterfaceRegexps() {
-        final TestTetheringEventCallback tetherEventCallback = registerTetheringEventCallback();
+        final TestTetheringEventCallback tetherEventCallback =
+                mCtsTetheringUtils.registerTetheringEventCallback();
         tetherEventCallback.assumeTetheringSupported();
 
         final TetheringInterfaceRegexps tetherableRegexs =
@@ -641,12 +304,13 @@ public class TetheringManagerTest {
         wifiRegexs.forEach(s -> assertFalse(btRegexs.contains(s)));
         usbRegexs.forEach(s -> assertFalse(btRegexs.contains(s)));
 
-        unregisterTetheringEventCallback(tetherEventCallback);
+        mCtsTetheringUtils.unregisterTetheringEventCallback(tetherEventCallback);
     }
 
     @Test
     public void testStopAllTethering() throws Exception {
-        final TestTetheringEventCallback tetherEventCallback = registerTetheringEventCallback();
+        final TestTetheringEventCallback tetherEventCallback =
+                mCtsTetheringUtils.registerTetheringEventCallback();
         tetherEventCallback.assumeTetheringSupported();
 
         try {
@@ -655,12 +319,12 @@ public class TetheringManagerTest {
             // TODO: start ethernet tethering here when TetheringManagerTest is moved to
             // TetheringIntegrationTest.
 
-            startWifiTethering(tetherEventCallback);
+            mCtsTetheringUtils.startWifiTethering(tetherEventCallback);
 
             mTM.stopAllTethering();
             tetherEventCallback.expectTetheredInterfacesChanged(null);
         } finally {
-            unregisterTetheringEventCallback(tetherEventCallback);
+            mCtsTetheringUtils.unregisterTetheringEventCallback(tetherEventCallback);
         }
     }
 
@@ -749,7 +413,8 @@ public class TetheringManagerTest {
     @Test
     public void testTetheringUpstream() throws Exception {
         assumeTrue(mPm.hasSystemFeature(FEATURE_TELEPHONY));
-        final TestTetheringEventCallback tetherEventCallback = registerTetheringEventCallback();
+        final TestTetheringEventCallback tetherEventCallback =
+                mCtsTetheringUtils.registerTetheringEventCallback();
         tetherEventCallback.assumeTetheringSupported();
         final boolean previousWifiEnabledState = mWm.isWifiEnabled();
 
@@ -778,7 +443,7 @@ public class TetheringManagerTest {
 
             assertTrue(activeNetCap.hasTransport(TRANSPORT_CELLULAR));
 
-            startWifiTethering(tetherEventCallback);
+            mCtsTetheringUtils.startWifiTethering(tetherEventCallback);
 
             final TelephonyManager telephonyManager = (TelephonyManager) mContext.getSystemService(
                     Context.TELEPHONY_SERVICE);
@@ -789,9 +454,9 @@ public class TetheringManagerTest {
             assertTrue(netCap.hasTransport(TRANSPORT_CELLULAR));
             assertTrue(netCap.hasCapability(expectedCap));
 
-            stopWifiTethering(tetherEventCallback);
+            mCtsTetheringUtils.stopWifiTethering(tetherEventCallback);
         } finally {
-            unregisterTetheringEventCallback(tetherEventCallback);
+            mCtsTetheringUtils.unregisterTetheringEventCallback(tetherEventCallback);
             if (previousWifiEnabledState) {
                 mCtsNetUtils.connectToWifi();
             }
