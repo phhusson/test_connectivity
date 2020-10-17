@@ -21,5 +21,6 @@ java_library {
     static_libs: [
         "compatibility-device-util-axt",
         "junit",
+        "net-tests-utils",
     ],
 }
