@@ -210,6 +210,16 @@ public class ConnectivityManagerTest {
         if (mCtsNetUtils.cellConnectAttempted()) {
             mCtsNetUtils.disconnectFromCell();
         }
+
+        // All tests in this class require a working Internet connection as they start. Make
+        // sure there is still one as they end that's ready to use for the next test to use.
+        final TestNetworkCallback callback = new TestNetworkCallback();
+        mCm.registerDefaultNetworkCallback(callback);
+        try {
+            assertNotNull("Couldn't restore Internet connectivity", callback.waitForAvailable());
+        } finally {
+            mCm.unregisterNetworkCallback(callback);
+        }
     }
 
     /**
