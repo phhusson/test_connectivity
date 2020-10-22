@@ -23,10 +23,11 @@ import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 import static android.net.NetworkCapabilities.TRANSPORT_TEST;
 import static android.net.wifi.WifiManager.SCAN_RESULTS_AVAILABLE_ACTION;
 
-import static com.android.compatibility.common.util.ShellIdentityUtils.invokeWithShellPermissions;
+import static com.android.testutils.TestPermissionUtil.runAsShell;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -71,7 +72,6 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -219,13 +219,18 @@ public final class CtsNetUtils {
             if (config == null) {
                 // TODO: this may not clear the BSSID blacklist, as opposed to
                 // mWifiManager.connect(config)
-                SystemUtil.runWithShellPermissionIdentity(() -> mWifiManager.reconnect(),
-                        NETWORK_SETTINGS);
+                assertTrue("Error reconnecting wifi", runAsShell(NETWORK_SETTINGS,
+                        mWifiManager::reconnect));
             } else {
                 // When running CTS, devices are expected to have wifi networks pre-configured.
                 // This condition is only hit on virtual devices.
-                SystemUtil.runWithShellPermissionIdentity(
-                        () -> mWifiManager.connect(config, null /* listener */), NETWORK_SETTINGS);
+                final Integer error = runAsShell(NETWORK_SETTINGS, () -> {
+                    final ConnectWifiListener listener = new ConnectWifiListener();
+                    mWifiManager.connect(config, listener);
+                    return listener.connectFuture.get(
+                            CONNECTIVITY_CHANGE_TIMEOUT_SECS, TimeUnit.SECONDS);
+                });
+                assertNull("Error connecting to wifi: " + error, error);
             }
             // Ensure we get an onAvailable callback and possibly a CONNECTIVITY_ACTION.
             wifiNetwork = callback.waitForAvailable();
@@ -242,8 +247,24 @@ public final class CtsNetUtils {
         return wifiNetwork;
     }
 
+    private static class ConnectWifiListener implements WifiManager.ActionListener {
+        /**
+         * Future completed when the connect process ends. Provides the error code or null if none.
+         */
+        final CompletableFuture<Integer> connectFuture = new CompletableFuture<>();
+        @Override
+        public void onSuccess() {
+            connectFuture.complete(null);
+        }
+
+        @Override
+        public void onFailure(int reason) {
+            connectFuture.complete(reason);
+        }
+    }
+
     private WifiConfiguration maybeAddVirtualWifiConfiguration() {
-        final List<WifiConfiguration> configs = invokeWithShellPermissions(
+        final List<WifiConfiguration> configs = runAsShell(NETWORK_SETTINGS,
                 mWifiManager::getConfiguredNetworks);
         // If no network is configured, add a config for virtual access points if applicable
         if (configs.size() == 0) {
@@ -259,7 +280,7 @@ public final class CtsNetUtils {
 
     private List<ScanResult> getWifiScanResults() {
         final CompletableFuture<List<ScanResult>> scanResultsFuture = new CompletableFuture<>();
-        SystemUtil.runWithShellPermissionIdentity(() -> {
+        runAsShell(NETWORK_SETTINGS, () -> {
             final BroadcastReceiver receiver = new BroadcastReceiver() {
                 @Override
                 public void onReceive(Context context, Intent intent) {
@@ -296,7 +317,7 @@ public final class CtsNetUtils {
         virtualConfig.SSID = "\"" + virtualScanResult.SSID + "\"";
         virtualConfig.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
 
-        SystemUtil.runWithShellPermissionIdentity(() -> {
+        runAsShell(NETWORK_SETTINGS, () -> {
             final int networkId = mWifiManager.addNetwork(virtualConfig);
             assertTrue(networkId >= 0);
             assertTrue(mWifiManager.enableNetwork(networkId, false /* attemptConnect */));
@@ -310,7 +331,7 @@ public final class CtsNetUtils {
      * to them.
      */
     private void clearWifiBlacklist() {
-        SystemUtil.runWithShellPermissionIdentity(() -> {
+        runAsShell(NETWORK_SETTINGS, () -> {
             for (WifiConfiguration cfg : mWifiManager.getConfiguredNetworks()) {
                 assertTrue(mWifiManager.enableNetwork(cfg.networkId, false /* attemptConnect */));
             }
