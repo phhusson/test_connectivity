@@ -12,7 +12,7 @@
   ],
   "mainline-presubmit": [
     {
-      "name": "CtsNetTestCasesLatestSdk[CaptivePortalLoginGoogle.apk+NetworkStackGoogle.apk]",
+      "name": "CtsNetTestCasesLatestSdk[CaptivePortalLoginGoogle.apk+NetworkStackGoogle.apk+com.google.android.resolv.apex+com.google.android.tethering.apex]",
       "options": [
         {
           "exclude-annotation": "com.android.testutils.SkipPresubmit"
