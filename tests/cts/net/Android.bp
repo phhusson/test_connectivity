@@ -21,7 +21,6 @@ java_defaults {
 
     libs: [
         "voip-common",
-        "org.apache.http.legacy",
         "android.test.base",
     ],
 
@@ -40,14 +39,11 @@ java_defaults {
     static_libs: [
         "FrameworksNetCommonTests",
         "TestNetworkStackLib",
-        "compatibility-device-util-axt",
         "core-tests-support",
         "cts-net-utils",
         "ctstestrunner-axt",
-        "ctstestserver",
         "junit",
         "junit-params",
-        "mockwebserver",
         "net-utils-framework-common",
         "truth-prebuilt",
     ],
