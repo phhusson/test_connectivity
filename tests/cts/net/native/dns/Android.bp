@@ -35,6 +35,7 @@ cc_test {
     },
     test_suites: [
         "cts",
+        "general-tests",
         "mts",
     ],
 }
