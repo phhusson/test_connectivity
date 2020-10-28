@@ -20,7 +20,7 @@ android_test {
     compile_multilib: "both",
 
     libs: [
-        "android.test.base.stubs",
+        "android.test.base",
     ],
 
     srcs: [

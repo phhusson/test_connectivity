@@ -28,8 +28,8 @@ android_test_helper_app {
         "CtsHostsideNetworkTestsAidl",
     ],
     libs: [
-        "android.test.runner.stubs",
-        "android.test.base.stubs",
+        "android.test.runner",
+        "android.test.base",
     ],
     srcs: ["src/**/*.java"],
     // Tag this module as a cts test artifact
