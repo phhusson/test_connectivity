@@ -19,6 +19,7 @@
     package="android.tethering.cts">
 
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
     <application android:debuggable="true">
         <uses-library android:name="android.test.runner" />

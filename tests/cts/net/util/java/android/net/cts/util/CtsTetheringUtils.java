@@ -28,7 +28,11 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.junit.Assume.assumeTrue;
 
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.net.Network;
 import android.net.TetheredClient;
 import android.net.TetheringManager;
@@ -42,6 +46,7 @@ import android.os.ConditionVariable;
 
 import androidx.annotation.NonNull;
 
+import com.android.compatibility.common.util.SystemUtil;
 import com.android.net.module.util.ArrayTrackRecord;
 
 import java.util.Collection;
@@ -300,6 +305,26 @@ public final class CtsTetheringUtils {
             }));
         }
 
+        public void assumeWifiTetheringSupported(final Context ctx) throws Exception {
+            assumeTetheringSupported();
+
+            assumeTrue(!getTetheringInterfaceRegexps().getTetherableWifiRegexs().isEmpty());
+
+            final PackageManager pm = ctx.getPackageManager();
+            assumeTrue(pm.hasSystemFeature(PackageManager.FEATURE_WIFI));
+
+            WifiManager wm = ctx.getSystemService(WifiManager.class);
+            // Wifi feature flags only work when wifi is on.
+            final boolean previousWifiEnabledState = wm.isWifiEnabled();
+            try {
+                if (!previousWifiEnabledState) SystemUtil.runShellCommand("svc wifi enable");
+                waitForWifiEnabled(ctx);
+                assumeTrue(wm.isPortableHotspotSupported());
+            } finally {
+                if (!previousWifiEnabledState) SystemUtil.runShellCommand("svc wifi disable");
+            }
+        }
+
         public TetheringInterfaceRegexps getTetheringInterfaceRegexps() {
             return mTetherableRegex;
         }
@@ -310,6 +335,31 @@ public final class CtsTetheringUtils {
 
         public List<String> getTetheredInterfaces() {
             return mTetheredIfaces;
+        }
+    }
+
+    private static void waitForWifiEnabled(final Context ctx) throws Exception {
+        WifiManager wm = ctx.getSystemService(WifiManager.class);
+        if (wm.isWifiEnabled()) return;
+
+        final ConditionVariable mWaiting = new ConditionVariable();
+        final BroadcastReceiver receiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                String action = intent.getAction();
+                if (WifiManager.WIFI_STATE_CHANGED_ACTION.equals(action)) {
+                    if (wm.isWifiEnabled()) mWaiting.open();
+                }
+            }
+        };
+        try {
+            ctx.registerReceiver(receiver, new IntentFilter(WifiManager.WIFI_STATE_CHANGED_ACTION));
+            if (!mWaiting.block(DEFAULT_TIMEOUT_MS)) {
+                assertTrue("Wifi did not become enabled after " + DEFAULT_TIMEOUT_MS + "ms",
+                        wm.isWifiEnabled());
+            }
+        } finally {
+            ctx.unregisterReceiver(receiver);
         }
     }
 
