@@ -17,6 +17,7 @@
 java_defaults {
     name: "TetheringAndroidLibraryDefaults",
     sdk_version: "module_current",
+    min_sdk_version: "30",
     srcs: [
         "src/**/*.java",
         ":framework-tethering-shared-srcs",
@@ -58,7 +59,7 @@ cc_library {
         "//apex_available:platform", // Used by InProcessTethering
         "com.android.tethering",
     ],
-    min_sdk_version: "current",
+    min_sdk_version: "30",
     srcs: [
         "jni/android_net_util_TetheringUtils.cpp",
     ],
@@ -119,7 +120,7 @@ android_app {
     // InProcessTethering is a replacement for Tethering
     overrides: ["Tethering"],
     apex_available: ["com.android.tethering"],
-    min_sdk_version: "current",
+    min_sdk_version: "30",
 }
 
 // Updatable tethering packaged as an application
@@ -133,5 +134,5 @@ android_app {
     // The permission configuration *must* be included to ensure security of the device
     required: ["NetworkPermissionConfig"],
     apex_available: ["com.android.tethering"],
-    min_sdk_version: "current",
+    min_sdk_version: "30",
 }
