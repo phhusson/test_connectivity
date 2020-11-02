@@ -23,15 +23,9 @@ import android.net.IpPrefix
 import android.net.KeepalivePacketData
 import android.net.LinkAddress
 import android.net.LinkProperties
+import android.net.NattKeepalivePacketData
 import android.net.Network
 import android.net.NetworkAgent
-import android.net.NetworkAgent.CMD_ADD_KEEPALIVE_PACKET_FILTER
-import android.net.NetworkAgent.CMD_PREVENT_AUTOMATIC_RECONNECT
-import android.net.NetworkAgent.CMD_REMOVE_KEEPALIVE_PACKET_FILTER
-import android.net.NetworkAgent.CMD_REPORT_NETWORK_STATUS
-import android.net.NetworkAgent.CMD_SAVE_ACCEPT_UNVALIDATED
-import android.net.NetworkAgent.CMD_START_SOCKET_KEEPALIVE
-import android.net.NetworkAgent.CMD_STOP_SOCKET_KEEPALIVE
 import android.net.NetworkAgent.INVALID_NETWORK
 import android.net.NetworkAgent.VALID_NETWORK
 import android.net.NetworkAgentConfig
@@ -64,16 +58,14 @@ import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnSta
 import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnStopSocketKeepalive
 import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnValidationStatus
 import android.os.Build
-import android.os.Bundle
-import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.os.Message
-import android.os.Messenger
 import android.util.DebugUtils.valueToString
 import androidx.test.InstrumentationRegistry
 import androidx.test.runner.AndroidJUnit4
-import com.android.internal.util.AsyncChannel
+import com.android.connectivity.aidl.INetworkAgent
+import com.android.connectivity.aidl.INetworkAgentRegistry
 import com.android.net.module.util.ArrayTrackRecord
 import com.android.testutils.DevSdkIgnoreRule
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo
@@ -82,7 +74,6 @@ import com.android.testutils.RecorderCallback.CallbackEntry.Lost
 import com.android.testutils.TestableNetworkCallback
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -93,6 +84,7 @@ import org.mockito.ArgumentMatchers.argThat
 import org.mockito.ArgumentMatchers.eq
 import org.mockito.Mockito.doReturn
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.timeout
 import org.mockito.Mockito.verify
 import java.time.Duration
 import java.util.Arrays
@@ -103,6 +95,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.fail
 
 // This test doesn't really have a constraint on how fast the methods should return. If it's
 // going to fail, it will simply wait forever, so setting a high timeout lowers the flake ratio
@@ -140,7 +133,7 @@ class NetworkAgentTest {
 
     private val mCM = realContext.getSystemService(ConnectivityManager::class.java)
     private val mHandlerThread = HandlerThread("${javaClass.simpleName} handler thread")
-    private val mFakeConnectivityService by lazy { FakeConnectivityService(mHandlerThread.looper) }
+    private val mFakeConnectivityService = FakeConnectivityService()
 
     private class Provider(context: Context, looper: Looper) :
             NetworkProvider(context, looper, "NetworkAgentTest NetworkProvider")
@@ -167,39 +160,30 @@ class NetworkAgentTest {
      * This fake only supports speaking to one harnessed agent at a time because it
      * only keeps track of one async channel.
      */
-    private class FakeConnectivityService(looper: Looper) {
-        private val CMD_EXPECT_DISCONNECT = 1
-        private var disconnectExpected = false
-        private val msgHistory = ArrayTrackRecord<Message>().newReadHead()
-        private val asyncChannel = AsyncChannel()
-        private val handler = object : Handler(looper) {
-            override fun handleMessage(msg: Message) {
-                msgHistory.add(Message.obtain(msg)) // make a copy as the original will be recycled
-                when (msg.what) {
-                    CMD_EXPECT_DISCONNECT -> disconnectExpected = true
-                    AsyncChannel.CMD_CHANNEL_HALF_CONNECTED ->
-                        asyncChannel.sendMessage(AsyncChannel.CMD_CHANNEL_FULL_CONNECTION)
-                    AsyncChannel.CMD_CHANNEL_DISCONNECTED ->
-                        if (!disconnectExpected) {
-                            fail("Agent unexpectedly disconnected")
-                        } else {
-                            disconnectExpected = false
-                        }
-                }
-            }
+    private class FakeConnectivityService {
+        val mockRegistry = mock(INetworkAgentRegistry::class.java)
+        private var agentField: INetworkAgent? = null
+        private val registry = object : INetworkAgentRegistry.Stub(),
+                INetworkAgentRegistry by mockRegistry {
+            // asBinder has implementations in both INetworkAgentRegistry.Stub and mockRegistry, so
+            // it needs to be disambiguated. Just fail the test as it should be unused here.
+            // asBinder is used when sending the registry in binder transactions, so not in this
+            // test (the test just uses in-process direct calls). If it were used across processes,
+            // using the Stub super.asBinder() implementation would allow sending the registry in
+            // binder transactions, while recording incoming calls on the other mockito-generated
+            // methods.
+            override fun asBinder() = fail("asBinder should be unused in this test")
         }
 
-        fun connect(agentMsngr: Messenger) = asyncChannel.connect(realContext, handler, agentMsngr)
+        val agent: INetworkAgent
+            get() = agentField ?: fail("No INetworkAgent")
 
-        fun disconnect() = asyncChannel.disconnect()
+        fun connect(agent: INetworkAgent) {
+            this.agentField = agent
+            agent.onRegistered(registry)
+        }
 
-        fun sendMessage(what: Int, arg1: Int = 0, arg2: Int = 0, obj: Any? = null) =
-            asyncChannel.sendMessage(Message(what, arg1, arg2, obj))
-
-        fun expectMessage(what: Int) =
-            assertNotNull(msgHistory.poll(DEFAULT_TIMEOUT_MS) { it.what == what })
-
-        fun willExpectDisconnectOnce() = handler.sendEmptyMessage(CMD_EXPECT_DISCONNECT)
+        fun disconnect() = agent.onDisconnected()
     }
 
     private open class TestableNetworkAgent(
@@ -445,17 +429,15 @@ class NetworkAgentTest {
 
     @Test
     fun testSocketKeepalive(): Unit = createNetworkAgentWithFakeCS().let { agent ->
-        val packet = object : KeepalivePacketData(
+        val packet = NattKeepalivePacketData(
                 LOCAL_IPV4_ADDRESS /* srcAddress */, 1234 /* srcPort */,
                 REMOTE_IPV4_ADDRESS /* dstAddress */, 4567 /* dstPort */,
-                ByteArray(100 /* size */) { it.toByte() /* init */ }) {}
+                ByteArray(100 /* size */))
         val slot = 4
         val interval = 37
 
-        mFakeConnectivityService.sendMessage(CMD_ADD_KEEPALIVE_PACKET_FILTER,
-                arg1 = slot, obj = packet)
-        mFakeConnectivityService.sendMessage(CMD_START_SOCKET_KEEPALIVE,
-                arg1 = slot, arg2 = interval, obj = packet)
+        mFakeConnectivityService.agent.onAddNattKeepalivePacketFilter(slot, packet)
+        mFakeConnectivityService.agent.onStartNattSocketKeepalive(slot, interval, packet)
 
         agent.expectCallback<OnAddKeepalivePacketFilter>().let {
             assertEquals(it.slot, slot)
@@ -472,13 +454,11 @@ class NetworkAgentTest {
         // Check that when the agent sends a keepalive event, ConnectivityService receives the
         // expected message.
         agent.sendSocketKeepaliveEvent(slot, SocketKeepalive.ERROR_UNSUPPORTED)
-        mFakeConnectivityService.expectMessage(NetworkAgent.EVENT_SOCKET_KEEPALIVE).let() {
-            assertEquals(slot, it.arg1)
-            assertEquals(SocketKeepalive.ERROR_UNSUPPORTED, it.arg2)
-        }
+        verify(mFakeConnectivityService.mockRegistry, timeout(DEFAULT_TIMEOUT_MS))
+                .sendSocketKeepaliveEvent(slot, SocketKeepalive.ERROR_UNSUPPORTED)
 
-        mFakeConnectivityService.sendMessage(CMD_STOP_SOCKET_KEEPALIVE, arg1 = slot)
-        mFakeConnectivityService.sendMessage(CMD_REMOVE_KEEPALIVE_PACKET_FILTER, arg1 = slot)
+        mFakeConnectivityService.agent.onStopSocketKeepalive(slot)
+        mFakeConnectivityService.agent.onRemoveKeepalivePacketFilter(slot)
         agent.expectCallback<OnStopSocketKeepalive>().let {
             assertEquals(it.slot, slot)
         }
@@ -639,7 +619,7 @@ class NetworkAgentTest {
         val mockCm = mock(ConnectivityManager::class.java)
         doReturn(mockCm).`when`(mockContext).getSystemService(Context.CONNECTIVITY_SERVICE)
         createConnectedNetworkAgent(mockContext)
-        verify(mockCm).registerNetworkAgent(any(Messenger::class.java),
+        verify(mockCm).registerNetworkAgent(any(),
                 argThat<NetworkInfo> { it.detailedState == NetworkInfo.DetailedState.CONNECTING },
                 any(LinkProperties::class.java),
                 any(NetworkCapabilities::class.java),
@@ -651,7 +631,7 @@ class NetworkAgentTest {
     @Test
     fun testSetAcceptUnvalidated() {
         createNetworkAgentWithFakeCS().let { agent ->
-            mFakeConnectivityService.sendMessage(CMD_SAVE_ACCEPT_UNVALIDATED, 1)
+            mFakeConnectivityService.agent.onSaveAcceptUnvalidated(true)
             agent.expectCallback<OnSaveAcceptUnvalidated>().let {
                 assertTrue(it.accept)
             }
@@ -662,19 +642,18 @@ class NetworkAgentTest {
     @Test
     fun testSetAcceptUnvalidatedPreventAutomaticReconnect() {
         createNetworkAgentWithFakeCS().let { agent ->
-            mFakeConnectivityService.sendMessage(CMD_SAVE_ACCEPT_UNVALIDATED, 0)
-            mFakeConnectivityService.sendMessage(CMD_PREVENT_AUTOMATIC_RECONNECT)
+            mFakeConnectivityService.agent.onSaveAcceptUnvalidated(false)
+            mFakeConnectivityService.agent.onPreventAutomaticReconnect()
             agent.expectCallback<OnSaveAcceptUnvalidated>().let {
                 assertFalse(it.accept)
             }
             agent.expectCallback<OnAutomaticReconnectDisabled>()
             agent.assertNoCallback()
             // When automatic reconnect is turned off, the network is torn down and
-            // ConnectivityService sends a disconnect. This in turn causes the agent
-            // to send a DISCONNECTED message to CS.
-            mFakeConnectivityService.willExpectDisconnectOnce()
+            // ConnectivityService disconnects. As part of the disconnect, ConnectivityService will
+            // also send itself a message to unregister the NetworkAgent from its internal
+            // structure.
             mFakeConnectivityService.disconnect()
-            mFakeConnectivityService.expectMessage(AsyncChannel.CMD_CHANNEL_DISCONNECTED)
             agent.expectCallback<OnNetworkUnwanted>()
         }
     }
@@ -682,12 +661,10 @@ class NetworkAgentTest {
     @Test
     fun testPreventAutomaticReconnect() {
         createNetworkAgentWithFakeCS().let { agent ->
-            mFakeConnectivityService.sendMessage(CMD_PREVENT_AUTOMATIC_RECONNECT)
+            mFakeConnectivityService.agent.onPreventAutomaticReconnect()
             agent.expectCallback<OnAutomaticReconnectDisabled>()
             agent.assertNoCallback()
-            mFakeConnectivityService.willExpectDisconnectOnce()
             mFakeConnectivityService.disconnect()
-            mFakeConnectivityService.expectMessage(AsyncChannel.CMD_CHANNEL_DISCONNECTED)
             agent.expectCallback<OnNetworkUnwanted>()
         }
     }
@@ -695,18 +672,14 @@ class NetworkAgentTest {
     @Test
     fun testValidationStatus() = createNetworkAgentWithFakeCS().let { agent ->
         val uri = Uri.parse("http://www.google.com")
-        val bundle = Bundle().apply {
-            putString(NetworkAgent.REDIRECT_URL_KEY, uri.toString())
-        }
-        mFakeConnectivityService.sendMessage(CMD_REPORT_NETWORK_STATUS,
-                arg1 = VALID_NETWORK, obj = bundle)
+        mFakeConnectivityService.agent.onValidationStatusChanged(VALID_NETWORK,
+                uri.toString())
         agent.expectCallback<OnValidationStatus>().let {
             assertEquals(it.status, VALID_NETWORK)
             assertEquals(it.uri, uri)
         }
 
-        mFakeConnectivityService.sendMessage(CMD_REPORT_NETWORK_STATUS,
-                arg1 = INVALID_NETWORK, obj = Bundle())
+        mFakeConnectivityService.agent.onValidationStatusChanged(INVALID_NETWORK, null)
         agent.expectCallback<OnValidationStatus>().let {
             assertEquals(it.status, INVALID_NETWORK)
             assertNull(it.uri)
