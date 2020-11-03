@@ -37,7 +37,6 @@ import android.provider.Settings;
 import android.test.AndroidTestCase;
 import android.util.Log;
 
-import com.android.compatibility.common.util.PollingCheck;
 import com.android.compatibility.common.util.WifiConfigCreator;
 
 import java.net.HttpURLConnection;
@@ -457,33 +456,11 @@ public class WifiManagerTest extends AndroidTestCase {
             assertFalse(existSSID(SSID1));
             assertTrue(existSSID(SSID2));
 
-            // Need an effectively-final holder because we need to modify inner Intent in callback.
-            class IntentHolder {
-                Intent intent;
-            }
-            IntentHolder intentHolder = new IntentHolder();
-            mContext.registerReceiver(new BroadcastReceiver() {
-                @Override
-                public void onReceive(Context context, Intent intent) {
-                    Log.i(TAG, "Received CONFIGURED_NETWORKS_CHANGED_ACTION broadcast: " + intent);
-                    intentHolder.intent = intent;
-                }
-            }, new IntentFilter(WifiManager.CONFIGURED_NETWORKS_CHANGED_ACTION));
-
             // Remove a WifiConfig
             assertTrue(mWifiManager.removeNetwork(netId));
             assertFalse(mWifiManager.removeNetwork(notExist));
             assertFalse(existSSID(SSID1));
             assertFalse(existSSID(SSID2));
-
-            // Should receive CONFIGURED_NETWORKS_CHANGED_ACTION broadcast because CtsNetTestCases'
-            // AndroidManifest.xml has both ACCESS_WIFI_STATE & ACCESS_FINE_LOCATION permissions.
-            PollingCheck.check(
-                    "Didn't receive CONFIGURED_NETWORKS_CHANGED_ACTION broadcast!",
-                    DURATION,
-                    () -> intentHolder.intent != null);
-            Intent intent = intentHolder.intent;
-            assertEquals(WifiManager.CONFIGURED_NETWORKS_CHANGED_ACTION, intent.getAction());
 
             assertTrue(mWifiManager.saveConfiguration());
         } finally {
