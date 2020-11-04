@@ -43,7 +43,10 @@ android_library {
     name: "TetheringIntegrationTestsLib",
     platform_apis: true,
     defaults: ["TetheringIntegrationTestsDefaults"],
-    visibility: ["//cts/tests/tests/tethering"]
+    visibility: [
+        "//cts/tests/tests/tethering",
+        "//packages/modules/Connectivity/tests/cts/tethering",
+    ]
 }
 
 android_test {
