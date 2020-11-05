@@ -1,2 +1,2 @@
-set noparent # while performing migration - b/167962976
-baligh@google.com
+include platform/packages/modules/NetworkStack/:/OWNERS
+markchien@google.com
