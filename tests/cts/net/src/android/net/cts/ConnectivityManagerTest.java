@@ -16,6 +16,7 @@
 
 package android.net.cts;
 
+import static android.Manifest.permission.CONNECTIVITY_INTERNAL;
 import static android.Manifest.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS;
 import static android.Manifest.permission.NETWORK_SETTINGS;
 import static android.content.pm.PackageManager.FEATURE_ETHERNET;
@@ -1517,7 +1518,10 @@ public class ConnectivityManagerTest {
 
     @Test
     public void testGetCaptivePortalServerUrl() {
-        final String url = runAsShell(NETWORK_SETTINGS, mCm::getCaptivePortalServerUrl);
+        final String permission = Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q
+                ? CONNECTIVITY_INTERNAL
+                : NETWORK_SETTINGS;
+        final String url = runAsShell(permission, mCm::getCaptivePortalServerUrl);
         assertNotNull("getCaptivePortalServerUrl must not be null", url);
         try {
             final URL parsedUrl = new URL(url);
