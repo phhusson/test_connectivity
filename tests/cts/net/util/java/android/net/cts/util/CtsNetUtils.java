@@ -16,6 +16,7 @@
 
 package android.net.cts.util;
 
+import static android.Manifest.permission.ACCESS_WIFI_STATE;
 import static android.Manifest.permission.NETWORK_SETTINGS;
 import static android.net.ConnectivityManager.PRIVATE_DNS_MODE_OPPORTUNISTIC;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
@@ -331,7 +332,7 @@ public final class CtsNetUtils {
      * to them.
      */
     private void clearWifiBlacklist() {
-        runAsShell(NETWORK_SETTINGS, () -> {
+        runAsShell(NETWORK_SETTINGS, ACCESS_WIFI_STATE, () -> {
             for (WifiConfiguration cfg : mWifiManager.getConfiguredNetworks()) {
                 assertTrue(mWifiManager.enableNetwork(cfg.networkId, false /* attemptConnect */));
             }
