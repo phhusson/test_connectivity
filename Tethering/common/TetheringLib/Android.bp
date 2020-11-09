@@ -29,6 +29,7 @@ java_sdk_library {
     hostdex: true, // for hiddenapi check
     apex_available: ["com.android.tethering"],
     permitted_packages: ["android.net"],
+    min_sdk_version: "30",
 }
 
 filegroup {
