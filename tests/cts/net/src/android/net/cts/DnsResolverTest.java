@@ -28,6 +28,7 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
 import android.content.ContentResolver;
+import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.NetworkCallback;
 import android.net.DnsResolver;
@@ -91,6 +92,7 @@ public class DnsResolverTest extends AndroidTestCase {
 
     private ContentResolver mCR;
     private ConnectivityManager mCM;
+    private PackageManager mPackageManager;
     private CtsNetUtils mCtsNetUtils;
     private Executor mExecutor;
     private Executor mExecutorInline;
@@ -109,6 +111,7 @@ public class DnsResolverTest extends AndroidTestCase {
         mCR = getContext().getContentResolver();
         mCtsNetUtils = new CtsNetUtils(getContext());
         mCtsNetUtils.storePrivateDnsSetting();
+        mPackageManager = mContext.getPackageManager();
     }
 
     @Override
@@ -128,6 +131,9 @@ public class DnsResolverTest extends AndroidTestCase {
     }
 
     private Network[] getTestableNetworks() {
+        if (mPackageManager.hasSystemFeature(PackageManager.FEATURE_WIFI)) {
+            mCtsNetUtils.ensureWifiConnected();
+        }
         final ArrayList<Network> testableNetworks = new ArrayList<Network>();
         for (Network network : mCM.getAllNetworks()) {
             final NetworkCapabilities nc = mCM.getNetworkCapabilities(network);
@@ -555,6 +561,7 @@ public class DnsResolverTest extends AndroidTestCase {
         @Override
         public void onError(@NonNull DnsResolver.DnsException error) {
             mErrorMsg = mMsg + error.getMessage();
+            mLatch.countDown();
         }
     }
 
