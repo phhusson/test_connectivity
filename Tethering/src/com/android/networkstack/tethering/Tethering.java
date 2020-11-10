@@ -1080,8 +1080,13 @@ public class Tethering {
     }
 
     @VisibleForTesting
+    SparseArray<TetheringRequestParcel> getActiveTetheringRequests() {
+        return mActiveTetheringRequests;
+    }
+
+    @VisibleForTesting
     boolean isTetheringActive() {
-        return mActiveTetheringRequests.size() > 0;
+        return getTetheredIfaces().length > 0;
     }
 
     @VisibleForTesting
