@@ -9,3 +9,6 @@ rule android.net.shared.Inet4AddressUtils* com.android.networkstack.tethering.sh
 
 # Classes from net-utils-framework-common
 rule com.android.net.module.util.** com.android.networkstack.tethering.util.@1
+
+# Classes from net-utils-device-common
+rule com.android.net.module.util.Struct* com.android.networkstack.tethering.util.Struct@1
