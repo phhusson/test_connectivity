@@ -129,6 +129,12 @@ public class ConnectivityDiagnosticsManagerTest {
 
     private static final IBinder BINDER = new Binder();
 
+    // Lock for accessing Shell Permissions. Use of this lock around adoptShellPermissionIdentity,
+    // runWithShellPermissionIdentity, and callWithShellPermissionIdentity ensures Shell Permission
+    // is not interrupted by another operation (which would drop all previously adopted
+    // permissions).
+    private Object mShellPermissionsIdentityLock = new Object();
+
     private Context mContext;
     private ConnectivityManager mConnectivityManager;
     private ConnectivityDiagnosticsManager mCdm;
@@ -244,20 +250,24 @@ public class ConnectivityDiagnosticsManagerTest {
                 CarrierConfigManager.KEY_CARRIER_CERTIFICATE_STRING_ARRAY,
                 new String[] {getCertHashForThisPackage()});
 
-        runWithShellPermissionIdentity(
-                () -> {
-                    mCarrierConfigManager.overrideConfig(subId, carrierConfigs);
-                    mCarrierConfigManager.notifyConfigChangedForSubId(subId);
-                },
-                android.Manifest.permission.MODIFY_PHONE_STATE);
+        synchronized (mShellPermissionsIdentityLock) {
+            runWithShellPermissionIdentity(
+                    () -> {
+                        mCarrierConfigManager.overrideConfig(subId, carrierConfigs);
+                        mCarrierConfigManager.notifyConfigChangedForSubId(subId);
+                    },
+                    android.Manifest.permission.MODIFY_PHONE_STATE);
+        }
 
         // TODO(b/157779832): This should use android.permission.CHANGE_NETWORK_STATE. However, the
         // shell does not have CHANGE_NETWORK_STATE, so use CONNECTIVITY_INTERNAL until the shell
         // permissions are updated.
-        runWithShellPermissionIdentity(
-                () -> mConnectivityManager.requestNetwork(
-                        CELLULAR_NETWORK_REQUEST, testNetworkCallback),
-                android.Manifest.permission.CONNECTIVITY_INTERNAL);
+        synchronized (mShellPermissionsIdentityLock) {
+            runWithShellPermissionIdentity(
+                    () -> mConnectivityManager.requestNetwork(
+                            CELLULAR_NETWORK_REQUEST, testNetworkCallback),
+                    android.Manifest.permission.CONNECTIVITY_INTERNAL);
+        }
 
         final Network network = testNetworkCallback.waitForAvailable();
         assertNotNull(network);
@@ -536,8 +546,17 @@ public class ConnectivityDiagnosticsManagerTest {
     }
 
     private class CarrierConfigReceiver extends BroadcastReceiver {
+        // CountDownLatch used to wait for this BroadcastReceiver to be notified of a CarrierConfig
+        // change. This latch will be counted down if a broadcast indicates this package has carrier
+        // configs, or if an Exception occurs in #onReceive.
         private final CountDownLatch mLatch = new CountDownLatch(1);
         private final int mSubId;
+
+        // #onReceive may encounter Exceptions while running on the Process' main Thread and
+        // #waitForCarrierConfigChanged checks the cached Exception from the test Thread. These
+        // Exceptions must be cached and thrown later, as throwing on the Process' main Thread will
+        // crash the process and cause other tests to fail.
+        private Exception mOnReceiveException;
 
         CarrierConfigReceiver(int subId) {
             mSubId = subId;
@@ -546,6 +565,7 @@ public class ConnectivityDiagnosticsManagerTest {
         @Override
         public void onReceive(Context context, Intent intent) {
             if (!CarrierConfigManager.ACTION_CARRIER_CONFIG_CHANGED.equals(intent.getAction())) {
+                // Received an incorrect broadcast - ignore
                 return;
             }
 
@@ -553,24 +573,64 @@ public class ConnectivityDiagnosticsManagerTest {
                     intent.getIntExtra(
                             CarrierConfigManager.EXTRA_SUBSCRIPTION_INDEX,
                             SubscriptionManager.INVALID_SUBSCRIPTION_ID);
-            if (mSubId != subId) return;
+            if (mSubId != subId) {
+                // Received a broadcast for the wrong subId - ignore
+                return;
+            }
 
-            final PersistableBundle carrierConfigs = mCarrierConfigManager.getConfigForSubId(subId);
-            if (!CarrierConfigManager.isConfigForIdentifiedCarrier(carrierConfigs)) return;
+            final PersistableBundle carrierConfigs;
+            try {
+                synchronized (mShellPermissionsIdentityLock) {
+                    carrierConfigs = callWithShellPermissionIdentity(
+                            () -> mCarrierConfigManager.getConfigForSubId(subId),
+                            android.Manifest.permission.READ_PHONE_STATE);
+                }
+            } catch (Exception exception) {
+                // callWithShellPermissionIdentity() threw an Exception - cache it and allow
+                // waitForCarrierConfigChanged() to throw it
+                mOnReceiveException = exception;
+                mLatch.countDown();
+                return;
+            }
 
-            final String[] certs =
-                    carrierConfigs.getStringArray(
-                            CarrierConfigManager.KEY_CARRIER_CERTIFICATE_STRING_ARRAY);
+            if (!CarrierConfigManager.isConfigForIdentifiedCarrier(carrierConfigs)) {
+                // Configs are not for an identified carrier (meaning they are defaults) - ignore
+                return;
+            }
+
+            final String[] certs = carrierConfigs.getStringArray(
+                    CarrierConfigManager.KEY_CARRIER_CERTIFICATE_STRING_ARRAY);
             try {
                 if (ArrayUtils.contains(certs, getCertHashForThisPackage())) {
+                    // Received an update for this package's cert hash - countdown and exit
                     mLatch.countDown();
                 }
-            } catch (Exception e) {
+                // Broadcast is for the right subId, but does not show this package as Carrier
+                // Privileged. Keep waiting for a broadcast that indicates Carrier Privileges.
+            } catch (Exception exception) {
+                // getCertHashForThisPackage() threw an Exception - cache it and allow
+                // waitForCarrierConfigChanged() to throw it
+                mOnReceiveException = exception;
+                mLatch.countDown();
             }
         }
 
+        /**
+         * Waits for the CarrierConfig changed broadcast to reach this CarrierConfigReceiver.
+         *
+         * <p>Must be called from the Test Thread.
+         *
+         * @throws Exception if an Exception occurred during any #onReceive invocation
+         */
         boolean waitForCarrierConfigChanged() throws Exception {
-            return mLatch.await(CARRIER_CONFIG_CHANGED_BROADCAST_TIMEOUT, TimeUnit.MILLISECONDS);
+            final boolean result = mLatch.await(CARRIER_CONFIG_CHANGED_BROADCAST_TIMEOUT,
+                    TimeUnit.MILLISECONDS);
+
+            if (mOnReceiveException != null) {
+                throw mOnReceiveException;
+            }
+
+            return result;
         }
     }
 }
