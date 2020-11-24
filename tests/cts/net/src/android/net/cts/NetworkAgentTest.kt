@@ -62,6 +62,7 @@ import androidx.test.runner.AndroidJUnit4
 import com.android.internal.util.AsyncChannel
 import com.android.net.module.util.ArrayTrackRecord
 import com.android.testutils.DevSdkIgnoreRule
+import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo
 import com.android.testutils.RecorderCallback.CallbackEntry.Available
 import com.android.testutils.RecorderCallback.CallbackEntry.Lost
 import com.android.testutils.TestableNetworkCallback
@@ -541,6 +542,7 @@ class NetworkAgentTest {
     }
 
     @Test
+    @IgnoreUpTo(android.os.Build.VERSION_CODES.R)
     fun testAgentStartsInConnecting() {
         val mockContext = mock(Context::class.java)
         val mockCm = mock(ConnectivityManager::class.java)
