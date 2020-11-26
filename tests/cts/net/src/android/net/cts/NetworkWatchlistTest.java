@@ -24,10 +24,9 @@ import static org.junit.Assume.assumeTrue;
 
 import android.content.Context;
 import android.net.ConnectivityManager;
+import android.platform.test.annotations.AppModeFull;
 import android.os.FileUtils;
 import android.os.ParcelFileDescriptor;
-import android.platform.test.annotations.AppModeFull;
-import android.util.Log;
 
 import androidx.test.InstrumentationRegistry;
 import androidx.test.filters.SmallTest;
@@ -133,9 +132,14 @@ public class NetworkWatchlistTest {
 
     private void pipeResourceToFileDescriptor(String res, ParcelFileDescriptor pfd)
             throws IOException {
-        try (InputStream resStream = getClass().getClassLoader().getResourceAsStream(res);
-                FileOutputStream fdStream = new ParcelFileDescriptor.AutoCloseOutputStream(pfd)) {
-            FileUtils.copy(resStream, fdStream);
+        InputStream resStream = getClass().getClassLoader().getResourceAsStream(res);
+        FileOutputStream fdStream = new ParcelFileDescriptor.AutoCloseOutputStream(pfd);
+
+        FileUtils.copy(resStream, fdStream);
+
+        try {
+            fdStream.close();
+        } catch (IOException e) {
         }
     }
 
@@ -149,8 +153,6 @@ public class NetworkWatchlistTest {
     }
 
     private void setWatchlistConfig(String watchlistConfigFile) throws Exception {
-        Log.w("NetworkWatchlistTest", "Setting watchlist config " + watchlistConfigFile
-                + " in " + Thread.currentThread().getName());
         cleanup();
         saveResourceToFile(watchlistConfigFile, TMP_CONFIG_PATH);
         final String cmdResult = runCommand(
