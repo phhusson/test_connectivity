@@ -22,11 +22,13 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assume.assumeTrue;
 
+import android.app.UiAutomation;
 import android.content.Context;
 import android.net.ConnectivityManager;
-import android.platform.test.annotations.AppModeFull;
 import android.os.FileUtils;
 import android.os.ParcelFileDescriptor;
+import android.platform.test.annotations.AppModeFull;
+import android.util.Log;
 
 import androidx.test.InstrumentationRegistry;
 import androidx.test.filters.SmallTest;
@@ -117,47 +119,54 @@ public class NetworkWatchlistTest {
         return formatter.toString();
     }
 
-    private void saveResourceToFile(String res, String filePath) throws IOException {
-        // App can't access /data/local/tmp directly, so we pipe resource to file through stdin.
-        ParcelFileDescriptor stdin = pipeFromStdin(filePath);
-        pipeResourceToFileDescriptor(res, stdin);
-    }
-
-    /* Pipe stdin to a file in filePath. Returns PFD for stdin. */
-    private ParcelFileDescriptor pipeFromStdin(String filePath) {
-        // Not all devices have symlink for /dev/stdin, so use /proc/self/fd/0 directly.
-        // /dev/stdin maps to /proc/self/fd/0.
-        return runRwCommand("cp /proc/self/fd/0 " + filePath)[1];
-    }
-
-    private void pipeResourceToFileDescriptor(String res, ParcelFileDescriptor pfd)
-            throws IOException {
-        InputStream resStream = getClass().getClassLoader().getResourceAsStream(res);
-        FileOutputStream fdStream = new ParcelFileDescriptor.AutoCloseOutputStream(pfd);
-
-        FileUtils.copy(resStream, fdStream);
-
-        try {
-            fdStream.close();
-        } catch (IOException e) {
-        }
-    }
-
-    private static String runCommand(String command) throws IOException {
-        return SystemUtil.runShellCommand(InstrumentationRegistry.getInstrumentation(), command);
-    }
-
-    private static ParcelFileDescriptor[] runRwCommand(String command) {
-        return InstrumentationRegistry.getInstrumentation()
-                .getUiAutomation().executeShellCommandRw(command);
-    }
-
     private void setWatchlistConfig(String watchlistConfigFile) throws Exception {
+        Log.w("NetworkWatchlistTest", "Setting watchlist config " + watchlistConfigFile
+                + " in " + Thread.currentThread().getName());
         cleanup();
         saveResourceToFile(watchlistConfigFile, TMP_CONFIG_PATH);
         final String cmdResult = runCommand(
                 "cmd network_watchlist set-test-config " + TMP_CONFIG_PATH).trim();
         assertThat(cmdResult).contains("Success");
         cleanup();
+    }
+
+    private void saveResourceToFile(String res, String filePath) throws IOException {
+        final UiAutomation uiAutomation = InstrumentationRegistry.getInstrumentation()
+                .getUiAutomation();
+        // App can't access /data/local/tmp directly, so we pipe resource to file through stdin.
+        // Not all devices have symlink for /dev/stdin, so use /proc/self/fd/0 directly.
+        // /dev/stdin maps to /proc/self/fd/0.
+        final ParcelFileDescriptor[] fileDescriptors = uiAutomation.executeShellCommandRw(
+                "cp /proc/self/fd/0 " + filePath);
+
+        ParcelFileDescriptor stdin = fileDescriptors[1];
+        ParcelFileDescriptor stdout = fileDescriptors[0];
+
+        pipeResourceToFileDescriptor(res, stdin);
+
+        // Wait for the process to close its stdout - which should mean it has completed.
+        consumeFile(stdout);
+    }
+
+    private void consumeFile(ParcelFileDescriptor pfd) throws IOException {
+        try (InputStream stream = new ParcelFileDescriptor.AutoCloseInputStream(pfd)) {
+            for (;;) {
+                if (stream.read() == -1) {
+                    return;
+                }
+            }
+        }
+    }
+
+    private void pipeResourceToFileDescriptor(String res, ParcelFileDescriptor pfd)
+            throws IOException {
+        try (InputStream resStream = getClass().getClassLoader().getResourceAsStream(res);
+                FileOutputStream fdStream = new ParcelFileDescriptor.AutoCloseOutputStream(pfd)) {
+            FileUtils.copy(resStream, fdStream);
+        }
+    }
+
+    private static String runCommand(String command) throws IOException {
+        return SystemUtil.runShellCommand(InstrumentationRegistry.getInstrumentation(), command);
     }
 }
