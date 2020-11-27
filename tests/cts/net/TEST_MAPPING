@@ -19,5 +19,12 @@
         }
       ]
     }
+  ],
+  // Tests on physical devices with SIM cards: postsubmit only for capacity constraints
+  "mainline-postsubmit": [
+    {
+      "name": "CtsNetTestCasesLatestSdk[CaptivePortalLoginGoogle.apk+NetworkStackGoogle.apk+com.google.android.resolv.apex+com.google.android.tethering.apex]",
+      "keywords": ["sim"]
+    }
   ]
 }
