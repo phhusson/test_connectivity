@@ -22,7 +22,6 @@ java_defaults {
     static_libs: [
         "NetworkStackApiStableLib",
         "androidx.test.rules",
-        "frameworks-base-testutils",
         "mockito-target-extended-minus-junit4",
         "net-tests-utils",
         "testables",
@@ -83,6 +82,7 @@ android_test {
         // For NetworkStackUtils included in NetworkStackBase
         "libnetworkstackutilsjni",
     ],
+    jarjar_rules: ":TetheringTestsJarJarRules",
     compile_multilib: "both",
     manifest: "AndroidManifest_coverage.xml",
 }
