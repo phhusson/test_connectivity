@@ -57,6 +57,7 @@ import android.os.HandlerThread
 import android.os.Looper
 import android.os.Message
 import android.os.Messenger
+import android.util.DebugUtils.valueToString
 import androidx.test.InstrumentationRegistry
 import androidx.test.runner.AndroidJUnit4
 import com.android.internal.util.AsyncChannel
@@ -314,10 +315,10 @@ class NetworkAgentTest {
     private fun createNetworkAgent(
         context: Context = realContext,
         name: String? = null,
-        nc: NetworkCapabilities = NetworkCapabilities(),
-        lp: LinkProperties = LinkProperties()
+        initialNc: NetworkCapabilities? = null,
+        initialLp: LinkProperties? = null
     ): TestableNetworkAgent {
-        nc.apply {
+        val nc = initialNc ?: NetworkCapabilities().apply {
             addTransportType(NetworkCapabilities.TRANSPORT_TEST)
             removeCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)
             removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
@@ -328,7 +329,7 @@ class NetworkAgentTest {
                 setNetworkSpecifier(StringNetworkSpecifier(name))
             }
         }
-        lp.apply {
+        val lp = initialLp ?: LinkProperties().apply {
             addLinkAddress(LinkAddress(LOCAL_IPV4_ADDRESS, 0))
         }
         val config = NetworkAgentConfig.Builder().build()
@@ -557,7 +558,7 @@ class NetworkAgentTest {
                 .removeCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED) // TODO: add to VPN!
                 .build()
         val callback = TestableNetworkCallback()
-        mCM.registerNetworkCallback(request, callback)
+        registerNetworkCallback(request, callback)
 
         val nc = NetworkCapabilities().apply {
             addTransportType(NetworkCapabilities.TRANSPORT_TEST)
@@ -566,25 +567,30 @@ class NetworkAgentTest {
         }
         val defaultNetwork = mCM.activeNetwork
         assertNotNull(defaultNetwork)
-        val defaultNetworkTransports = mCM.getNetworkCapabilities(defaultNetwork).transportTypes
+        val defaultNetworkCapabilities = mCM.getNetworkCapabilities(defaultNetwork)
+        val defaultNetworkTransports = defaultNetworkCapabilities.transportTypes
 
-        val agent = createNetworkAgent(nc = nc)
+        val agent = createNetworkAgent(initialNc = nc)
         agent.register()
         agent.markConnected()
         callback.expectAvailableThenValidatedCallbacks(agent.network!!)
 
+        // Check that the default network's transport is propagated to the VPN.
         var vpnNc = mCM.getNetworkCapabilities(agent.network)
         assertNotNull(vpnNc)
         assertTrue(NetworkCapabilities.TRANSPORT_VPN in vpnNc.transportTypes)
+        assertFalse(vpnNc.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN))
         assertTrue(hasAllTransports(vpnNc, defaultNetworkTransports),
                 "VPN transports ${Arrays.toString(vpnNc.transportTypes)}" +
                 " lacking transports from ${Arrays.toString(defaultNetworkTransports)}")
 
+        // Check that when no underlying networks are announced the underlying transport disappears.
         agent.setUnderlyingNetworks(listOf<Network>())
         callback.expectCapabilitiesThat(agent.network!!) {
             it.transportTypes.size == 1 && it.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
         }
 
+        // Put the underlying network back and check that the underlying transport reappears.
         val expectedTransports = (defaultNetworkTransports.toSet() +
                 NetworkCapabilities.TRANSPORT_VPN).toIntArray()
         agent.setUnderlyingNetworks(null)
@@ -593,10 +599,22 @@ class NetworkAgentTest {
                     hasAllTransports(it, expectedTransports)
         }
 
+        // Check that some underlying capabilities are propagated.
+        // This is not very accurate because the test does not control the capabilities of the
+        // underlying networks, and because not congested, not roaming, and not suspended are the
+        // default anyway. It's still useful as an extra check though.
+        vpnNc = mCM.getNetworkCapabilities(agent.network)
+        for (cap in listOf(NetworkCapabilities.NET_CAPABILITY_NOT_CONGESTED,
+                NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING,
+                NetworkCapabilities.NET_CAPABILITY_NOT_SUSPENDED)) {
+            val capStr = valueToString(NetworkCapabilities::class.java, "NET_CAPABILITY_", cap)
+            if (defaultNetworkCapabilities.hasCapability(cap) && !vpnNc.hasCapability(cap)) {
+                fail("$capStr not propagated from underlying: $defaultNetworkCapabilities")
+            }
+        }
+
         agent.unregister()
         callback.expectCallback<Lost>(agent.network)
-
-        mCM.unregisterNetworkCallback(callback)
     }
 
     @Test
