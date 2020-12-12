@@ -591,8 +591,10 @@ class NetworkAgentTest {
         // Check that the default network's transport is propagated to the VPN.
         var vpnNc = mCM.getNetworkCapabilities(agent.network)
         assertNotNull(vpnNc)
-        assertTrue(NetworkCapabilities.TRANSPORT_VPN in vpnNc.transportTypes)
-        assertFalse(vpnNc.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN))
+
+        val testAndVpn = intArrayOf(TRANSPORT_TEST, TRANSPORT_VPN)
+        assertTrue(hasAllTransports(vpnNc, testAndVpn))
+        assertFalse(vpnNc.hasCapability(NET_CAPABILITY_NOT_VPN))
         assertTrue(hasAllTransports(vpnNc, defaultNetworkTransports),
                 "VPN transports ${Arrays.toString(vpnNc.transportTypes)}" +
                 " lacking transports from ${Arrays.toString(defaultNetworkTransports)}")
@@ -600,11 +602,11 @@ class NetworkAgentTest {
         // Check that when no underlying networks are announced the underlying transport disappears.
         agent.setUnderlyingNetworks(listOf<Network>())
         callback.expectCapabilitiesThat(agent.network!!) {
-            it.transportTypes.size == 1 && it.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+            it.transportTypes.size == 2 && hasAllTransports(it, testAndVpn)
         }
 
         // Put the underlying network back and check that the underlying transport reappears.
-        val expectedTransports = (defaultNetworkTransports.toSet() + TRANSPORT_VPN)
+        val expectedTransports = (defaultNetworkTransports.toSet() + TRANSPORT_TEST + TRANSPORT_VPN)
                 .toIntArray()
         agent.setUnderlyingNetworks(null)
         callback.expectCapabilitiesThat(agent.network!!) {
