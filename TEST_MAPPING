@@ -1,5 +1,6 @@
 {
-  // TODO: move to mainline-presubmit once supported
+  // Run in addition to mainline-presubmit as mainline-presubmit is not
+  // supported in every branch.
   "presubmit": [
     {
       "name": "CtsNetTestCasesLatestSdk",
