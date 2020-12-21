@@ -56,6 +56,7 @@ import com.android.modules.utils.build.SdkLevel;
 import com.android.net.module.util.NetworkStackConstants;
 import com.android.networkstack.tethering.apishim.common.BpfCoordinatorShim;
 
+import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -161,6 +162,16 @@ public class BpfCoordinator {
     // startIpv6() is called, and make mInterfaceParams final.
     private final HashMap<IpServer, LinkedHashMap<Inet6Address, Ipv6ForwardingRule>>
             mIpv6ForwardingRules = new LinkedHashMap<>();
+
+    // Map of downstream client maps. Each of these maps represents the IPv4 clients for a given
+    // downstream. Needed to build IPv4 forwarding rules when conntrack events are received.
+    // Each map:
+    // - Is owned by the IpServer that is responsible for that downstream.
+    // - Must only be modified by that IpServer.
+    // - Is created when the IpServer adds its first client, and deleted when the IpServer deletes
+    //   its last client.
+    private final HashMap<IpServer, HashMap<Inet4Address, ClientInfo>>
+            mTetherClients = new HashMap<>();
 
     // Set for which downstream is monitoring the conntrack netlink message.
     private final Set<IpServer> mMonitoringIpServers = new HashSet<>();
@@ -505,6 +516,41 @@ public class BpfCoordinator {
     }
 
     /**
+     * Add downstream client.
+     */
+    public void tetherOffloadClientAdd(@NonNull final IpServer ipServer,
+            @NonNull final ClientInfo client) {
+        if (!isUsingBpf()) return;
+
+        if (!mTetherClients.containsKey(ipServer)) {
+            mTetherClients.put(ipServer, new HashMap<Inet4Address, ClientInfo>());
+        }
+
+        HashMap<Inet4Address, ClientInfo> clients = mTetherClients.get(ipServer);
+        clients.put(client.clientAddress, client);
+    }
+
+    /**
+     * Remove downstream client.
+     */
+    public void tetherOffloadClientRemove(@NonNull final IpServer ipServer,
+            @NonNull final ClientInfo client) {
+        if (!isUsingBpf()) return;
+
+        HashMap<Inet4Address, ClientInfo> clients = mTetherClients.get(ipServer);
+        if (clients == null) return;
+
+        // If no rule is removed, return early. Avoid unnecessary work on a non-existent rule
+        // which may have never been added or removed already.
+        if (clients.remove(client.clientAddress) == null) return;
+
+        // Remove the downstream entry if it has no more rule.
+        if (clients.isEmpty()) {
+            mTetherClients.remove(ipServer);
+        }
+    }
+
+    /**
      * Dump information.
      * Block the function until all the data are dumped on the handler thread or timed-out. The
      * reason is that dumpsys invokes this function on the thread of caller and the data may only
@@ -581,6 +627,7 @@ public class BpfCoordinator {
         public final int upstreamIfindex;
         public final int downstreamIfindex;
 
+        // TODO: store a ClientInfo object instead of storing address, srcMac, and dstMac directly.
         @NonNull
         public final Inet6Address address;
         @NonNull
@@ -654,6 +701,48 @@ public class BpfCoordinator {
             // TODO: if this is ever used in production code, don't pass ifindices
             // to Objects.hash() to avoid autoboxing overhead.
             return Objects.hash(upstreamIfindex, downstreamIfindex, address, srcMac, dstMac);
+        }
+    }
+
+    /** Tethering client information class. */
+    public static class ClientInfo {
+        public final int downstreamIfindex;
+
+        @NonNull
+        public final MacAddress downstreamMac;
+        @NonNull
+        public final Inet4Address clientAddress;
+        @NonNull
+        public final MacAddress clientMac;
+
+        public ClientInfo(int downstreamIfindex,
+                @NonNull MacAddress downstreamMac, @NonNull Inet4Address clientAddress,
+                @NonNull MacAddress clientMac) {
+            this.downstreamIfindex = downstreamIfindex;
+            this.downstreamMac = downstreamMac;
+            this.clientAddress = clientAddress;
+            this.clientMac = clientMac;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof ClientInfo)) return false;
+            ClientInfo that = (ClientInfo) o;
+            return this.downstreamIfindex == that.downstreamIfindex
+                    && Objects.equals(this.downstreamMac, that.downstreamMac)
+                    && Objects.equals(this.clientAddress, that.clientAddress)
+                    && Objects.equals(this.clientMac, that.clientMac);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(downstreamIfindex, downstreamMac, clientAddress, clientMac);
+        }
+
+        @Override
+        public String toString() {
+            return String.format("downstream: %d (%s), client: %s (%s)",
+                    downstreamIfindex, downstreamMac, clientAddress, clientMac);
         }
     }
 
