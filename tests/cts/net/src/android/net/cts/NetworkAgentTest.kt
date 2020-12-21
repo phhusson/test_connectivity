@@ -570,7 +570,7 @@ class NetworkAgentTest {
                 .removeCapability(NET_CAPABILITY_NOT_VPN)
                 .removeCapability(NET_CAPABILITY_TRUSTED) // TODO: add to VPN!
                 .build()
-        val callback = TestableNetworkCallback()
+        val callback = TestableNetworkCallback(timeoutMs = DEFAULT_TIMEOUT_MS)
         registerNetworkCallback(request, callback)
 
         val nc = NetworkCapabilities().apply {
