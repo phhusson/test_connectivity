@@ -30,6 +30,7 @@ import static com.android.networkstack.tethering.TetheringConfiguration.DEFAULT_
 
 import android.app.usage.NetworkStatsManager;
 import android.net.INetd;
+import android.net.LinkProperties;
 import android.net.MacAddress;
 import android.net.NetworkStats;
 import android.net.NetworkStats.Entry;
@@ -38,6 +39,7 @@ import android.net.ip.ConntrackMonitor;
 import android.net.ip.ConntrackMonitor.ConntrackEventConsumer;
 import android.net.ip.IpServer;
 import android.net.netstats.provider.NetworkStatsProvider;
+import android.net.util.InterfaceParams;
 import android.net.util.SharedLog;
 import android.net.util.TetheringUtils.ForwardedStats;
 import android.os.ConditionVariable;
@@ -58,7 +60,9 @@ import com.android.networkstack.tethering.apishim.common.BpfCoordinatorShim;
 
 import java.net.Inet4Address;
 import java.net.Inet6Address;
+import java.net.InetAddress;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -175,6 +179,11 @@ public class BpfCoordinator {
 
     // Set for which downstream is monitoring the conntrack netlink message.
     private final Set<IpServer> mMonitoringIpServers = new HashSet<>();
+
+    // Map of upstream interface IPv4 address to interface index.
+    // TODO: consider making the key to be unique because the upstream address is not unique. It
+    // is okay for now because there have only one upstream generally.
+    private final HashMap<Inet4Address, Integer> mIpv4UpstreamIndices = new HashMap<>();
 
     // Runnable that used by scheduling next polling of stats.
     private final Runnable mScheduledPollingTask = () -> {
@@ -547,6 +556,39 @@ public class BpfCoordinator {
         // Remove the downstream entry if it has no more rule.
         if (clients.isEmpty()) {
             mTetherClients.remove(ipServer);
+        }
+    }
+
+    /**
+     * Call when UpstreamNetworkState may be changed.
+     * If upstream has ipv4 for tethering, update this new UpstreamNetworkState to map. The
+     * upstream interface index and its address mapping is prepared for building IPv4
+     * offload rule.
+     *
+     * TODO: Delete the unused upstream interface mapping.
+     * TODO: Support ether ip upstream interface.
+     */
+    public void addUpstreamIfindexToMap(LinkProperties lp) {
+        if (!mPollingStarted) return;
+
+        // This will not work on a network that is using 464xlat because hasIpv4Address will not be
+        // true.
+        // TODO: need to consider 464xlat.
+        if (lp == null || !lp.hasIpv4Address()) return;
+
+        // Support raw ip upstream interface only.
+        final InterfaceParams params = InterfaceParams.getByName(lp.getInterfaceName());
+        if (params == null || params.hasMacAddress) return;
+
+        Collection<InetAddress> addresses = lp.getAddresses();
+        for (InetAddress addr: addresses) {
+            if (addr instanceof Inet4Address) {
+                Inet4Address i4addr = (Inet4Address) addr;
+                if (!i4addr.isAnyLocalAddress() && !i4addr.isLinkLocalAddress()
+                        && !i4addr.isLoopbackAddress() && !i4addr.isMulticastAddress()) {
+                    mIpv4UpstreamIndices.put(i4addr, params.index);
+                }
+            }
         }
     }
 
