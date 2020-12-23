@@ -23,7 +23,9 @@ import static android.net.NetworkStats.SET_DEFAULT;
 import static android.net.NetworkStats.TAG_NONE;
 import static android.net.NetworkStats.UID_ALL;
 import static android.net.NetworkStats.UID_TETHERING;
+import static android.net.ip.ConntrackMonitor.ConntrackEvent;
 import static android.net.netstats.provider.NetworkStatsProvider.QUOTA_UNLIMITED;
+import static android.system.OsConstants.ETH_P_IP;
 import static android.system.OsConstants.ETH_P_IPV6;
 
 import static com.android.networkstack.tethering.TetheringConfiguration.DEFAULT_TETHER_OFFLOAD_POLL_INTERVAL_MS;
@@ -38,6 +40,7 @@ import android.net.TetherOffloadRuleParcel;
 import android.net.ip.ConntrackMonitor;
 import android.net.ip.ConntrackMonitor.ConntrackEventConsumer;
 import android.net.ip.IpServer;
+import android.net.netlink.NetlinkConstants;
 import android.net.netstats.provider.NetworkStatsProvider;
 import android.net.util.InterfaceParams;
 import android.net.util.SharedLog;
@@ -82,6 +85,8 @@ import java.util.Set;
 public class BpfCoordinator {
     private static final String TAG = BpfCoordinator.class.getSimpleName();
     private static final int DUMP_TIMEOUT_MS = 10_000;
+    private static final MacAddress NULL_MAC_ADDRESS = MacAddress.fromString(
+            "00:00:00:00:00:00");
     private static final String TETHER_DOWNSTREAM6_FS_PATH =
             "/sys/fs/bpf/tethering/map_offload_tether_downstream6_map";
     private static final String TETHER_STATS_MAP_PATH =
@@ -174,6 +179,9 @@ public class BpfCoordinator {
     // - Must only be modified by that IpServer.
     // - Is created when the IpServer adds its first client, and deleted when the IpServer deletes
     //   its last client.
+    // Note that relying on the client address for finding downstream is okay for now because the
+    // client address is unique. See PrivateAddressCoordinator#requestDownstreamAddress.
+    // TODO: Refactor if any possible that the client address is not unique.
     private final HashMap<IpServer, HashMap<Inet4Address, ClientInfo>>
             mTetherClients = new HashMap<>();
 
@@ -854,8 +862,84 @@ public class BpfCoordinator {
         }
     }
 
+    @Nullable
+    private ClientInfo getClientInfo(@NonNull Inet4Address clientAddress) {
+        for (HashMap<Inet4Address, ClientInfo> clients : mTetherClients.values()) {
+            for (ClientInfo client : clients.values()) {
+                if (clientAddress.equals(client.clientAddress)) {
+                    return client;
+                }
+            }
+        }
+        return null;
+    }
+
+    // Support raw ip only.
+    // TODO: add ether ip support.
     private class BpfConntrackEventConsumer implements ConntrackEventConsumer {
-        public void accept(ConntrackMonitor.ConntrackEvent e) { /* TODO */ }
+        @NonNull
+        private TetherUpstream4Key makeTetherUpstream4Key(
+                @NonNull ConntrackEvent e, @NonNull ClientInfo c) {
+            return new TetherUpstream4Key(c.downstreamIfindex, c.downstreamMac,
+                    e.tupleOrig.protoNum, e.tupleOrig.srcIp.getAddress(),
+                    e.tupleOrig.dstIp.getAddress(), e.tupleOrig.srcPort, e.tupleOrig.dstPort);
+        }
+
+        @NonNull
+        private TetherDownstream4Key makeTetherDownstream4Key(
+                @NonNull ConntrackEvent e, @NonNull ClientInfo c, int upstreamIndex) {
+            return new TetherDownstream4Key(upstreamIndex, NULL_MAC_ADDRESS /* dstMac (rawip) */,
+                    e.tupleReply.protoNum, e.tupleReply.srcIp.getAddress(),
+                    e.tupleReply.dstIp.getAddress(), e.tupleReply.srcPort, e.tupleReply.dstPort);
+        }
+
+        @NonNull
+        private TetherUpstream4Value makeTetherUpstream4Value(@NonNull ConntrackEvent e,
+                int upstreamIndex) {
+            // TODO: convert {src46, dst46} from ipv4 address (a.b.c.d) to ipv4-mapped address
+            // (::ffff:a.b.d.d).
+            return new TetherUpstream4Value(upstreamIndex,
+                    NULL_MAC_ADDRESS /* ethDstMac (rawip) */,
+                    NULL_MAC_ADDRESS /* ethSrcMac (rawip) */, ETH_P_IP,
+                    NetworkStackConstants.ETHER_MTU, e.tupleReply.dstIp.getAddress(),
+                    e.tupleReply.srcIp.getAddress(), e.tupleReply.dstPort, e.tupleReply.srcPort,
+                    0 /* lastUsed, filled by bpf prog only */);
+        }
+
+        @NonNull
+        private TetherDownstream4Value makeTetherDownstream4Value(@NonNull ConntrackEvent e,
+                @NonNull ClientInfo c, int upstreamIndex) {
+            return new TetherDownstream4Value(c.downstreamIfindex,
+                    c.clientMac, c.downstreamMac, ETH_P_IP, NetworkStackConstants.ETHER_MTU,
+                    e.tupleOrig.dstIp.getAddress(), e.tupleOrig.srcIp.getAddress(),
+                    e.tupleOrig.dstPort, e.tupleOrig.srcPort,
+                    0 /* lastUsed, filled by bpf prog only */);
+        }
+
+        public void accept(ConntrackEvent e) {
+            final ClientInfo tetherClient = getClientInfo(e.tupleOrig.srcIp);
+            if (tetherClient == null) return;
+
+            final Integer upstreamIndex = mIpv4UpstreamIndices.get(e.tupleReply.dstIp);
+            if (upstreamIndex == null) return;
+
+            final TetherUpstream4Key upstream4Key = makeTetherUpstream4Key(e, tetherClient);
+            final TetherDownstream4Key downstream4Key = makeTetherDownstream4Key(e,
+                    tetherClient, upstreamIndex);
+
+            if (e.msgType == (NetlinkConstants.NFNL_SUBSYS_CTNETLINK << 8
+                    | NetlinkConstants.IPCTNL_MSG_CT_DELETE)) {
+                // TODO: remove ingress and egress rules from BPF maps.
+                return;
+            }
+
+            final TetherUpstream4Value upstream4Value = makeTetherUpstream4Value(e,
+                    upstreamIndex);
+            final TetherDownstream4Value downstream4Value = makeTetherDownstream4Value(e,
+                    tetherClient, upstreamIndex);
+
+            // TODO: insert ingress and egress rules to BPF maps.
+        }
     }
 
     private boolean isBpfEnabled() {
