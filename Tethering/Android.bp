@@ -19,6 +19,7 @@ java_defaults {
     sdk_version: "module_current",
     min_sdk_version: "30",
     srcs: [
+        "apishim/**/*.java",
         "src/**/*.java",
         ":framework-tethering-shared-srcs",
         ":tethering-module-utils-srcs",
@@ -26,6 +27,7 @@ java_defaults {
     ],
     static_libs: [
         "androidx.annotation_annotation",
+        "modules-utils-build",
         "netlink-client",
         // TODO: use networkstack-client instead of just including the AIDL interface
         "networkstack-aidl-interfaces-unstable-java",
