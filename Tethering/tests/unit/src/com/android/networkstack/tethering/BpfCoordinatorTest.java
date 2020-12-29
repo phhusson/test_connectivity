@@ -61,6 +61,7 @@ import android.net.util.SharedLog;
 import android.os.Build;
 import android.os.Handler;
 import android.os.test.TestLooper;
+import android.system.ErrnoException;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -68,6 +69,7 @@ import androidx.test.filters.SmallTest;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.net.module.util.NetworkStackConstants;
+import com.android.net.module.util.Struct;
 import com.android.networkstack.tethering.BpfCoordinator.Ipv6ForwardingRule;
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
 import com.android.testutils.TestableNetworkStatsProviderCbBinder;
@@ -85,7 +87,10 @@ import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.function.BiConsumer;
 
 @RunWith(AndroidJUnit4.class)
 @SmallTest
@@ -96,6 +101,32 @@ public class BpfCoordinatorTest {
     private static final InetAddress NEIGH_B = InetAddresses.parseNumericAddress("2001:db8::2");
     private static final MacAddress MAC_A = MacAddress.fromString("00:00:00:00:00:0a");
     private static final MacAddress MAC_B = MacAddress.fromString("11:22:33:00:00:0b");
+
+    // The test fake BPF map class is needed because the test has no privilege to access the BPF
+    // map. All member functions which eventually call JNI to access the real native BPF map need
+    // to be overridden.
+    // TODO: consider moving to an individual file.
+    private class TestBpfMap<K extends Struct, V extends Struct> extends BpfMap<K, V> {
+        private final HashMap<K, V> mMap = new HashMap<K, V>();
+
+        TestBpfMap(final Class<K> key, final Class<V> value) {
+            super(key, value);
+        }
+
+        @Override
+        public void forEach(BiConsumer<K, V> action) throws ErrnoException {
+            // TODO: consider using mocked #getFirstKey and #getNextKey to iterate. It helps to
+            // implement the entry deletion in the iteration if required.
+            for (Map.Entry<K, V> entry : mMap.entrySet()) {
+                action.accept(entry.getKey(), entry.getValue());
+            }
+        }
+
+        @Override
+        public void updateEntry(K key, V value) throws ErrnoException {
+            mMap.put(key, value);
+        }
+    };
 
     @Mock private NetworkStatsManager mStatsManager;
     @Mock private INetd mNetd;
@@ -109,6 +140,8 @@ public class BpfCoordinatorTest {
     private final ArgumentCaptor<ArrayList> mStringArrayCaptor =
             ArgumentCaptor.forClass(ArrayList.class);
     private final TestLooper mTestLooper = new TestLooper();
+    private final TestBpfMap<TetherStatsKey, TetherStatsValue> mBpfStatsMap =
+            spy(new TestBpfMap<>(TetherStatsKey.class, TetherStatsValue.class));
     private BpfCoordinator.Dependencies mDeps =
             spy(new BpfCoordinator.Dependencies() {
                     @NonNull
@@ -139,6 +172,11 @@ public class BpfCoordinatorTest {
                     @Nullable
                     public BpfMap<TetherIngressKey, TetherIngressValue> getBpfIngressMap() {
                         return mBpfIngressMap;
+                    }
+
+                    @Nullable
+                    public BpfMap<TetherStatsKey, TetherStatsValue> getBpfStatsMap() {
+                        return mBpfStatsMap;
                     }
             });
 
@@ -190,12 +228,42 @@ public class BpfCoordinatorTest {
         return parcel;
     }
 
-    // Set up specific tether stats list and wait for the stats cache is updated by polling thread
+    // Update a stats entry or create if not exists.
+    private void updateStatsEntry(@NonNull TetherStatsParcel stats) throws Exception {
+        if (mDeps.isAtLeastS()) {
+            final TetherStatsKey key = new TetherStatsKey(stats.ifIndex);
+            final TetherStatsValue value = new TetherStatsValue(stats.rxPackets, stats.rxBytes,
+                    0L /* rxErrors */, stats.txPackets, stats.txBytes, 0L /* txErrors */);
+            mBpfStatsMap.updateEntry(key, value);
+        } else {
+            when(mNetd.tetherOffloadGetStats()).thenReturn(new TetherStatsParcel[] {stats});
+        }
+    }
+
+    // Update specific tether stats list and wait for the stats cache is updated by polling thread
     // in the coordinator. Beware of that it is only used for the default polling interval.
-    private void setTetherOffloadStatsList(TetherStatsParcel[] tetherStatsList) throws Exception {
-        when(mNetd.tetherOffloadGetStats()).thenReturn(tetherStatsList);
+    // Note that the mocked tetherOffloadGetStats of netd replaces all stats entries because it
+    // doesn't store the previous entries.
+    private void updateStatsEntriesAndWaitForUpdate(@NonNull TetherStatsParcel[] tetherStatsList)
+            throws Exception {
+        if (mDeps.isAtLeastS()) {
+            for (TetherStatsParcel stats : tetherStatsList) {
+                updateStatsEntry(stats);
+            }
+        } else {
+            when(mNetd.tetherOffloadGetStats()).thenReturn(tetherStatsList);
+        }
+
         mTestLooper.moveTimeForward(DEFAULT_TETHER_OFFLOAD_POLL_INTERVAL_MS);
         waitForIdle();
+    }
+
+    private void clearStatsInvocations() {
+        if (mDeps.isAtLeastS()) {
+            clearInvocations(mBpfStatsMap);
+        } else {
+            clearInvocations(mNetd);
+        }
     }
 
     private <T> T verifyWithOrder(@Nullable InOrder inOrder, @NonNull T t) {
@@ -203,6 +271,22 @@ public class BpfCoordinatorTest {
             return inOrder.verify(t);
         } else {
             return verify(t);
+        }
+    }
+
+    private void verifyTetherOffloadGetStats() throws Exception {
+        if (mDeps.isAtLeastS()) {
+            verify(mBpfStatsMap).forEach(any());
+        } else {
+            verify(mNetd).tetherOffloadGetStats();
+        }
+    }
+
+    private void verifyNeverTetherOffloadGetStats() throws Exception {
+        if (mDeps.isAtLeastS()) {
+            verify(mBpfStatsMap, never()).forEach(any());
+        } else {
+            verify(mNetd, never()).tetherOffloadGetStats();
         }
     }
 
@@ -224,6 +308,11 @@ public class BpfCoordinatorTest {
         }
     }
 
+    // S+ and R api minimum tests.
+    // The following tests are used to provide minimum checking for the APIs on different flow.
+    // The auto merge is not enabled on mainline prod. The code flow R may be verified at the
+    // late stage by manual cherry pick. It is risky if the R code flow has broken and be found at
+    // the last minute.
     // TODO: remove once presubmit tests on R even the code is submitted on S.
     private void checkTetherOffloadRuleAdd(boolean usingApiS) throws Exception {
         setupFunctioningNetdInterface();
@@ -255,6 +344,43 @@ public class BpfCoordinatorTest {
         checkTetherOffloadRuleAdd(true /* S+ */);
     }
 
+    // TODO: remove once presubmit tests on R even the code is submitted on S.
+    private void checkTetherOffloadGetStats(boolean usingApiS) throws Exception {
+        setupFunctioningNetdInterface();
+
+        doReturn(usingApiS).when(mDeps).isAtLeastS();
+        final BpfCoordinator coordinator = makeBpfCoordinator();
+        coordinator.startPolling();
+
+        final String mobileIface = "rmnet_data0";
+        final Integer mobileIfIndex = 100;
+        coordinator.addUpstreamNameToLookupTable(mobileIfIndex, mobileIface);
+
+        updateStatsEntriesAndWaitForUpdate(new TetherStatsParcel[] {
+                buildTestTetherStatsParcel(mobileIfIndex, 1000, 100, 2000, 200)});
+
+        final NetworkStats expectedIfaceStats = new NetworkStats(0L, 1)
+                .addEntry(buildTestEntry(STATS_PER_IFACE, mobileIface, 1000, 100, 2000, 200));
+
+        final NetworkStats expectedUidStats = new NetworkStats(0L, 1)
+                .addEntry(buildTestEntry(STATS_PER_UID, mobileIface, 1000, 100, 2000, 200));
+
+        mTetherStatsProvider.pushTetherStats();
+        mTetherStatsProviderCb.expectNotifyStatsUpdated(expectedIfaceStats, expectedUidStats);
+    }
+
+    // TODO: remove once presubmit tests on R even the code is submitted on S.
+    @Test
+    public void testTetherOffloadGetStatsSdkR() throws Exception {
+        checkTetherOffloadGetStats(false /* R */);
+    }
+
+    // TODO: remove once presubmit tests on R even the code is submitted on S.
+    @Test
+    public void testTetherOffloadGetStatsAtLeastSdkS() throws Exception {
+        checkTetherOffloadGetStats(true /* S+ */);
+    }
+
     @Test
     public void testGetForwardedStats() throws Exception {
         setupFunctioningNetdInterface();
@@ -275,7 +401,7 @@ public class BpfCoordinatorTest {
         // [1] Both interface stats are changed.
         // Setup the tether stats of wlan and mobile interface. Note that move forward the time of
         // the looper to make sure the new tether stats has been updated by polling update thread.
-        setTetherOffloadStatsList(new TetherStatsParcel[] {
+        updateStatsEntriesAndWaitForUpdate(new TetherStatsParcel[] {
                 buildTestTetherStatsParcel(wlanIfIndex, 1000, 100, 2000, 200),
                 buildTestTetherStatsParcel(mobileIfIndex, 3000, 300, 4000, 400)});
 
@@ -296,7 +422,7 @@ public class BpfCoordinatorTest {
         // [2] Only one interface stats is changed.
         // The tether stats of mobile interface is accumulated and The tether stats of wlan
         // interface is the same.
-        setTetherOffloadStatsList(new TetherStatsParcel[] {
+        updateStatsEntriesAndWaitForUpdate(new TetherStatsParcel[] {
                 buildTestTetherStatsParcel(wlanIfIndex, 1000, 100, 2000, 200),
                 buildTestTetherStatsParcel(mobileIfIndex, 3010, 320, 4030, 440)});
 
@@ -317,12 +443,12 @@ public class BpfCoordinatorTest {
         // Shutdown the coordinator and clear the invocation history, especially the
         // tetherOffloadGetStats() calls.
         coordinator.stopPolling();
-        clearInvocations(mNetd);
+        clearStatsInvocations();
 
         // Verify the polling update thread stopped.
         mTestLooper.moveTimeForward(DEFAULT_TETHER_OFFLOAD_POLL_INTERVAL_MS);
         waitForIdle();
-        verify(mNetd, never()).tetherOffloadGetStats();
+        verifyNeverTetherOffloadGetStats();
     }
 
     @Test
@@ -342,16 +468,14 @@ public class BpfCoordinatorTest {
         mTetherStatsProviderCb.expectNotifyAlertReached();
 
         // Verify that notifyAlertReached never fired if quota is not yet reached.
-        when(mNetd.tetherOffloadGetStats()).thenReturn(
-                new TetherStatsParcel[] {buildTestTetherStatsParcel(mobileIfIndex, 0, 0, 0, 0)});
+        updateStatsEntry(buildTestTetherStatsParcel(mobileIfIndex, 0, 0, 0, 0));
         mTetherStatsProvider.onSetAlert(100);
         mTestLooper.moveTimeForward(DEFAULT_TETHER_OFFLOAD_POLL_INTERVAL_MS);
         waitForIdle();
         mTetherStatsProviderCb.assertNoCallback();
 
         // Verify that notifyAlertReached fired when quota is reached.
-        when(mNetd.tetherOffloadGetStats()).thenReturn(
-                new TetherStatsParcel[] {buildTestTetherStatsParcel(mobileIfIndex, 50, 0, 50, 0)});
+        updateStatsEntry(buildTestTetherStatsParcel(mobileIfIndex, 50, 0, 50, 0));
         mTestLooper.moveTimeForward(DEFAULT_TETHER_OFFLOAD_POLL_INTERVAL_MS);
         waitForIdle();
         mTetherStatsProviderCb.expectNotifyAlertReached();
@@ -606,7 +730,7 @@ public class BpfCoordinatorTest {
         // The tether stats polling task should not be scheduled.
         mTestLooper.moveTimeForward(DEFAULT_TETHER_OFFLOAD_POLL_INTERVAL_MS);
         waitForIdle();
-        verify(mNetd, never()).tetherOffloadGetStats();
+        verifyNeverTetherOffloadGetStats();
 
         // The interface name lookup table can't be added.
         final String iface = "rmnet_data0";
@@ -670,6 +794,15 @@ public class BpfCoordinatorTest {
     }
 
     @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
+    public void testBpfDisabledbyNoBpfStatsMap() throws Exception {
+        setupFunctioningNetdInterface();
+        doReturn(null).when(mDeps).getBpfStatsMap();
+
+        checkBpfDisabled();
+    }
+
+    @Test
     public void testTetheringConfigSetPollingInterval() throws Exception {
         setupFunctioningNetdInterface();
 
@@ -703,18 +836,18 @@ public class BpfCoordinatorTest {
         // Start on a new polling time slot.
         mTestLooper.moveTimeForward(pollingInterval);
         waitForIdle();
-        clearInvocations(mNetd);
+        clearStatsInvocations();
 
         // Move time forward to 90% polling interval time. Expect that the polling thread has not
         // scheduled yet.
         mTestLooper.moveTimeForward((long) (pollingInterval * 0.9));
         waitForIdle();
-        verify(mNetd, never()).tetherOffloadGetStats();
+        verifyNeverTetherOffloadGetStats();
 
         // Move time forward to the remaining 10% polling interval time. Expect that the polling
         // thread has scheduled.
         mTestLooper.moveTimeForward((long) (pollingInterval * 0.1));
         waitForIdle();
-        verify(mNetd).tetherOffloadGetStats();
+        verifyTetherOffloadGetStats();
     }
 }
