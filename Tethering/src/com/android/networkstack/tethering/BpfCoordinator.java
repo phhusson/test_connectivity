@@ -80,6 +80,8 @@ public class BpfCoordinator {
             "/sys/fs/bpf/map_offload_tether_ingress_map";
     private static final String TETHER_STATS_MAP_PATH =
             "/sys/fs/bpf/map_offload_tether_stats_map";
+    private static final String TETHER_LIMIT_MAP_PATH =
+            "/sys/fs/bpf/map_offload_tether_limit_map";
 
     @VisibleForTesting
     enum StatsType {
@@ -209,6 +211,17 @@ public class BpfCoordinator {
                     BpfMap.BPF_F_RDWR, TetherStatsKey.class, TetherStatsValue.class);
             } catch (ErrnoException e) {
                 Log.e(TAG, "Cannot create stats map: " + e);
+                return null;
+            }
+        }
+
+        /** Get limit BPF map. */
+        @Nullable public BpfMap<TetherLimitKey, TetherLimitValue> getBpfLimitMap() {
+            try {
+                return new BpfMap<>(TETHER_LIMIT_MAP_PATH,
+                    BpfMap.BPF_F_RDWR, TetherLimitKey.class, TetherLimitValue.class);
+            } catch (ErrnoException e) {
+                Log.e(TAG, "Cannot create limit map: " + e);
                 return null;
             }
         }
@@ -673,20 +686,13 @@ public class BpfCoordinator {
         return quotaBytes;
     }
 
-    private boolean sendDataLimitToNetd(int ifIndex, long quotaBytes) {
+    private boolean sendDataLimitToBpfMap(int ifIndex, long quotaBytes) {
         if (ifIndex == 0) {
             Log.wtf(TAG, "Invalid interface index.");
             return false;
         }
 
-        try {
-            mNetd.tetherOffloadSetInterfaceQuota(ifIndex, quotaBytes);
-        } catch (RemoteException | ServiceSpecificException e) {
-            mLog.e("Exception when updating quota " + quotaBytes + ": ", e);
-            return false;
-        }
-
-        return true;
+        return mBpfCoordinatorShim.tetherOffloadSetInterfaceQuota(ifIndex, quotaBytes);
     }
 
     // Handle the data limit update from the service which is the stats provider registered for.
@@ -699,7 +705,7 @@ public class BpfCoordinator {
         if (ifIndex == 0) return;
 
         final long quotaBytes = getQuotaBytes(iface);
-        sendDataLimitToNetd(ifIndex, quotaBytes);
+        sendDataLimitToBpfMap(ifIndex, quotaBytes);
     }
 
     // Handle the data limit update while adding forwarding rules.
@@ -710,7 +716,7 @@ public class BpfCoordinator {
             return false;
         }
         final long quotaBytes = getQuotaBytes(iface);
-        return sendDataLimitToNetd(ifIndex, quotaBytes);
+        return sendDataLimitToBpfMap(ifIndex, quotaBytes);
     }
 
     private boolean isAnyRuleOnUpstream(int upstreamIfindex) {

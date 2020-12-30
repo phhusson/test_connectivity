@@ -79,5 +79,15 @@ public abstract class BpfCoordinatorShim {
      */
     @Nullable
     public abstract SparseArray<TetherStatsValue> tetherOffloadGetStats();
+
+   /**
+    * Set a per-interface quota for tethering offload.
+    *
+    * @param ifIndex Index of upstream interface
+    * @param quotaBytes The quota defined as the number of bytes, starting from zero and counting
+    *       from *now*. A value of QUOTA_UNLIMITED (-1) indicates there is no limit.
+    */
+    @Nullable
+    public abstract boolean tetherOffloadSetInterfaceQuota(int ifIndex, long quotaBytes);
 }
 

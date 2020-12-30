@@ -16,6 +16,8 @@
 
 package com.android.networkstack.tethering.apishim.api31;
 
+import static android.net.netstats.provider.NetworkStatsProvider.QUOTA_UNLIMITED;
+
 import android.net.util.SharedLog;
 import android.system.ErrnoException;
 import android.system.OsConstants;
@@ -29,6 +31,8 @@ import com.android.networkstack.tethering.BpfCoordinator.Ipv6ForwardingRule;
 import com.android.networkstack.tethering.BpfMap;
 import com.android.networkstack.tethering.TetherIngressKey;
 import com.android.networkstack.tethering.TetherIngressValue;
+import com.android.networkstack.tethering.TetherLimitKey;
+import com.android.networkstack.tethering.TetherLimitValue;
 import com.android.networkstack.tethering.TetherStatsKey;
 import com.android.networkstack.tethering.TetherStatsValue;
 
@@ -51,15 +55,20 @@ public class BpfCoordinatorShimImpl
     @Nullable
     private final BpfMap<TetherStatsKey, TetherStatsValue> mBpfStatsMap;
 
+    // BPF map of per-interface quota for tethering offload.
+    @Nullable
+    private final BpfMap<TetherLimitKey, TetherLimitValue> mBpfLimitMap;
+
     public BpfCoordinatorShimImpl(@NonNull final Dependencies deps) {
         mLog = deps.getSharedLog().forSubComponent(TAG);
         mBpfIngressMap = deps.getBpfIngressMap();
         mBpfStatsMap = deps.getBpfStatsMap();
+        mBpfLimitMap = deps.getBpfLimitMap();
     }
 
     @Override
     public boolean isInitialized() {
-        return mBpfIngressMap != null && mBpfStatsMap != null;
+        return mBpfIngressMap != null && mBpfStatsMap != null  && mBpfLimitMap != null;
     }
 
     @Override
@@ -113,11 +122,69 @@ public class BpfCoordinatorShimImpl
     }
 
     @Override
+    public boolean tetherOffloadSetInterfaceQuota(int ifIndex, long quotaBytes) {
+        if (!isInitialized()) return false;
+
+        // The common case is an update, where the stats already exist,
+        // hence we read first, even though writing with BPF_NOEXIST
+        // first would make the code simpler.
+        long rxBytes, txBytes;
+        TetherStatsValue statsValue = null;
+
+        try {
+            statsValue = mBpfStatsMap.getValue(new TetherStatsKey(ifIndex));
+        } catch (ErrnoException e) {
+            // The BpfMap#getValue doesn't throw an errno ENOENT exception. Catch other error
+            // while trying to get stats entry.
+            mLog.e("Could not get stats entry of interface index " + ifIndex + ": ", e);
+            return false;
+        }
+
+        if (statsValue != null) {
+            // Ok, there was a stats entry.
+            rxBytes = statsValue.rxBytes;
+            txBytes = statsValue.txBytes;
+        } else {
+            // No stats entry - create one with zeroes.
+            try {
+                // This function is the *only* thing that can create entries.
+                // BpfMap#insertEntry use BPF_NOEXIST to create the entry. The entry is created
+                // if and only if it doesn't exist.
+                mBpfStatsMap.insertEntry(new TetherStatsKey(ifIndex), new TetherStatsValue(
+                        0 /* rxPackets */, 0 /* rxBytes */, 0 /* rxErrors */, 0 /* txPackets */,
+                        0 /* txBytes */, 0 /* txErrors */));
+            } catch (ErrnoException | IllegalArgumentException e) {
+                mLog.e("Could not create stats entry: ", e);
+                return false;
+            }
+            rxBytes = 0;
+            txBytes = 0;
+        }
+
+        // rxBytes + txBytes won't overflow even at 5gbps for ~936 years.
+        long newLimit = rxBytes + txBytes + quotaBytes;
+
+        // if adding limit (e.g., if limit is QUOTA_UNLIMITED) caused overflow: clamp to 'infinity'
+        if (newLimit < rxBytes + txBytes) newLimit = QUOTA_UNLIMITED;
+
+        try {
+            mBpfLimitMap.updateEntry(new TetherLimitKey(ifIndex), new TetherLimitValue(newLimit));
+        } catch (ErrnoException e) {
+            mLog.e("Fail to set quota " + quotaBytes + " for interface index " + ifIndex + ": ", e);
+            return false;
+        }
+
+        return true;
+    }
+
+    @Override
     public String toString() {
         return "mBpfIngressMap{"
                 + (mBpfIngressMap != null ? "initialized" : "not initialized") + "}, "
                 + "mBpfStatsMap{"
-                + (mBpfStatsMap != null ? "initialized" : "not initialized") + "} "
+                + (mBpfStatsMap != null ? "initialized" : "not initialized") + "}, "
+                + "mBpfLimitMap{"
+                + (mBpfLimitMap != null ? "initialized" : "not initialized") + "} "
                 + "}";
     }
 }

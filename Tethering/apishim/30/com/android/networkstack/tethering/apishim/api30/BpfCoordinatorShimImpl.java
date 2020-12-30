@@ -92,6 +92,17 @@ public class BpfCoordinatorShimImpl
         return toTetherStatsValueSparseArray(tetherStatsList);
     }
 
+    @Override
+    public boolean tetherOffloadSetInterfaceQuota(int ifIndex, long quotaBytes) {
+        try {
+            mNetd.tetherOffloadSetInterfaceQuota(ifIndex, quotaBytes);
+        } catch (RemoteException | ServiceSpecificException e) {
+            mLog.e("Exception when updating quota " + quotaBytes + ": ", e);
+            return false;
+        }
+        return true;
+    }
+
     @NonNull
     private SparseArray<TetherStatsValue> toTetherStatsValueSparseArray(
             @NonNull final TetherStatsParcel[] parcels) {
