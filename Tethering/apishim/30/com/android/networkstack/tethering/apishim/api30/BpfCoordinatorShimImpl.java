@@ -65,6 +65,17 @@ public class BpfCoordinatorShimImpl
     };
 
     @Override
+    public boolean tetherOffloadRuleRemove(@NonNull final Ipv6ForwardingRule rule) {
+        try {
+            mNetd.tetherOffloadRuleRemove(rule.toTetherOffloadRuleParcel());
+        } catch (RemoteException | ServiceSpecificException e) {
+            mLog.e("Could not remove IPv6 forwarding rule: ", e);
+            return false;
+        }
+        return true;
+    }
+
+    @Override
     @Nullable
     public SparseArray<TetherStatsValue> tetherOffloadGetStats() {
         final TetherStatsParcel[] tetherStatsList;

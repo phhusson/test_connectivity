@@ -308,13 +308,30 @@ public class BpfCoordinatorTest {
         }
     }
 
+    private void verifyTetherOffloadRuleRemove(@Nullable InOrder inOrder,
+            @NonNull final Ipv6ForwardingRule rule) throws Exception {
+        if (mDeps.isAtLeastS()) {
+            verifyWithOrder(inOrder, mBpfIngressMap).deleteEntry(rule.makeTetherIngressKey());
+        } else {
+            verifyWithOrder(inOrder, mNetd).tetherOffloadRuleRemove(matches(rule));
+        }
+    }
+
+    private void verifyNeverTetherOffloadRuleRemove() throws Exception {
+        if (mDeps.isAtLeastS()) {
+            verify(mBpfIngressMap, never()).deleteEntry(any());
+        } else {
+            verify(mNetd, never()).tetherOffloadRuleRemove(any());
+        }
+    }
+
     // S+ and R api minimum tests.
     // The following tests are used to provide minimum checking for the APIs on different flow.
     // The auto merge is not enabled on mainline prod. The code flow R may be verified at the
     // late stage by manual cherry pick. It is risky if the R code flow has broken and be found at
     // the last minute.
     // TODO: remove once presubmit tests on R even the code is submitted on S.
-    private void checkTetherOffloadRuleAdd(boolean usingApiS) throws Exception {
+    private void checkTetherOffloadRuleAddAndRemove(boolean usingApiS) throws Exception {
         setupFunctioningNetdInterface();
 
         // Replace Dependencies#isAtLeastS() for testing R and S+ BPF map apis. Note that |mDeps|
@@ -330,18 +347,24 @@ public class BpfCoordinatorTest {
         final Ipv6ForwardingRule rule = buildTestForwardingRule(mobileIfIndex, NEIGH_A, MAC_A);
         coordinator.tetherOffloadRuleAdd(mIpServer, rule);
         verifyTetherOffloadRuleAdd(null, rule);
+
+        // Removing the last rule on current upstream immediately sends the cleanup stuff to netd.
+        when(mNetd.tetherOffloadGetAndClearStats(mobileIfIndex))
+                .thenReturn(buildTestTetherStatsParcel(mobileIfIndex, 0, 0, 0, 0));
+        coordinator.tetherOffloadRuleRemove(mIpServer, rule);
+        verifyTetherOffloadRuleRemove(null, rule);
     }
 
     // TODO: remove once presubmit tests on R even the code is submitted on S.
     @Test
-    public void testTetherOffloadRuleAddSdkR() throws Exception {
-        checkTetherOffloadRuleAdd(false /* R */);
+    public void testTetherOffloadRuleAddAndRemoveSdkR() throws Exception {
+        checkTetherOffloadRuleAddAndRemove(false /* R */);
     }
 
     // TODO: remove once presubmit tests on R even the code is submitted on S.
     @Test
-    public void testTetherOffloadRuleAddAtLeastSdkS() throws Exception {
-        checkTetherOffloadRuleAdd(true /* S+ */);
+    public void testTetherOffloadRuleAddAndRemoveAtLeastSdkS() throws Exception {
+        checkTetherOffloadRuleAddAndRemove(true /* S+ */);
     }
 
     // TODO: remove once presubmit tests on R even the code is submitted on S.
@@ -634,14 +657,14 @@ public class BpfCoordinatorTest {
 
         // Removing the second rule on current upstream does not send the quota to netd.
         coordinator.tetherOffloadRuleRemove(mIpServer, ruleB);
-        inOrder.verify(mNetd).tetherOffloadRuleRemove(matches(ruleB));
+        verifyTetherOffloadRuleRemove(inOrder, ruleB);
         inOrder.verify(mNetd, never()).tetherOffloadSetInterfaceQuota(anyInt(), anyLong());
 
         // Removing the last rule on current upstream immediately sends the cleanup stuff to netd.
         when(mNetd.tetherOffloadGetAndClearStats(mobileIfIndex))
                 .thenReturn(buildTestTetherStatsParcel(mobileIfIndex, 0, 0, 0, 0));
         coordinator.tetherOffloadRuleRemove(mIpServer, ruleA);
-        inOrder.verify(mNetd).tetherOffloadRuleRemove(matches(ruleA));
+        verifyTetherOffloadRuleRemove(inOrder, ruleA);
         inOrder.verify(mNetd).tetherOffloadGetAndClearStats(mobileIfIndex);
         inOrder.verifyNoMoreInteractions();
     }
@@ -693,10 +716,10 @@ public class BpfCoordinatorTest {
         // Update the existing rules for upstream changes. The rules are removed and re-added one
         // by one for updating upstream interface index by #tetherOffloadRuleUpdate.
         coordinator.tetherOffloadRuleUpdate(mIpServer, mobileIfIndex);
-        inOrder.verify(mNetd).tetherOffloadRuleRemove(matches(ethernetRuleA));
+        verifyTetherOffloadRuleRemove(inOrder, ethernetRuleA);
         verifyTetherOffloadRuleAdd(inOrder, mobileRuleA);
         inOrder.verify(mNetd).tetherOffloadSetInterfaceQuota(mobileIfIndex, QUOTA_UNLIMITED);
-        inOrder.verify(mNetd).tetherOffloadRuleRemove(matches(ethernetRuleB));
+        verifyTetherOffloadRuleRemove(inOrder, ethernetRuleB);
         inOrder.verify(mNetd).tetherOffloadGetAndClearStats(ethIfIndex);
         verifyTetherOffloadRuleAdd(inOrder, mobileRuleB);
 
@@ -704,8 +727,8 @@ public class BpfCoordinatorTest {
         when(mNetd.tetherOffloadGetAndClearStats(mobileIfIndex))
                 .thenReturn(buildTestTetherStatsParcel(mobileIfIndex, 50, 60, 70, 80));
         coordinator.tetherOffloadRuleClear(mIpServer);
-        inOrder.verify(mNetd).tetherOffloadRuleRemove(matches(mobileRuleA));
-        inOrder.verify(mNetd).tetherOffloadRuleRemove(matches(mobileRuleB));
+        verifyTetherOffloadRuleRemove(inOrder, mobileRuleA);
+        verifyTetherOffloadRuleRemove(inOrder, mobileRuleB);
         inOrder.verify(mNetd).tetherOffloadGetAndClearStats(mobileIfIndex);
 
         // [4] Force pushing stats update to verify that the last diff of stats is reported on all
@@ -755,21 +778,21 @@ public class BpfCoordinatorTest {
         rules.put(rule.address, rule);
         coordinator.getForwardingRulesForTesting().put(mIpServer, rules);
         coordinator.tetherOffloadRuleRemove(mIpServer, rule);
-        verify(mNetd, never()).tetherOffloadRuleRemove(any());
+        verifyNeverTetherOffloadRuleRemove();
         rules = coordinator.getForwardingRulesForTesting().get(mIpServer);
         assertNotNull(rules);
         assertEquals(1, rules.size());
 
         // The rule can't be cleared.
         coordinator.tetherOffloadRuleClear(mIpServer);
-        verify(mNetd, never()).tetherOffloadRuleRemove(any());
+        verifyNeverTetherOffloadRuleRemove();
         rules = coordinator.getForwardingRulesForTesting().get(mIpServer);
         assertNotNull(rules);
         assertEquals(1, rules.size());
 
         // The rule can't be updated.
         coordinator.tetherOffloadRuleUpdate(mIpServer, rule.upstreamIfindex + 1 /* new */);
-        verify(mNetd, never()).tetherOffloadRuleRemove(any());
+        verifyNeverTetherOffloadRuleRemove();
         verifyNeverTetherOffloadRuleAdd();
         rules = coordinator.getForwardingRulesForTesting().get(mIpServer);
         assertNotNull(rules);

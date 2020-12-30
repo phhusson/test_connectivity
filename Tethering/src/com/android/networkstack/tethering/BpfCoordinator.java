@@ -329,13 +329,7 @@ public class BpfCoordinator {
             @NonNull final IpServer ipServer, @NonNull final Ipv6ForwardingRule rule) {
         if (!isUsingBpf()) return;
 
-        try {
-            // TODO: Perhaps avoid to remove a non-existent rule.
-            mNetd.tetherOffloadRuleRemove(rule.toTetherOffloadRuleParcel());
-        } catch (RemoteException | ServiceSpecificException e) {
-            mLog.e("Could not remove IPv6 forwarding rule: ", e);
-            return;
-        }
+        if (!mBpfCoordinatorShim.tetherOffloadRuleRemove(rule)) return;
 
         LinkedHashMap<Inet6Address, Ipv6ForwardingRule> rules = mIpv6ForwardingRules.get(ipServer);
         if (rules == null) return;

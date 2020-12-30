@@ -60,6 +60,17 @@ public abstract class BpfCoordinatorShim {
     public abstract boolean tetherOffloadRuleAdd(@NonNull Ipv6ForwardingRule rule);
 
     /**
+     * Deletes a tethering offload rule from the BPF map.
+     *
+     * Currently, only downstream /128 IPv6 entries are supported. An existing rule will be deleted
+     * if the destination IP address and the source interface match. It is not an error if there is
+     * no matching rule to delete.
+     *
+     * @param rule The rule to delete.
+     */
+    public abstract boolean tetherOffloadRuleRemove(@NonNull Ipv6ForwardingRule rule);
+
+    /**
      * Return BPF tethering offload statistics.
      *
      * @return an array of TetherStatsValue's, where each entry contains the upstream interface

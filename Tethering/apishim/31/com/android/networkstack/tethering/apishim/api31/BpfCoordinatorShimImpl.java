@@ -18,6 +18,7 @@ package com.android.networkstack.tethering.apishim.api31;
 
 import android.net.util.SharedLog;
 import android.system.ErrnoException;
+import android.system.OsConstants;
 import android.util.SparseArray;
 
 import androidx.annotation.NonNull;
@@ -75,6 +76,22 @@ public class BpfCoordinatorShimImpl
             return false;
         }
 
+        return true;
+    }
+
+    @Override
+    public boolean tetherOffloadRuleRemove(@NonNull final Ipv6ForwardingRule rule) {
+        if (!isInitialized()) return false;
+
+        try {
+            mBpfIngressMap.deleteEntry(rule.makeTetherIngressKey());
+        } catch (ErrnoException e) {
+            // Silent if the rule did not exist.
+            if (e.errno != OsConstants.ENOENT) {
+                mLog.e("Could not update entry: ", e);
+                return false;
+            }
+        }
         return true;
     }
 
