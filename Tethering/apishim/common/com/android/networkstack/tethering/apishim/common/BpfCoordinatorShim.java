@@ -89,5 +89,24 @@ public abstract class BpfCoordinatorShim {
     */
     @Nullable
     public abstract boolean tetherOffloadSetInterfaceQuota(int ifIndex, long quotaBytes);
+
+    /**
+     * Return BPF tethering offload statistics and clear the stats for a given upstream.
+     *
+     * Must only be called once all offload rules have already been deleted for the given upstream
+     * interface. The existing stats will be fetched and returned. The stats and the limit for the
+     * given upstream interface will be deleted as well.
+     *
+     * The stats and limit for a given upstream interface must be initialized (using
+     * tetherOffloadSetInterfaceQuota) before any offload will occur on that interface.
+     *
+     * Note that this can be only called while the BPF maps were initialized.
+     *
+     * @param ifIndex Index of upstream interface.
+     * @return TetherStatsValue, which contains the given upstream interface's tethering statistics
+     *         since tethering was first started on that upstream interface.
+     */
+    @Nullable
+    public abstract TetherStatsValue tetherOffloadGetAndClearStats(int ifIndex);
 }
 

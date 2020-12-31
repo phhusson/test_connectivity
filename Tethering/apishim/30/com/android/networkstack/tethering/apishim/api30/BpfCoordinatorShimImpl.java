@@ -117,6 +117,21 @@ public class BpfCoordinatorShimImpl
     }
 
     @Override
+    @Nullable
+    public TetherStatsValue tetherOffloadGetAndClearStats(int ifIndex) {
+        try {
+            final TetherStatsParcel stats =
+                    mNetd.tetherOffloadGetAndClearStats(ifIndex);
+            return new TetherStatsValue(stats.rxPackets, stats.rxBytes, 0 /* rxErrors */,
+                    stats.txPackets, stats.txBytes, 0 /* txErrors */);
+        } catch (RemoteException | ServiceSpecificException e) {
+            mLog.e("Exception when cleanup tether stats for upstream index "
+                    + ifIndex + ": ", e);
+            return null;
+        }
+    }
+
+    @Override
     public String toString() {
         return "Netd used";
     }

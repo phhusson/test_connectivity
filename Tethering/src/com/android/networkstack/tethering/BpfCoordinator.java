@@ -34,15 +34,12 @@ import android.net.MacAddress;
 import android.net.NetworkStats;
 import android.net.NetworkStats.Entry;
 import android.net.TetherOffloadRuleParcel;
-import android.net.TetherStatsParcel;
 import android.net.ip.IpServer;
 import android.net.netstats.provider.NetworkStatsProvider;
 import android.net.util.SharedLog;
 import android.net.util.TetheringUtils.ForwardedStats;
 import android.os.ConditionVariable;
 import android.os.Handler;
-import android.os.RemoteException;
-import android.os.ServiceSpecificException;
 import android.system.ErrnoException;
 import android.text.TextUtils;
 import android.util.Log;
@@ -361,22 +358,19 @@ public class BpfCoordinator {
         // Do cleanup functionality if there is no more rule on the given upstream.
         final int upstreamIfindex = rule.upstreamIfindex;
         if (!isAnyRuleOnUpstream(upstreamIfindex)) {
-            try {
-                final TetherStatsParcel stats =
-                        mNetd.tetherOffloadGetAndClearStats(upstreamIfindex);
-                SparseArray<TetherStatsValue> tetherStatsList =
-                        new SparseArray<TetherStatsValue>();
-                tetherStatsList.put(stats.ifIndex, new TetherStatsValue(stats.rxPackets,
-                        stats.rxBytes, 0 /* rxErrors */, stats.txPackets, stats.txBytes,
-                        0 /* txErrors */));
-
-                // Update the last stats delta and delete the local cache for a given upstream.
-                updateQuotaAndStatsFromSnapshot(tetherStatsList);
-                mStats.remove(upstreamIfindex);
-            } catch (RemoteException | ServiceSpecificException e) {
-                Log.wtf(TAG, "Exception when cleanup tether stats for upstream index "
-                        + upstreamIfindex + ": ", e);
+            final TetherStatsValue statsValue =
+                    mBpfCoordinatorShim.tetherOffloadGetAndClearStats(upstreamIfindex);
+            if (statsValue == null) {
+                Log.wtf(TAG, "Fail to cleanup tether stats for upstream index " + upstreamIfindex);
+                return;
             }
+
+            SparseArray<TetherStatsValue> tetherStatsList = new SparseArray<TetherStatsValue>();
+            tetherStatsList.put(upstreamIfindex, statsValue);
+
+            // Update the last stats delta and delete the local cache for a given upstream.
+            updateQuotaAndStatsFromSnapshot(tetherStatsList);
+            mStats.remove(upstreamIfindex);
         }
     }
 
