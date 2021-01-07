@@ -55,7 +55,7 @@ import androidx.test.platform.app.InstrumentationRegistry;
 
 public class NetworkPolicyTestUtils {
 
-    private static final int TIMEOUT_CHANGE_METEREDNESS_MS = 5000;
+    private static final int TIMEOUT_CHANGE_METEREDNESS_MS = 10_000;
 
     private static ConnectivityManager mCm;
     private static WifiManager mWm;
