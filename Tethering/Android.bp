@@ -26,7 +26,6 @@ java_defaults {
     ],
     static_libs: [
         "androidx.annotation_annotation",
-        "netd_aidl_interface-unstable-java",
         "netlink-client",
         // TODO: use networkstack-client instead of just including the AIDL interface
         "networkstack-aidl-interfaces-unstable-java",
@@ -34,6 +33,7 @@ java_defaults {
         "android.hardware.tetheroffload.control-V1.0-java",
         "net-utils-framework-common",
         "net-utils-device-common",
+        "netd-client",
     ],
     libs: [
         "framework-statsd.stubs.module_lib",
