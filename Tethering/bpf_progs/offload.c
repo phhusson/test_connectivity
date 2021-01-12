@@ -34,6 +34,10 @@ DEFINE_BPF_MAP_GRW(tether_stats_map, HASH, uint32_t, TetherStatsValue, 16, AID_N
 // (tethering allowed when stats[iif].rxBytes + stats[iif].txBytes < limit[iif])
 DEFINE_BPF_MAP_GRW(tether_limit_map, HASH, uint32_t, uint64_t, 16, AID_NETWORK_STACK)
 
+// Used only by TetheringPrivilegedTests, not by production code.
+DEFINE_BPF_MAP_GRW(tether_ingress_map_TEST, HASH, TetherIngressKey, TetherIngressValue, 16,
+                   AID_NETWORK_STACK)
+
 static inline __always_inline int do_forward(struct __sk_buff* skb, bool is_ethernet) {
     int l2_header_size = is_ethernet ? sizeof(struct ethhdr) : 0;
     void* data = (void*)(long)skb->data;
