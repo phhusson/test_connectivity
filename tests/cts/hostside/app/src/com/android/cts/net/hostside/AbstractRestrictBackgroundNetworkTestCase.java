@@ -234,12 +234,16 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     }
 
     protected void assertForegroundNetworkAccess() throws Exception {
+        assertForegroundNetworkAccess(true);
+    }
+
+    protected void assertForegroundNetworkAccess(boolean expectAllowed) throws Exception {
         assertForegroundState();
         // We verified that app is in foreground state but if the screen turns-off while
         // verifying for network access, the app will go into background state (in case app's
         // foreground status was due to top activity). So, turn the screen on when verifying
         // network connectivity.
-        assertNetworkAccess(true /* expectAvailable */, true /* needScreenOn */);
+        assertNetworkAccess(expectAllowed /* expectAvailable */, true /* needScreenOn */);
     }
 
     protected void assertForegroundServiceNetworkAccess() throws Exception {
