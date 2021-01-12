@@ -134,7 +134,7 @@ public class BpfMap<K extends Struct, V extends Struct> implements AutoCloseable
      *
      * TODO: consider allowing null passed-in key.
      */
-    public K getNextKey(@Nullable K key) throws ErrnoException {
+    public K getNextKey(@NonNull K key) throws ErrnoException {
         Objects.requireNonNull(key);
         return getNextKeyInternal(key);
     }
@@ -185,14 +185,11 @@ public class BpfMap<K extends Struct, V extends Struct> implements AutoCloseable
      * Otherwise, iteration will result in undefined behaviour.
      */
     public void forEach(BiConsumer<K, V> action) throws ErrnoException {
-        @Nullable
-        K nextKey = getFirstKey();
+        @Nullable K nextKey = getFirstKey();
 
         while (nextKey != null) {
-            @NonNull
-            final K curKey = nextKey;
-            @NonNull
-            final V value = getValue(curKey);
+            @NonNull final K curKey = nextKey;
+            @NonNull final V value = getValue(curKey);
 
             nextKey = getNextKey(curKey);
             action.accept(curKey, value);

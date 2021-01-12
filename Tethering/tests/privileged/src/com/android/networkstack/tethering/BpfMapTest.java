@@ -43,6 +43,7 @@ import org.junit.runner.RunWith;
 
 import java.net.InetAddress;
 import java.util.NoSuchElementException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 @RunWith(AndroidJUnit4.class)
@@ -96,7 +97,9 @@ public final class BpfMapTest {
             bpfMap.forEach((key, value) -> {
                 try {
                     assertTrue(bpfMap.deleteEntry(key));
-                } catch (ErrnoException ignored) { }
+                } catch (ErrnoException e) {
+                    fail("Fail to delete the key " + key + ": " + e);
+                }
             });
             assertNull(bpfMap.getFirstKey());
         }
@@ -284,15 +287,11 @@ public final class BpfMapTest {
     @Test
     public void testIterateEmptyMap() throws Exception {
         try (BpfMap<TetherIngressKey, TetherIngressValue> bpfMap = getTestMap()) {
-            // Use an one element array to be a trick for a counter because local variables
-            // referenced from a lambda expression must be final.
-            final int[] count = {0};
-            bpfMap.forEach((key, value) -> {
-                count[0]++;
-            });
-
-            // Expect that consumer has never be called.
-            assertEquals(0, count[0]);
+            // Can't use an int because variables used in a lambda must be final.
+            final AtomicInteger count = new AtomicInteger();
+            bpfMap.forEach((key, value) -> count.incrementAndGet());
+            // Expect that the consumer was never called.
+            assertEquals(0, count.get());
         }
     }
 
@@ -306,9 +305,8 @@ public final class BpfMapTest {
                 bpfMap.insertEntry(resultMap.keyAt(i), resultMap.valueAt(i));
             }
 
-            // Use an one element array to be a trick for a counter because local variables
-            // referenced from a lambda expression must be final.
-            final int[] count = {0};
+            // Can't use an int because variables used in a lambda must be final.
+            final AtomicInteger count = new AtomicInteger();
             bpfMap.forEach((key, value) -> {
                 try {
                     assertTrue(bpfMap.deleteEntry(key));
@@ -318,9 +316,9 @@ public final class BpfMapTest {
                 if (!value.equals(resultMap.remove(key))) {
                     fail("Unexpected result: " + key + ", value: " + value);
                 }
-                count[0]++;
+                count.incrementAndGet();
             });
-            assertEquals(3, count[0]);
+            assertEquals(3, count.get());
             assertTrue(resultMap.isEmpty());
             assertNull(bpfMap.getFirstKey());
         }
