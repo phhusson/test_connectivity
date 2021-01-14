@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-#include <linux/bpf.h>
 #include <errno.h>
 #include <jni.h>
 #include <nativehelper/JNIHelp.h>
@@ -24,7 +23,7 @@
 #include "nativehelper/scoped_utf_chars.h"
 
 #define BPF_FD_JUST_USE_INT
-#include "bpf/BpfUtils.h"
+#include "BpfSyscallWrappers.h"
 
 namespace android {
 

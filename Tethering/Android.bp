@@ -60,10 +60,7 @@ cc_library {
         "com.android.tethering",
     ],
     min_sdk_version: "30",
-    include_dirs: [
-        // TODO: use the libbpf_android_headers instead of just including the header files.
-        "system/bpf/libbpf_android/include/",
-    ],
+    header_libs: ["bpf_syscall_wrappers"],
     srcs: [
         "jni/*.cpp",
     ],
