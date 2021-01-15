@@ -27,7 +27,10 @@ apex {
     jni_libs: [
         "libservice-connectivity",
     ],
-    bpfs: ["offload.o"],
+    bpfs: [
+        "offload.o",
+        "test.o",
+    ],
     apps: ["Tethering"],
     manifest: "manifest.json",
     key: "com.android.tethering.key",
