@@ -162,8 +162,9 @@ static inline __always_inline int do_forward(struct __sk_buff* skb, bool is_ethe
     return bpf_redirect(v->oif, 0 /* this is effectively BPF_F_EGRESS */);
 }
 
-SEC("schedcls/ingress/tether_ether")
-int sched_cls_ingress_tether_ether(struct __sk_buff* skb) {
+DEFINE_BPF_PROG("schedcls/ingress/tether_ether", AID_ROOT, AID_ROOT,
+                sched_cls_ingress_tether_ether)
+(struct __sk_buff* skb) {
     return do_forward(skb, true);
 }
 
