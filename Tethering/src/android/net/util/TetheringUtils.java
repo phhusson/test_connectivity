@@ -21,6 +21,8 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 
+import com.android.networkstack.tethering.TetherStatsValue;
+
 import java.io.FileDescriptor;
 import java.net.Inet6Address;
 import java.net.SocketException;
@@ -85,6 +87,13 @@ public class TetheringUtils {
         }
 
         public ForwardedStats(@NonNull TetherStatsParcel tetherStats) {
+            rxBytes = tetherStats.rxBytes;
+            rxPackets = tetherStats.rxPackets;
+            txBytes = tetherStats.txBytes;
+            txPackets = tetherStats.txPackets;
+        }
+
+        public ForwardedStats(@NonNull TetherStatsValue tetherStats) {
             rxBytes = tetherStats.rxBytes;
             rxPackets = tetherStats.rxPackets;
             txBytes = tetherStats.txBytes;

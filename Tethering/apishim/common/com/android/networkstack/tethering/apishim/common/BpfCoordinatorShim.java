@@ -16,10 +16,14 @@
 
 package com.android.networkstack.tethering.apishim.common;
 
+import android.util.SparseArray;
+
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.android.networkstack.tethering.BpfCoordinator.Dependencies;
 import com.android.networkstack.tethering.BpfCoordinator.Ipv6ForwardingRule;
+import com.android.networkstack.tethering.TetherStatsValue;
 
 /**
  * Bpf coordinator class for API shims.
@@ -54,5 +58,26 @@ public abstract class BpfCoordinatorShim {
      * @param rule The rule to add or update.
      */
     public abstract boolean tetherOffloadRuleAdd(@NonNull Ipv6ForwardingRule rule);
+
+    /**
+     * Deletes a tethering offload rule from the BPF map.
+     *
+     * Currently, only downstream /128 IPv6 entries are supported. An existing rule will be deleted
+     * if the destination IP address and the source interface match. It is not an error if there is
+     * no matching rule to delete.
+     *
+     * @param rule The rule to delete.
+     */
+    public abstract boolean tetherOffloadRuleRemove(@NonNull Ipv6ForwardingRule rule);
+
+    /**
+     * Return BPF tethering offload statistics.
+     *
+     * @return an array of TetherStatsValue's, where each entry contains the upstream interface
+     *         index and its tethering statistics since tethering was first started.
+     *         There will only ever be one entry for a given interface index.
+     */
+    @Nullable
+    public abstract SparseArray<TetherStatsValue> tetherOffloadGetStats();
 }
 

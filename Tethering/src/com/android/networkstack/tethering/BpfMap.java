@@ -23,6 +23,7 @@ import android.system.ErrnoException;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.android.internal.annotations.VisibleForTesting;
 import com.android.net.module.util.Struct;
 
 import java.nio.ByteBuffer;
@@ -70,6 +71,21 @@ public class BpfMap<K extends Struct, V extends Struct> implements AutoCloseable
             final Class<V> value) throws ErrnoException, NullPointerException {
         mMapFd = bpfFdGet(path, flag);
 
+        mKeyClass = key;
+        mValueClass = value;
+        mKeySize = Struct.getSize(key);
+        mValueSize = Struct.getSize(value);
+    }
+
+     /**
+     * Constructor for testing only.
+     * The derived class implements an internal mocked map. It need to implement all functions
+     * which are related with the native BPF map because the BPF map handler is not initialized.
+     * See BpfCoordinatorTest#TestBpfMap.
+     */
+    @VisibleForTesting
+    protected BpfMap(final Class<K> key, final Class<V> value) {
+        mMapFd = -1;
         mKeyClass = key;
         mValueClass = value;
         mKeySize = Struct.getSize(key);
