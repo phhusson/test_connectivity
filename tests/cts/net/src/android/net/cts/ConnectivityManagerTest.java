@@ -25,10 +25,12 @@ import static android.content.pm.PackageManager.FEATURE_USB_HOST;
 import static android.content.pm.PackageManager.FEATURE_WIFI;
 import static android.content.pm.PackageManager.GET_PERMISSIONS;
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
+import static android.net.NetworkCapabilities.NET_CAPABILITY_FOREGROUND;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_IMS;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED;
+import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
 import static android.net.cts.util.CtsNetUtils.ConnectivityActionReceiver;
 import static android.net.cts.util.CtsNetUtils.HTTP_PORT;
@@ -43,6 +45,7 @@ import static android.system.OsConstants.AF_UNSPEC;
 
 import static com.android.compatibility.common.util.SystemUtil.runShellCommand;
 import static com.android.compatibility.common.util.SystemUtil.runWithShellPermissionIdentity;
+import static com.android.testutils.MiscAsserts.assertThrows;
 import static com.android.testutils.TestPermissionUtil.runAsShell;
 
 import static org.junit.Assert.assertEquals;
@@ -104,9 +107,9 @@ import com.android.testutils.RecorderCallback.CallbackEntry;
 import com.android.testutils.SkipPresubmit;
 import com.android.testutils.TestableNetworkCallback;
 
-import libcore.io.Streams;
-
 import junit.framework.AssertionFailedError;
+
+import libcore.io.Streams;
 
 import org.junit.After;
 import org.junit.Before;
@@ -1529,6 +1532,55 @@ public class ConnectivityManagerTest {
             assertEquals("Invalid captive portal URL protocol", "http", parsedUrl.getProtocol());
         } catch (MalformedURLException e) {
             throw new AssertionFailedError("Captive portal server URL is invalid: " + e);
+        }
+    }
+
+    /**
+     * Verify background request can only be requested when acquiring
+     * {@link android.Manifest.permission.NETWORK_SETTINGS}.
+     */
+    @Test
+    public void testRequestBackgroundNetwork() throws InterruptedException {
+        if (!mPackageManager.hasSystemFeature(FEATURE_WIFI)
+                || !mPackageManager.hasSystemFeature(FEATURE_TELEPHONY)) {
+            Log.i(TAG, "testRequestBackgroundNetwork cannot execute unless device "
+                    + "supports WiFi and Cellular");
+            return;
+        }
+
+        // Make sure the wifi network occupied the default network request. Thus,
+        // the cellular could have no foreground request if no one is using it.
+        final Network wifiNetwork = ensureWifiConnected();
+        assertNotNull(wifiNetwork);
+        assertEquals(wifiNetwork, mCm.getActiveNetwork());
+
+        final TestableNetworkCallback cellCallback = new TestableNetworkCallback();
+        try {
+            // Verify a normal cellular network can be requested.
+            final NetworkRequest cellRequest = new NetworkRequest.Builder()
+                    .addTransportType(TRANSPORT_CELLULAR)
+                    .addCapability(NET_CAPABILITY_INTERNET).build();
+            mCm.requestNetwork(cellRequest, cellCallback);
+            waitForAvailable(cellCallback);
+            mCm.unregisterNetworkCallback(cellCallback);
+
+            // Verify background network cannot be requested with the same parameters
+            // without NETWORK_SETTINGS permission.
+            assertThrows(SecurityException.class,
+                    () -> mCm.requestBackgroundNetwork(cellRequest, null, cellCallback));
+
+            // Request background network via Shell identity which has NETWORK_SETTINGS
+            // permission granted. Verify the cellular network is not foreground.
+            runWithShellPermissionIdentity(
+                    () -> mCm.requestBackgroundNetwork(cellRequest, null, cellCallback),
+                    android.Manifest.permission.NETWORK_SETTINGS);
+            waitForAvailable(cellCallback);
+            final Network cellNetwork = cellCallback.getLastAvailableNetwork();
+            assertNotNull(cellNetwork);
+            assertFalse(mCm.getNetworkCapabilities(cellNetwork).hasCapability(
+                    NET_CAPABILITY_FOREGROUND));
+        } finally {
+            mCm.unregisterNetworkCallback(cellCallback);
         }
     }
 }
