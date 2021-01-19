@@ -17,14 +17,18 @@
 package com.android.networkstack.tethering.apishim.api30;
 
 import android.net.INetd;
+import android.net.TetherStatsParcel;
 import android.net.util.SharedLog;
 import android.os.RemoteException;
 import android.os.ServiceSpecificException;
+import android.util.SparseArray;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.android.networkstack.tethering.BpfCoordinator.Dependencies;
 import com.android.networkstack.tethering.BpfCoordinator.Ipv6ForwardingRule;
+import com.android.networkstack.tethering.TetherStatsValue;
 
 /**
  * Bpf coordinator class for API shims.
@@ -59,6 +63,47 @@ public class BpfCoordinatorShimImpl
 
         return true;
     };
+
+    @Override
+    public boolean tetherOffloadRuleRemove(@NonNull final Ipv6ForwardingRule rule) {
+        try {
+            mNetd.tetherOffloadRuleRemove(rule.toTetherOffloadRuleParcel());
+        } catch (RemoteException | ServiceSpecificException e) {
+            mLog.e("Could not remove IPv6 forwarding rule: ", e);
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    @Nullable
+    public SparseArray<TetherStatsValue> tetherOffloadGetStats() {
+        final TetherStatsParcel[] tetherStatsList;
+        try {
+            // The reported tether stats are total data usage for all currently-active upstream
+            // interfaces since tethering start. There will only ever be one entry for a given
+            // interface index.
+            tetherStatsList = mNetd.tetherOffloadGetStats();
+        } catch (RemoteException | ServiceSpecificException e) {
+            mLog.e("Fail to fetch tethering stats from netd: " + e);
+            return null;
+        }
+
+        return toTetherStatsValueSparseArray(tetherStatsList);
+    }
+
+    @NonNull
+    private SparseArray<TetherStatsValue> toTetherStatsValueSparseArray(
+            @NonNull final TetherStatsParcel[] parcels) {
+        final SparseArray<TetherStatsValue> tetherStatsList = new SparseArray<TetherStatsValue>();
+
+        for (TetherStatsParcel p : parcels) {
+            tetherStatsList.put(p.ifIndex, new TetherStatsValue(p.rxPackets, p.rxBytes,
+                    0 /* rxErrors */, p.txPackets, p.txBytes, 0 /* txErrors */));
+        }
+
+        return tetherStatsList;
+    }
 
     @Override
     public String toString() {

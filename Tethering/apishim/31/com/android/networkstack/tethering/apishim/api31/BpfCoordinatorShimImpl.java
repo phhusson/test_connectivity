@@ -18,6 +18,8 @@ package com.android.networkstack.tethering.apishim.api31;
 
 import android.net.util.SharedLog;
 import android.system.ErrnoException;
+import android.system.OsConstants;
+import android.util.SparseArray;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -27,6 +29,8 @@ import com.android.networkstack.tethering.BpfCoordinator.Ipv6ForwardingRule;
 import com.android.networkstack.tethering.BpfMap;
 import com.android.networkstack.tethering.TetherIngressKey;
 import com.android.networkstack.tethering.TetherIngressValue;
+import com.android.networkstack.tethering.TetherStatsKey;
+import com.android.networkstack.tethering.TetherStatsValue;
 
 /**
  * Bpf coordinator class for API shims.
@@ -43,14 +47,19 @@ public class BpfCoordinatorShimImpl
     @Nullable
     private final BpfMap<TetherIngressKey, TetherIngressValue> mBpfIngressMap;
 
+    // BPF map of tethering statistics of the upstream interface since tethering startup.
+    @Nullable
+    private final BpfMap<TetherStatsKey, TetherStatsValue> mBpfStatsMap;
+
     public BpfCoordinatorShimImpl(@NonNull final Dependencies deps) {
         mLog = deps.getSharedLog().forSubComponent(TAG);
         mBpfIngressMap = deps.getBpfIngressMap();
+        mBpfStatsMap = deps.getBpfStatsMap();
     }
 
     @Override
     public boolean isInitialized() {
-        return mBpfIngressMap != null;
+        return mBpfIngressMap != null && mBpfStatsMap != null;
     }
 
     @Override
@@ -71,9 +80,44 @@ public class BpfCoordinatorShimImpl
     }
 
     @Override
+    public boolean tetherOffloadRuleRemove(@NonNull final Ipv6ForwardingRule rule) {
+        if (!isInitialized()) return false;
+
+        try {
+            mBpfIngressMap.deleteEntry(rule.makeTetherIngressKey());
+        } catch (ErrnoException e) {
+            // Silent if the rule did not exist.
+            if (e.errno != OsConstants.ENOENT) {
+                mLog.e("Could not update entry: ", e);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @Override
+    @Nullable
+    public SparseArray<TetherStatsValue> tetherOffloadGetStats() {
+        if (!isInitialized()) return null;
+
+        final SparseArray<TetherStatsValue> tetherStatsList = new SparseArray<TetherStatsValue>();
+        try {
+            // The reported tether stats are total data usage for all currently-active upstream
+            // interfaces since tethering start.
+            mBpfStatsMap.forEach((key, value) -> tetherStatsList.put((int) key.ifindex, value));
+        } catch (ErrnoException e) {
+            mLog.e("Fail to fetch tethering stats from BPF map: ", e);
+            return null;
+        }
+        return tetherStatsList;
+    }
+
+    @Override
     public String toString() {
         return "mBpfIngressMap{"
-                + (mBpfIngressMap != null ? "initialized" : "not initialized") + "} "
+                + (mBpfIngressMap != null ? "initialized" : "not initialized") + "}, "
+                + "mBpfStatsMap{"
+                + (mBpfStatsMap != null ? "initialized" : "not initialized") + "} "
                 + "}";
     }
 }
