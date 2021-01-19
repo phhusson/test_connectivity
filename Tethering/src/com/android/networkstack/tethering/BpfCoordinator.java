@@ -78,6 +78,8 @@ public class BpfCoordinator {
     private static final int DUMP_TIMEOUT_MS = 10_000;
     private static final String TETHER_INGRESS_FS_PATH =
             "/sys/fs/bpf/map_offload_tether_ingress_map";
+    private static final String TETHER_STATS_MAP_PATH =
+            "/sys/fs/bpf/map_offload_tether_stats_map";
 
     @VisibleForTesting
     enum StatsType {
@@ -157,7 +159,7 @@ public class BpfCoordinator {
 
     // Runnable that used by scheduling next polling of stats.
     private final Runnable mScheduledPollingTask = () -> {
-        updateForwardedStatsFromNetd();
+        updateForwardedStats();
         maybeSchedulePollingStats();
     };
 
@@ -196,6 +198,17 @@ public class BpfCoordinator {
                     BpfMap.BPF_F_RDWR, TetherIngressKey.class, TetherIngressValue.class);
             } catch (ErrnoException e) {
                 Log.e(TAG, "Cannot create ingress map: " + e);
+                return null;
+            }
+        }
+
+        /** Get stats BPF map. */
+        @Nullable public BpfMap<TetherStatsKey, TetherStatsValue> getBpfStatsMap() {
+            try {
+                return new BpfMap<>(TETHER_STATS_MAP_PATH,
+                    BpfMap.BPF_F_RDWR, TetherStatsKey.class, TetherStatsValue.class);
+            } catch (ErrnoException e) {
+                Log.e(TAG, "Cannot create stats map: " + e);
                 return null;
             }
         }
@@ -261,7 +274,7 @@ public class BpfCoordinator {
         if (mHandler.hasCallbacks(mScheduledPollingTask)) {
             mHandler.removeCallbacks(mScheduledPollingTask);
         }
-        updateForwardedStatsFromNetd();
+        updateForwardedStats();
         mPollingStarted = false;
 
         mLog.i("Polling stopped");
@@ -316,13 +329,7 @@ public class BpfCoordinator {
             @NonNull final IpServer ipServer, @NonNull final Ipv6ForwardingRule rule) {
         if (!isUsingBpf()) return;
 
-        try {
-            // TODO: Perhaps avoid to remove a non-existent rule.
-            mNetd.tetherOffloadRuleRemove(rule.toTetherOffloadRuleParcel());
-        } catch (RemoteException | ServiceSpecificException e) {
-            mLog.e("Could not remove IPv6 forwarding rule: ", e);
-            return;
-        }
+        if (!mBpfCoordinatorShim.tetherOffloadRuleRemove(rule)) return;
 
         LinkedHashMap<Inet6Address, Ipv6ForwardingRule> rules = mIpv6ForwardingRules.get(ipServer);
         if (rules == null) return;
@@ -344,8 +351,14 @@ public class BpfCoordinator {
             try {
                 final TetherStatsParcel stats =
                         mNetd.tetherOffloadGetAndClearStats(upstreamIfindex);
+                SparseArray<TetherStatsValue> tetherStatsList =
+                        new SparseArray<TetherStatsValue>();
+                tetherStatsList.put(stats.ifIndex, new TetherStatsValue(stats.rxPackets,
+                        stats.rxBytes, 0 /* rxErrors */, stats.txPackets, stats.txBytes,
+                        0 /* txErrors */));
+
                 // Update the last stats delta and delete the local cache for a given upstream.
-                updateQuotaAndStatsFromSnapshot(new TetherStatsParcel[] {stats});
+                updateQuotaAndStatsFromSnapshot(tetherStatsList);
                 mStats.remove(upstreamIfindex);
             } catch (RemoteException | ServiceSpecificException e) {
                 Log.wtf(TAG, "Exception when cleanup tether stats for upstream index "
@@ -743,10 +756,11 @@ public class BpfCoordinator {
     }
 
     private void updateQuotaAndStatsFromSnapshot(
-            @NonNull final TetherStatsParcel[] tetherStatsList) {
+            @NonNull final SparseArray<TetherStatsValue> tetherStatsList) {
         long usedAlertQuota = 0;
-        for (TetherStatsParcel tetherStats : tetherStatsList) {
-            final Integer ifIndex = tetherStats.ifIndex;
+        for (int i = 0; i < tetherStatsList.size(); i++) {
+            final Integer ifIndex = tetherStatsList.keyAt(i);
+            final TetherStatsValue tetherStats = tetherStatsList.valueAt(i);
             final ForwardedStats curr = new ForwardedStats(tetherStats);
             final ForwardedStats base = mStats.get(ifIndex);
             final ForwardedStats diff = (base != null) ? curr.subtract(base) : curr;
@@ -778,16 +792,15 @@ public class BpfCoordinator {
         // TODO: Count the used limit quota for notifying data limit reached.
     }
 
-    private void updateForwardedStatsFromNetd() {
-        final TetherStatsParcel[] tetherStatsList;
-        try {
-            // The reported tether stats are total data usage for all currently-active upstream
-            // interfaces since tethering start.
-            tetherStatsList = mNetd.tetherOffloadGetStats();
-        } catch (RemoteException | ServiceSpecificException e) {
-            mLog.e("Problem fetching tethering stats: ", e);
+    private void updateForwardedStats() {
+        final SparseArray<TetherStatsValue> tetherStatsList =
+                mBpfCoordinatorShim.tetherOffloadGetStats();
+
+        if (tetherStatsList == null) {
+            mLog.e("Problem fetching tethering stats");
             return;
         }
+
         updateQuotaAndStatsFromSnapshot(tetherStatsList);
     }
 
