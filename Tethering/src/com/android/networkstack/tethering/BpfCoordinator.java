@@ -74,7 +74,7 @@ public class BpfCoordinator {
     private static final String TAG = BpfCoordinator.class.getSimpleName();
     private static final int DUMP_TIMEOUT_MS = 10_000;
     private static final String TETHER_INGRESS_FS_PATH =
-            "/sys/fs/bpf/map_offload_tether_ingress_map";
+            "/sys/fs/bpf/map_offload_tether_downstream6_map";
     private static final String TETHER_STATS_MAP_PATH =
             "/sys/fs/bpf/map_offload_tether_stats_map";
     private static final String TETHER_LIMIT_MAP_PATH =
@@ -191,10 +191,10 @@ public class BpfCoordinator {
         }
 
         /** Get ingress BPF map. */
-        @Nullable public BpfMap<TetherIngressKey, TetherIngressValue> getBpfIngressMap() {
+        @Nullable public BpfMap<TetherDownstream6Key, TetherDownstream6Value> getBpfIngressMap() {
             try {
                 return new BpfMap<>(TETHER_INGRESS_FS_PATH,
-                    BpfMap.BPF_F_RDWR, TetherIngressKey.class, TetherIngressValue.class);
+                    BpfMap.BPF_F_RDWR, TetherDownstream6Key.class, TetherDownstream6Value.class);
             } catch (ErrnoException e) {
                 Log.e(TAG, "Cannot create ingress map: " + e);
                 return null;
@@ -554,19 +554,19 @@ public class BpfCoordinator {
         }
 
         /**
-         * Return a TetherIngressKey object built from the rule.
+         * Return a TetherDownstream6Key object built from the rule.
          */
         @NonNull
-        public TetherIngressKey makeTetherIngressKey() {
-            return new TetherIngressKey(upstreamIfindex, address.getAddress());
+        public TetherDownstream6Key makeTetherDownstream6Key() {
+            return new TetherDownstream6Key(upstreamIfindex, address.getAddress());
         }
 
         /**
-         * Return a TetherIngressValue object built from the rule.
+         * Return a TetherDownstream6Value object built from the rule.
          */
         @NonNull
-        public TetherIngressValue makeTetherIngressValue() {
-            return new TetherIngressValue(downstreamIfindex, dstMac, srcMac, ETH_P_IPV6,
+        public TetherDownstream6Value makeTetherDownstream6Value() {
+            return new TetherDownstream6Value(downstreamIfindex, dstMac, srcMac, ETH_P_IPV6,
                     NetworkStackConstants.ETHER_MTU);
         }
 

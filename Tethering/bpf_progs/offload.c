@@ -24,7 +24,7 @@
 #include "bpf_net_helpers.h"
 #include "netdbpf/bpf_shared.h"
 
-DEFINE_BPF_MAP_GRW(tether_ingress_map, HASH, TetherIngressKey, TetherIngressValue, 64,
+DEFINE_BPF_MAP_GRW(tether_downstream6_map, HASH, TetherDownstream6Key, TetherDownstream6Value, 64,
                    AID_NETWORK_STACK)
 
 // Tethering stats, indexed by upstream interface.
@@ -63,12 +63,12 @@ static inline __always_inline int do_forward(struct __sk_buff* skb, bool is_ethe
         (src32 & htonl(0xe0000000)) != htonl(0x20000000))    // 2000::/3 Global Unicast
         return TC_ACT_OK;
 
-    TetherIngressKey k = {
+    TetherDownstream6Key k = {
             .iif = skb->ifindex,
             .neigh6 = ip6->daddr,
     };
 
-    TetherIngressValue* v = bpf_tether_ingress_map_lookup_elem(&k);
+    TetherDownstream6Value* v = bpf_tether_downstream6_map_lookup_elem(&k);
 
     // If we don't find any offload information then simply let the core stack handle it...
     if (!v) return TC_ACT_OK;
@@ -162,8 +162,8 @@ static inline __always_inline int do_forward(struct __sk_buff* skb, bool is_ethe
     return bpf_redirect(v->oif, 0 /* this is effectively BPF_F_EGRESS */);
 }
 
-DEFINE_BPF_PROG("schedcls/ingress/tether_ether", AID_ROOT, AID_ROOT,
-                sched_cls_ingress_tether_ether)
+DEFINE_BPF_PROG("schedcls/tether_downstream6_ether", AID_ROOT, AID_ROOT,
+                sched_cls_tether_downstream6_ether)
 (struct __sk_buff* skb) {
     return do_forward(skb, true);
 }
@@ -181,15 +181,15 @@ DEFINE_BPF_PROG("schedcls/ingress/tether_ether", AID_ROOT, AID_ROOT,
 // and thus a 5.4 kernel always supports this.
 //
 // Hence, this mandatory (must load successfully) implementation for 5.4+ kernels:
-DEFINE_BPF_PROG_KVER("schedcls/ingress/tether_rawip$5_4", AID_ROOT, AID_ROOT,
-                     sched_cls_ingress_tether_rawip_5_4, KVER(5, 4, 0))
+DEFINE_BPF_PROG_KVER("schedcls/tether_downstream6_rawip$5_4", AID_ROOT, AID_ROOT,
+                     sched_cls_tether_downstream6_rawip_5_4, KVER(5, 4, 0))
 (struct __sk_buff* skb) {
     return do_forward(skb, false);
 }
 
 // and this identical optional (may fail to load) implementation for [4.14..5.4) patched kernels:
-DEFINE_OPTIONAL_BPF_PROG_KVER_RANGE("schedcls/ingress/tether_rawip$4_14", AID_ROOT, AID_ROOT,
-                                    sched_cls_ingress_tether_rawip_4_14, KVER(4, 14, 0),
+DEFINE_OPTIONAL_BPF_PROG_KVER_RANGE("schedcls/tether_downstream6_rawip$4_14", AID_ROOT, AID_ROOT,
+                                    sched_cls_tether_downstream6_rawip_4_14, KVER(4, 14, 0),
                                     KVER(5, 4, 0))
 (struct __sk_buff* skb) {
     return do_forward(skb, false);
@@ -198,8 +198,8 @@ DEFINE_OPTIONAL_BPF_PROG_KVER_RANGE("schedcls/ingress/tether_rawip$4_14", AID_RO
 // and define a no-op stub for [4.9,4.14) and unpatched [4.14,5.4) kernels.
 // (if the above real 4.14+ program loaded successfully, then bpfloader will have already pinned
 // it at the same location this one would be pinned at and will thus skip loading this stub)
-DEFINE_BPF_PROG_KVER_RANGE("schedcls/ingress/tether_rawip$stub", AID_ROOT, AID_ROOT,
-                           sched_cls_ingress_tether_rawip_stub, KVER_NONE, KVER(5, 4, 0))
+DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_downstream6_rawip$stub", AID_ROOT, AID_ROOT,
+                           sched_cls_tether_downstream6_rawip_stub, KVER_NONE, KVER(5, 4, 0))
 (struct __sk_buff* skb) {
     return TC_ACT_OK;
 }

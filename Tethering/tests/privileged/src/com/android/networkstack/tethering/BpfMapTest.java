@@ -52,9 +52,9 @@ public final class BpfMapTest {
     // Sync from packages/modules/Connectivity/Tethering/bpf_progs/offload.c.
     private static final int TEST_MAP_SIZE = 16;
     private static final String TETHER_INGRESS_FS_PATH =
-            "/sys/fs/bpf/tethering/map_test_tether_ingress_map";
+            "/sys/fs/bpf/tethering/map_test_tether_downstream6_map";
 
-    private ArrayMap<TetherIngressKey, TetherIngressValue> mTestData;
+    private ArrayMap<TetherDownstream6Key, TetherDownstream6Value> mTestData;
 
     @BeforeClass
     public static void setupOnce() {
@@ -70,15 +70,15 @@ public final class BpfMapTest {
         cleanTestMap();
 
         mTestData = new ArrayMap<>();
-        mTestData.put(createTetherIngressKey(101, "2001:db8::1"),
-                createTetherIngressValue(11, "00:00:00:00:00:0a", "11:11:11:00:00:0b", ETH_P_IPV6,
-                1280));
-        mTestData.put(createTetherIngressKey(102, "2001:db8::2"),
-                createTetherIngressValue(22, "00:00:00:00:00:0c", "22:22:22:00:00:0d", ETH_P_IPV6,
-                1400));
-        mTestData.put(createTetherIngressKey(103, "2001:db8::3"),
-                createTetherIngressValue(33, "00:00:00:00:00:0e", "33:33:33:00:00:0f", ETH_P_IPV6,
-                1500));
+        mTestData.put(createTetherDownstream6Key(101, "2001:db8::1"),
+                createTetherDownstream6Value(11, "00:00:00:00:00:0a", "11:11:11:00:00:0b",
+                ETH_P_IPV6, 1280));
+        mTestData.put(createTetherDownstream6Key(102, "2001:db8::2"),
+                createTetherDownstream6Value(22, "00:00:00:00:00:0c", "22:22:22:00:00:0d",
+                ETH_P_IPV6, 1400));
+        mTestData.put(createTetherDownstream6Key(103, "2001:db8::3"),
+                createTetherDownstream6Value(33, "00:00:00:00:00:0e", "33:33:33:00:00:0f",
+                ETH_P_IPV6, 1500));
     }
 
     @After
@@ -86,14 +86,14 @@ public final class BpfMapTest {
         cleanTestMap();
     }
 
-    private BpfMap<TetherIngressKey, TetherIngressValue> getTestMap() throws Exception {
+    private BpfMap<TetherDownstream6Key, TetherDownstream6Value> getTestMap() throws Exception {
         return new BpfMap<>(
                 TETHER_INGRESS_FS_PATH, BpfMap.BPF_F_RDWR,
-                TetherIngressKey.class, TetherIngressValue.class);
+                TetherDownstream6Key.class, TetherDownstream6Value.class);
     }
 
     private void cleanTestMap() throws Exception {
-        try (BpfMap<TetherIngressKey, TetherIngressValue> bpfMap = getTestMap()) {
+        try (BpfMap<TetherDownstream6Key, TetherDownstream6Value> bpfMap = getTestMap()) {
             bpfMap.forEach((key, value) -> {
                 try {
                     assertTrue(bpfMap.deleteEntry(key));
@@ -105,24 +105,25 @@ public final class BpfMapTest {
         }
     }
 
-    private TetherIngressKey createTetherIngressKey(long iif, String address) throws Exception {
+    private TetherDownstream6Key createTetherDownstream6Key(long iif, String address)
+            throws Exception {
         final InetAddress ipv6Address = InetAddress.getByName(address);
 
-        return new TetherIngressKey(iif, ipv6Address.getAddress());
+        return new TetherDownstream6Key(iif, ipv6Address.getAddress());
     }
 
-    private TetherIngressValue createTetherIngressValue(long oif, String src, String dst, int proto,
-            int pmtu) throws Exception {
+    private TetherDownstream6Value createTetherDownstream6Value(long oif, String src, String dst,
+            int proto, int pmtu) throws Exception {
         final MacAddress srcMac = MacAddress.fromString(src);
         final MacAddress dstMac = MacAddress.fromString(dst);
 
-        return new TetherIngressValue(oif, dstMac, srcMac, proto, pmtu);
+        return new TetherDownstream6Value(oif, dstMac, srcMac, proto, pmtu);
     }
 
     @Test
     public void testGetFd() throws Exception {
         try (BpfMap readOnlyMap = new BpfMap<>(TETHER_INGRESS_FS_PATH, BpfMap.BPF_F_RDONLY,
-                TetherIngressKey.class, TetherIngressValue.class)) {
+                TetherDownstream6Key.class, TetherDownstream6Value.class)) {
             assertNotNull(readOnlyMap);
             try {
                 readOnlyMap.insertEntry(mTestData.keyAt(0), mTestData.valueAt(0));
@@ -132,7 +133,7 @@ public final class BpfMapTest {
             }
         }
         try (BpfMap writeOnlyMap = new BpfMap<>(TETHER_INGRESS_FS_PATH, BpfMap.BPF_F_WRONLY,
-                TetherIngressKey.class, TetherIngressValue.class)) {
+                TetherDownstream6Key.class, TetherDownstream6Value.class)) {
             assertNotNull(writeOnlyMap);
             try {
                 writeOnlyMap.getFirstKey();
@@ -142,14 +143,14 @@ public final class BpfMapTest {
             }
         }
         try (BpfMap readWriteMap = new BpfMap<>(TETHER_INGRESS_FS_PATH, BpfMap.BPF_F_RDWR,
-                TetherIngressKey.class, TetherIngressValue.class)) {
+                TetherDownstream6Key.class, TetherDownstream6Value.class)) {
             assertNotNull(readWriteMap);
         }
     }
 
     @Test
     public void testGetFirstKey() throws Exception {
-        try (BpfMap<TetherIngressKey, TetherIngressValue> bpfMap = getTestMap()) {
+        try (BpfMap<TetherDownstream6Key, TetherDownstream6Value> bpfMap = getTestMap()) {
             // getFirstKey on an empty map returns null.
             assertFalse(bpfMap.containsKey(mTestData.keyAt(0)));
             assertNull(bpfMap.getFirstKey());
@@ -163,9 +164,10 @@ public final class BpfMapTest {
 
     @Test
     public void testGetNextKey() throws Exception {
-        try (BpfMap<TetherIngressKey, TetherIngressValue> bpfMap = getTestMap()) {
+        try (BpfMap<TetherDownstream6Key, TetherDownstream6Value> bpfMap = getTestMap()) {
             // [1] If the passed-in key is not found on empty map, return null.
-            final TetherIngressKey nonexistentKey = createTetherIngressKey(1234, "2001:db8::10");
+            final TetherDownstream6Key nonexistentKey =
+                    createTetherDownstream6Key(1234, "2001:db8::10");
             assertNull(bpfMap.getNextKey(nonexistentKey));
 
             // [2] If the passed-in key is null on empty map, throw NullPointerException.
@@ -175,13 +177,14 @@ public final class BpfMapTest {
             } catch (NullPointerException expected) { }
 
             // The BPF map has one entry now.
-            final ArrayMap<TetherIngressKey, TetherIngressValue> resultMap = new ArrayMap<>();
+            final ArrayMap<TetherDownstream6Key, TetherDownstream6Value> resultMap =
+                    new ArrayMap<>();
             bpfMap.insertEntry(mTestData.keyAt(0), mTestData.valueAt(0));
             resultMap.put(mTestData.keyAt(0), mTestData.valueAt(0));
 
             // [3] If the passed-in key is the last key, return null.
             // Because there is only one entry in the map, the first key equals the last key.
-            final TetherIngressKey lastKey = bpfMap.getFirstKey();
+            final TetherDownstream6Key lastKey = bpfMap.getFirstKey();
             assertNull(bpfMap.getNextKey(lastKey));
 
             // The BPF map has two entries now.
@@ -189,7 +192,7 @@ public final class BpfMapTest {
             resultMap.put(mTestData.keyAt(1), mTestData.valueAt(1));
 
             // [4] If the passed-in key is found, return the next key.
-            TetherIngressKey nextKey = bpfMap.getFirstKey();
+            TetherDownstream6Key nextKey = bpfMap.getFirstKey();
             while (nextKey != null) {
                 if (resultMap.remove(nextKey).equals(nextKey)) {
                     fail("Unexpected result: " + nextKey);
@@ -211,23 +214,23 @@ public final class BpfMapTest {
 
     @Test
     public void testUpdateBpfMap() throws Exception {
-        try (BpfMap<TetherIngressKey, TetherIngressValue> bpfMap = getTestMap()) {
+        try (BpfMap<TetherDownstream6Key, TetherDownstream6Value> bpfMap = getTestMap()) {
 
-            final TetherIngressKey key = mTestData.keyAt(0);
-            final TetherIngressValue value = mTestData.valueAt(0);
-            final TetherIngressValue value2 = mTestData.valueAt(1);
+            final TetherDownstream6Key key = mTestData.keyAt(0);
+            final TetherDownstream6Value value = mTestData.valueAt(0);
+            final TetherDownstream6Value value2 = mTestData.valueAt(1);
             assertFalse(bpfMap.deleteEntry(key));
 
             // updateEntry will create an entry if it does not exist already.
             bpfMap.updateEntry(key, value);
             assertTrue(bpfMap.containsKey(key));
-            final TetherIngressValue result = bpfMap.getValue(key);
+            final TetherDownstream6Value result = bpfMap.getValue(key);
             assertEquals(value, result);
 
             // updateEntry will update an entry that already exists.
             bpfMap.updateEntry(key, value2);
             assertTrue(bpfMap.containsKey(key));
-            final TetherIngressValue result2 = bpfMap.getValue(key);
+            final TetherDownstream6Value result2 = bpfMap.getValue(key);
             assertEquals(value2, result2);
 
             assertTrue(bpfMap.deleteEntry(key));
@@ -237,11 +240,11 @@ public final class BpfMapTest {
 
     @Test
     public void testInsertReplaceEntry() throws Exception {
-        try (BpfMap<TetherIngressKey, TetherIngressValue> bpfMap = getTestMap()) {
+        try (BpfMap<TetherDownstream6Key, TetherDownstream6Value> bpfMap = getTestMap()) {
 
-            final TetherIngressKey key = mTestData.keyAt(0);
-            final TetherIngressValue value = mTestData.valueAt(0);
-            final TetherIngressValue value2 = mTestData.valueAt(1);
+            final TetherDownstream6Key key = mTestData.keyAt(0);
+            final TetherDownstream6Value value = mTestData.valueAt(0);
+            final TetherDownstream6Value value2 = mTestData.valueAt(1);
 
             try {
                 bpfMap.replaceEntry(key, value);
@@ -251,7 +254,7 @@ public final class BpfMapTest {
 
             bpfMap.insertEntry(key, value);
             assertTrue(bpfMap.containsKey(key));
-            final TetherIngressValue result = bpfMap.getValue(key);
+            final TetherDownstream6Value result = bpfMap.getValue(key);
             assertEquals(value, result);
             try {
                 bpfMap.insertEntry(key, value);
@@ -260,15 +263,15 @@ public final class BpfMapTest {
 
             bpfMap.replaceEntry(key, value2);
             assertTrue(bpfMap.containsKey(key));
-            final TetherIngressValue result2 = bpfMap.getValue(key);
+            final TetherDownstream6Value result2 = bpfMap.getValue(key);
             assertEquals(value2, result2);
         }
     }
 
     @Test
     public void testIterateBpfMap() throws Exception {
-        try (BpfMap<TetherIngressKey, TetherIngressValue> bpfMap = getTestMap()) {
-            final ArrayMap<TetherIngressKey, TetherIngressValue> resultMap =
+        try (BpfMap<TetherDownstream6Key, TetherDownstream6Value> bpfMap = getTestMap()) {
+            final ArrayMap<TetherDownstream6Key, TetherDownstream6Value> resultMap =
                     new ArrayMap<>(mTestData);
 
             for (int i = 0; i < resultMap.size(); i++) {
@@ -286,7 +289,7 @@ public final class BpfMapTest {
 
     @Test
     public void testIterateEmptyMap() throws Exception {
-        try (BpfMap<TetherIngressKey, TetherIngressValue> bpfMap = getTestMap()) {
+        try (BpfMap<TetherDownstream6Key, TetherDownstream6Value> bpfMap = getTestMap()) {
             // Can't use an int because variables used in a lambda must be final.
             final AtomicInteger count = new AtomicInteger();
             bpfMap.forEach((key, value) -> count.incrementAndGet());
@@ -297,8 +300,8 @@ public final class BpfMapTest {
 
     @Test
     public void testIterateDeletion() throws Exception {
-        try (BpfMap<TetherIngressKey, TetherIngressValue> bpfMap = getTestMap()) {
-            final ArrayMap<TetherIngressKey, TetherIngressValue> resultMap =
+        try (BpfMap<TetherDownstream6Key, TetherDownstream6Value> bpfMap = getTestMap()) {
+            final ArrayMap<TetherDownstream6Key, TetherDownstream6Value> resultMap =
                     new ArrayMap<>(mTestData);
 
             for (int i = 0; i < resultMap.size(); i++) {
@@ -326,13 +329,15 @@ public final class BpfMapTest {
 
     @Test
     public void testInsertOverflow() throws Exception {
-        try (BpfMap<TetherIngressKey, TetherIngressValue> bpfMap = getTestMap()) {
-            final ArrayMap<TetherIngressKey, TetherIngressValue> testData = new ArrayMap<>();
+        try (BpfMap<TetherDownstream6Key, TetherDownstream6Value> bpfMap = getTestMap()) {
+            final ArrayMap<TetherDownstream6Key, TetherDownstream6Value> testData =
+                    new ArrayMap<>();
 
             // Build test data for TEST_MAP_SIZE + 1 entries.
             for (int i = 1; i <= TEST_MAP_SIZE + 1; i++) {
-                testData.put(createTetherIngressKey(i, "2001:db8::1"), createTetherIngressValue(
-                        100, "de:ad:be:ef:00:01", "de:ad:be:ef:00:02", ETH_P_IPV6, 1500));
+                testData.put(createTetherDownstream6Key(i, "2001:db8::1"),
+                        createTetherDownstream6Value(100, "de:ad:be:ef:00:01", "de:ad:be:ef:00:02",
+                        ETH_P_IPV6, 1500));
             }
 
             // Insert #TEST_MAP_SIZE test entries to the map. The map has reached the limit.
