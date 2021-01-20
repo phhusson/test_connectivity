@@ -52,7 +52,7 @@ public final class BpfMapTest {
     // Sync from packages/modules/Connectivity/Tethering/bpf_progs/offload.c.
     private static final int TEST_MAP_SIZE = 16;
     private static final String TETHER_INGRESS_FS_PATH =
-            "/sys/fs/bpf/map_test_tether_ingress_map";
+            "/sys/fs/bpf/tethering/map_test_tether_ingress_map";
 
     private ArrayMap<TetherIngressKey, TetherIngressValue> mTestData;
 
