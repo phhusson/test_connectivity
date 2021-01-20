@@ -24,18 +24,23 @@
 #include "bpf_net_helpers.h"
 #include "netdbpf/bpf_shared.h"
 
-DEFINE_BPF_MAP_GRW(tether_downstream6_map, HASH, TetherDownstream6Key, TetherDownstream6Value, 64,
-                   AID_NETWORK_STACK)
-
-DEFINE_BPF_MAP_GRW(tether_upstream6_map, HASH, TetherUpstream6Key, TetherUpstream6Value, 64,
-                   AID_NETWORK_STACK)
-
 // Tethering stats, indexed by upstream interface.
-DEFINE_BPF_MAP_GRW(tether_stats_map, HASH, uint32_t, TetherStatsValue, 16, AID_NETWORK_STACK)
+DEFINE_BPF_MAP_GRW(tether_stats_map, HASH, TetherStatsKey, TetherStatsValue, 16, AID_NETWORK_STACK)
 
 // Tethering data limit, indexed by upstream interface.
 // (tethering allowed when stats[iif].rxBytes + stats[iif].txBytes < limit[iif])
-DEFINE_BPF_MAP_GRW(tether_limit_map, HASH, uint32_t, uint64_t, 16, AID_NETWORK_STACK)
+DEFINE_BPF_MAP_GRW(tether_limit_map, HASH, TetherLimitKey, TetherLimitValue, 16, AID_NETWORK_STACK)
+
+// ----- IPv6 Support -----
+
+DEFINE_BPF_MAP_GRW(tether_downstream6_map, HASH, TetherDownstream6Key, TetherDownstream6Value, 64,
+                   AID_NETWORK_STACK)
+
+DEFINE_BPF_MAP_GRW(tether_downstream64_map, HASH, TetherDownstream64Key, TetherDownstream64Value,
+                   64, AID_NETWORK_STACK)
+
+DEFINE_BPF_MAP_GRW(tether_upstream6_map, HASH, TetherUpstream6Key, TetherUpstream6Value, 64,
+                   AID_NETWORK_STACK)
 
 static inline __always_inline int do_forward(struct __sk_buff* skb, const bool is_ethernet,
         const bool downstream) {
@@ -252,6 +257,38 @@ DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_downstream6_rawip$stub", AID_ROOT, A
 
 DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_upstream6_rawip$stub", AID_ROOT, AID_NETWORK_STACK,
                            sched_cls_tether_upstream6_rawip_stub, KVER_NONE, KVER(5, 4, 0))
+(struct __sk_buff* skb) {
+    return TC_ACT_OK;
+}
+
+// ----- IPv4 Support -----
+
+DEFINE_BPF_MAP_GRW(tether_downstream4_map, HASH, TetherDownstream4Key, TetherDownstream4Value, 64,
+                   AID_NETWORK_STACK)
+
+DEFINE_BPF_MAP_GRW(tether_upstream4_map, HASH, TetherUpstream4Key, TetherUpstream4Value, 64,
+                   AID_NETWORK_STACK)
+
+DEFINE_BPF_PROG("schedcls/tether_downstream4_ether", AID_ROOT, AID_NETWORK_STACK,
+                sched_cls_tether_downstream4_ether)
+(struct __sk_buff* skb) {
+    return TC_ACT_OK;
+}
+
+DEFINE_BPF_PROG("schedcls/tether_downstream4_rawip", AID_ROOT, AID_NETWORK_STACK,
+                sched_cls_tether_downstream4_rawip)
+(struct __sk_buff* skb) {
+    return TC_ACT_OK;
+}
+
+DEFINE_BPF_PROG("schedcls/tether_upstream4_ether", AID_ROOT, AID_NETWORK_STACK,
+                sched_cls_tether_upstream4_ether)
+(struct __sk_buff* skb) {
+    return TC_ACT_OK;
+}
+
+DEFINE_BPF_PROG("schedcls/tether_upstream4_rawip", AID_ROOT, AID_NETWORK_STACK,
+                sched_cls_tether_upstream4_rawip)
 (struct __sk_buff* skb) {
     return TC_ACT_OK;
 }
