@@ -194,7 +194,8 @@ public class BpfCoordinatorTest {
                     }
 
                     @Nullable
-                    public BpfMap<TetherDownstream6Key, TetherDownstream6Value> getBpfIngressMap() {
+                    public BpfMap<TetherDownstream6Key, TetherDownstream6Value>
+                            getBpfDownstream6Map() {
                         return mBpfDownstream6Map;
                     }
 
@@ -846,7 +847,7 @@ public class BpfCoordinatorTest {
     private void checkBpfDisabled() throws Exception {
         // The caller may mock the global dependencies |mDeps| which is used in
         // #makeBpfCoordinator for testing.
-        // See #testBpfDisabledbyNoBpfIngressMap.
+        // See #testBpfDisabledbyNoBpfDownstream6Map.
         final BpfCoordinator coordinator = makeBpfCoordinator();
         coordinator.startPolling();
 
@@ -909,9 +910,9 @@ public class BpfCoordinatorTest {
 
     @Test
     @IgnoreUpTo(Build.VERSION_CODES.R)
-    public void testBpfDisabledbyNoBpfIngressMap() throws Exception {
+    public void testBpfDisabledbyNoBpfDownstream6Map() throws Exception {
         setupFunctioningNetdInterface();
-        doReturn(null).when(mDeps).getBpfIngressMap();
+        doReturn(null).when(mDeps).getBpfDownstream6Map();
 
         checkBpfDisabled();
     }
