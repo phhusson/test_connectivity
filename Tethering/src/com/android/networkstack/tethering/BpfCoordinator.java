@@ -73,7 +73,7 @@ import java.util.Objects;
 public class BpfCoordinator {
     private static final String TAG = BpfCoordinator.class.getSimpleName();
     private static final int DUMP_TIMEOUT_MS = 10_000;
-    private static final String TETHER_INGRESS_FS_PATH =
+    private static final String TETHER_DOWNSTREAM6_FS_PATH =
             "/sys/fs/bpf/map_offload_tether_downstream6_map";
     private static final String TETHER_STATS_MAP_PATH =
             "/sys/fs/bpf/map_offload_tether_stats_map";
@@ -190,13 +190,14 @@ public class BpfCoordinator {
             return SdkLevel.isAtLeastS();
         }
 
-        /** Get ingress BPF map. */
-        @Nullable public BpfMap<TetherDownstream6Key, TetherDownstream6Value> getBpfIngressMap() {
+        /** Get downstream6 BPF map. */
+        @Nullable public BpfMap<TetherDownstream6Key, TetherDownstream6Value>
+                getBpfDownstream6Map() {
             try {
-                return new BpfMap<>(TETHER_INGRESS_FS_PATH,
+                return new BpfMap<>(TETHER_DOWNSTREAM6_FS_PATH,
                     BpfMap.BPF_F_RDWR, TetherDownstream6Key.class, TetherDownstream6Value.class);
             } catch (ErrnoException e) {
-                Log.e(TAG, "Cannot create ingress map: " + e);
+                Log.e(TAG, "Cannot create downstream6 map: " + e);
                 return null;
             }
         }

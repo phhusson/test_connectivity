@@ -51,7 +51,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class BpfMapTest {
     // Sync from packages/modules/Connectivity/Tethering/bpf_progs/offload.c.
     private static final int TEST_MAP_SIZE = 16;
-    private static final String TETHER_INGRESS_FS_PATH =
+    private static final String TETHER_DOWNSTREAM6_FS_PATH =
             "/sys/fs/bpf/tethering/map_test_tether_downstream6_map";
 
     private ArrayMap<TetherDownstream6Key, TetherDownstream6Value> mTestData;
@@ -88,7 +88,7 @@ public final class BpfMapTest {
 
     private BpfMap<TetherDownstream6Key, TetherDownstream6Value> getTestMap() throws Exception {
         return new BpfMap<>(
-                TETHER_INGRESS_FS_PATH, BpfMap.BPF_F_RDWR,
+                TETHER_DOWNSTREAM6_FS_PATH, BpfMap.BPF_F_RDWR,
                 TetherDownstream6Key.class, TetherDownstream6Value.class);
     }
 
@@ -122,7 +122,7 @@ public final class BpfMapTest {
 
     @Test
     public void testGetFd() throws Exception {
-        try (BpfMap readOnlyMap = new BpfMap<>(TETHER_INGRESS_FS_PATH, BpfMap.BPF_F_RDONLY,
+        try (BpfMap readOnlyMap = new BpfMap<>(TETHER_DOWNSTREAM6_FS_PATH, BpfMap.BPF_F_RDONLY,
                 TetherDownstream6Key.class, TetherDownstream6Value.class)) {
             assertNotNull(readOnlyMap);
             try {
@@ -132,7 +132,7 @@ public final class BpfMapTest {
                 assertEquals(OsConstants.EPERM, expected.errno);
             }
         }
-        try (BpfMap writeOnlyMap = new BpfMap<>(TETHER_INGRESS_FS_PATH, BpfMap.BPF_F_WRONLY,
+        try (BpfMap writeOnlyMap = new BpfMap<>(TETHER_DOWNSTREAM6_FS_PATH, BpfMap.BPF_F_WRONLY,
                 TetherDownstream6Key.class, TetherDownstream6Value.class)) {
             assertNotNull(writeOnlyMap);
             try {
@@ -142,7 +142,7 @@ public final class BpfMapTest {
                 assertEquals(OsConstants.EPERM, expected.errno);
             }
         }
-        try (BpfMap readWriteMap = new BpfMap<>(TETHER_INGRESS_FS_PATH, BpfMap.BPF_F_RDWR,
+        try (BpfMap readWriteMap = new BpfMap<>(TETHER_DOWNSTREAM6_FS_PATH, BpfMap.BPF_F_RDWR,
                 TetherDownstream6Key.class, TetherDownstream6Value.class)) {
             assertNotNull(readWriteMap);
         }
