@@ -187,13 +187,13 @@ static inline __always_inline int do_forward(struct __sk_buff* skb, const bool i
     return bpf_redirect(downstream ? vd->oif : vu->oif, 0 /* this is effectively BPF_F_EGRESS */);
 }
 
-DEFINE_BPF_PROG("schedcls/tether_downstream6_ether", AID_ROOT, AID_ROOT,
+DEFINE_BPF_PROG("schedcls/tether_downstream6_ether", AID_ROOT, AID_NETWORK_STACK,
                 sched_cls_tether_downstream6_ether)
 (struct __sk_buff* skb) {
     return do_forward(skb, /* is_ethernet */ true, /* downstream */ true);
 }
 
-DEFINE_BPF_PROG("schedcls/tether_upstream6_ether", AID_ROOT, AID_ROOT,
+DEFINE_BPF_PROG("schedcls/tether_upstream6_ether", AID_ROOT, AID_NETWORK_STACK,
                 sched_cls_tether_upstream6_ether)
 (struct __sk_buff* skb) {
     return do_forward(skb, /* is_ethernet */ true, /* downstream */ false);
@@ -212,29 +212,31 @@ DEFINE_BPF_PROG("schedcls/tether_upstream6_ether", AID_ROOT, AID_ROOT,
 // and thus a 5.4 kernel always supports this.
 //
 // Hence, these mandatory (must load successfully) implementations for 5.4+ kernels:
-DEFINE_BPF_PROG_KVER("schedcls/tether_downstream6_rawip$5_4", AID_ROOT, AID_ROOT,
+DEFINE_BPF_PROG_KVER("schedcls/tether_downstream6_rawip$5_4", AID_ROOT, AID_NETWORK_STACK,
                      sched_cls_tether_downstream6_rawip_5_4, KVER(5, 4, 0))
 (struct __sk_buff* skb) {
     return do_forward(skb, /* is_ethernet */ false, /* downstream */ true);
 }
 
-DEFINE_BPF_PROG_KVER("schedcls/tether_upstream6_rawip$5_4", AID_ROOT, AID_ROOT,
+DEFINE_BPF_PROG_KVER("schedcls/tether_upstream6_rawip$5_4", AID_ROOT, AID_NETWORK_STACK,
                      sched_cls_tether_upstream6_rawip_5_4, KVER(5, 4, 0))
 (struct __sk_buff* skb) {
     return do_forward(skb, /* is_ethernet */ false, /* downstream */ false);
 }
 
 // and these identical optional (may fail to load) implementations for [4.14..5.4) patched kernels:
-DEFINE_OPTIONAL_BPF_PROG_KVER_RANGE("schedcls/tether_downstream6_rawip$4_14", AID_ROOT, AID_ROOT,
-                                    sched_cls_tether_downstream6_rawip_4_14, KVER(4, 14, 0),
-                                    KVER(5, 4, 0))
+DEFINE_OPTIONAL_BPF_PROG_KVER_RANGE("schedcls/tether_downstream6_rawip$4_14",
+                                    AID_ROOT, AID_NETWORK_STACK,
+                                    sched_cls_tether_downstream6_rawip_4_14,
+                                    KVER(4, 14, 0), KVER(5, 4, 0))
 (struct __sk_buff* skb) {
     return do_forward(skb, /* is_ethernet */ false, /* downstream */ true);
 }
 
-DEFINE_OPTIONAL_BPF_PROG_KVER_RANGE("schedcls/tether_upstream6_rawip$4_14", AID_ROOT, AID_ROOT,
-                                    sched_cls_tether_upstream6_rawip_4_14, KVER(4, 14, 0),
-                                    KVER(5, 4, 0))
+DEFINE_OPTIONAL_BPF_PROG_KVER_RANGE("schedcls/tether_upstream6_rawip$4_14",
+                                    AID_ROOT, AID_NETWORK_STACK,
+                                    sched_cls_tether_upstream6_rawip_4_14,
+                                    KVER(4, 14, 0), KVER(5, 4, 0))
 (struct __sk_buff* skb) {
     return do_forward(skb, /* is_ethernet */ false, /* downstream */ false);
 }
@@ -242,13 +244,13 @@ DEFINE_OPTIONAL_BPF_PROG_KVER_RANGE("schedcls/tether_upstream6_rawip$4_14", AID_
 // and define no-op stubs for [4.9,4.14) and unpatched [4.14,5.4) kernels.
 // (if the above real 4.14+ program loaded successfully, then bpfloader will have already pinned
 // it at the same location this one would be pinned at and will thus skip loading this stub)
-DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_downstream6_rawip$stub", AID_ROOT, AID_ROOT,
+DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_downstream6_rawip$stub", AID_ROOT, AID_NETWORK_STACK,
                            sched_cls_tether_downstream6_rawip_stub, KVER_NONE, KVER(5, 4, 0))
 (struct __sk_buff* skb) {
     return TC_ACT_OK;
 }
 
-DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_upstream6_rawip$stub", AID_ROOT, AID_ROOT,
+DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_upstream6_rawip$stub", AID_ROOT, AID_NETWORK_STACK,
                            sched_cls_tether_upstream6_rawip_stub, KVER_NONE, KVER(5, 4, 0))
 (struct __sk_buff* skb) {
     return TC_ACT_OK;
