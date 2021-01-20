@@ -296,7 +296,8 @@ public class IpServerTest {
                     }
 
                     @Nullable
-                    public BpfMap<TetherDownstream6Key, TetherDownstream6Value> getBpfIngressMap() {
+                    public BpfMap<TetherDownstream6Key, TetherDownstream6Value>
+                            getBpfDownstream6Map() {
                         return mBpfDownstream6Map;
                     }
 
@@ -770,13 +771,13 @@ public class IpServerTest {
     }
 
     @NonNull
-    private static TetherDownstream6Key makeIngressKey(int upstreamIfindex,
+    private static TetherDownstream6Key makeDownstream6Key(int upstreamIfindex,
             @NonNull final InetAddress dst) {
         return new TetherDownstream6Key(upstreamIfindex, dst.getAddress());
     }
 
     @NonNull
-    private static TetherDownstream6Value makeIngressValue(@NonNull final MacAddress dstMac) {
+    private static TetherDownstream6Value makeDownstream6Value(@NonNull final MacAddress dstMac) {
         return new TetherDownstream6Value(TEST_IFACE_PARAMS.index, dstMac,
                 TEST_IFACE_PARAMS.macAddr, ETH_P_IPV6, NetworkStackConstants.ETHER_MTU);
     }
@@ -793,7 +794,7 @@ public class IpServerTest {
             @NonNull final InetAddress dst, @NonNull final MacAddress dstMac) throws Exception {
         if (mBpfDeps.isAtLeastS()) {
             verifyWithOrder(inOrder, mBpfDownstream6Map).updateEntry(
-                    makeIngressKey(upstreamIfindex, dst), makeIngressValue(dstMac));
+                    makeDownstream6Key(upstreamIfindex, dst), makeDownstream6Value(dstMac));
         } else {
             verifyWithOrder(inOrder, mNetd).tetherOffloadRuleAdd(matches(upstreamIfindex, dst,
                     dstMac));
@@ -803,8 +804,9 @@ public class IpServerTest {
     private void verifyNeverTetherOffloadRuleAdd(int upstreamIfindex,
             @NonNull final InetAddress dst, @NonNull final MacAddress dstMac) throws Exception {
         if (mBpfDeps.isAtLeastS()) {
-            verify(mBpfDownstream6Map, never()).updateEntry(makeIngressKey(upstreamIfindex, dst),
-                    makeIngressValue(dstMac));
+            verify(mBpfDownstream6Map, never()).updateEntry(
+                    makeDownstream6Key(upstreamIfindex, dst),
+                    makeDownstream6Value(dstMac));
         } else {
             verify(mNetd, never()).tetherOffloadRuleAdd(matches(upstreamIfindex, dst, dstMac));
         }
@@ -821,8 +823,8 @@ public class IpServerTest {
     private void verifyTetherOffloadRuleRemove(@Nullable InOrder inOrder, int upstreamIfindex,
             @NonNull final InetAddress dst, @NonNull final MacAddress dstMac) throws Exception {
         if (mBpfDeps.isAtLeastS()) {
-            verifyWithOrder(inOrder, mBpfDownstream6Map).deleteEntry(makeIngressKey(upstreamIfindex,
-                    dst));
+            verifyWithOrder(inOrder, mBpfDownstream6Map).deleteEntry(makeDownstream6Key(
+                    upstreamIfindex, dst));
         } else {
             // |dstMac| is not required for deleting rules. Used bacause tetherOffloadRuleRemove
             // uses a whole rule to be a argument.

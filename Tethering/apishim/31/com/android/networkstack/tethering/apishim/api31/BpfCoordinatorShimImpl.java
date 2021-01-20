@@ -69,7 +69,7 @@ public class BpfCoordinatorShimImpl
 
     public BpfCoordinatorShimImpl(@NonNull final Dependencies deps) {
         mLog = deps.getSharedLog().forSubComponent(TAG);
-        mBpfDownstream6Map = deps.getBpfIngressMap();
+        mBpfDownstream6Map = deps.getBpfDownstream6Map();
         mBpfStatsMap = deps.getBpfStatsMap();
         mBpfLimitMap = deps.getBpfLimitMap();
     }
