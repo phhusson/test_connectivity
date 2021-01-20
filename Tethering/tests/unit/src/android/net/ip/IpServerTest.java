@@ -106,6 +106,8 @@ import com.android.networkstack.tethering.BpfMap;
 import com.android.networkstack.tethering.PrivateAddressCoordinator;
 import com.android.networkstack.tethering.TetherIngressKey;
 import com.android.networkstack.tethering.TetherIngressValue;
+import com.android.networkstack.tethering.TetherLimitKey;
+import com.android.networkstack.tethering.TetherLimitValue;
 import com.android.networkstack.tethering.TetherStatsKey;
 import com.android.networkstack.tethering.TetherStatsValue;
 import com.android.networkstack.tethering.TetheringConfiguration;
@@ -172,6 +174,7 @@ public class IpServerTest {
     @Mock private TetheringConfiguration mTetherConfig;
     @Mock private BpfMap<TetherIngressKey, TetherIngressValue> mBpfIngressMap;
     @Mock private BpfMap<TetherStatsKey, TetherStatsValue> mBpfStatsMap;
+    @Mock private BpfMap<TetherLimitKey, TetherLimitValue> mBpfLimitMap;
 
     @Captor private ArgumentCaptor<DhcpServingParamsParcel> mDhcpParamsCaptor;
 
@@ -300,6 +303,11 @@ public class IpServerTest {
                     @Nullable
                     public BpfMap<TetherStatsKey, TetherStatsValue> getBpfStatsMap() {
                         return mBpfStatsMap;
+                    }
+
+                    @Nullable
+                    public BpfMap<TetherLimitKey, TetherLimitValue> getBpfLimitMap() {
+                        return mBpfLimitMap;
                     }
                 };
         mBpfCoordinator = spy(new BpfCoordinator(mBpfDeps));
