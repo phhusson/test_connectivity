@@ -16,8 +16,11 @@
 
 package com.android.networkstack.tethering.apishim.api31;
 
+import static android.net.netstats.provider.NetworkStatsProvider.QUOTA_UNLIMITED;
+
 import android.net.util.SharedLog;
 import android.system.ErrnoException;
+import android.system.Os;
 import android.system.OsConstants;
 import android.util.SparseArray;
 
@@ -29,8 +32,12 @@ import com.android.networkstack.tethering.BpfCoordinator.Ipv6ForwardingRule;
 import com.android.networkstack.tethering.BpfMap;
 import com.android.networkstack.tethering.TetherIngressKey;
 import com.android.networkstack.tethering.TetherIngressValue;
+import com.android.networkstack.tethering.TetherLimitKey;
+import com.android.networkstack.tethering.TetherLimitValue;
 import com.android.networkstack.tethering.TetherStatsKey;
 import com.android.networkstack.tethering.TetherStatsValue;
+
+import java.io.FileDescriptor;
 
 /**
  * Bpf coordinator class for API shims.
@@ -38,6 +45,11 @@ import com.android.networkstack.tethering.TetherStatsValue;
 public class BpfCoordinatorShimImpl
         extends com.android.networkstack.tethering.apishim.common.BpfCoordinatorShim {
     private static final String TAG = "api31.BpfCoordinatorShimImpl";
+
+    // AF_KEY socket type. See include/linux/socket.h.
+    private static final int AF_KEY = 15;
+    // PFKEYv2 constants. See include/uapi/linux/pfkeyv2.h.
+    private static final int PF_KEY_V2 = 2;
 
     @NonNull
     private final SharedLog mLog;
@@ -51,15 +63,20 @@ public class BpfCoordinatorShimImpl
     @Nullable
     private final BpfMap<TetherStatsKey, TetherStatsValue> mBpfStatsMap;
 
+    // BPF map of per-interface quota for tethering offload.
+    @Nullable
+    private final BpfMap<TetherLimitKey, TetherLimitValue> mBpfLimitMap;
+
     public BpfCoordinatorShimImpl(@NonNull final Dependencies deps) {
         mLog = deps.getSharedLog().forSubComponent(TAG);
         mBpfIngressMap = deps.getBpfIngressMap();
         mBpfStatsMap = deps.getBpfStatsMap();
+        mBpfLimitMap = deps.getBpfLimitMap();
     }
 
     @Override
     public boolean isInitialized() {
-        return mBpfIngressMap != null && mBpfStatsMap != null;
+        return mBpfIngressMap != null && mBpfStatsMap != null  && mBpfLimitMap != null;
     }
 
     @Override
@@ -113,11 +130,148 @@ public class BpfCoordinatorShimImpl
     }
 
     @Override
+    public boolean tetherOffloadSetInterfaceQuota(int ifIndex, long quotaBytes) {
+        if (!isInitialized()) return false;
+
+        // The common case is an update, where the stats already exist,
+        // hence we read first, even though writing with BPF_NOEXIST
+        // first would make the code simpler.
+        long rxBytes, txBytes;
+        TetherStatsValue statsValue = null;
+
+        try {
+            statsValue = mBpfStatsMap.getValue(new TetherStatsKey(ifIndex));
+        } catch (ErrnoException e) {
+            // The BpfMap#getValue doesn't throw an errno ENOENT exception. Catch other error
+            // while trying to get stats entry.
+            mLog.e("Could not get stats entry of interface index " + ifIndex + ": ", e);
+            return false;
+        }
+
+        if (statsValue != null) {
+            // Ok, there was a stats entry.
+            rxBytes = statsValue.rxBytes;
+            txBytes = statsValue.txBytes;
+        } else {
+            // No stats entry - create one with zeroes.
+            try {
+                // This function is the *only* thing that can create entries.
+                // BpfMap#insertEntry use BPF_NOEXIST to create the entry. The entry is created
+                // if and only if it doesn't exist.
+                mBpfStatsMap.insertEntry(new TetherStatsKey(ifIndex), new TetherStatsValue(
+                        0 /* rxPackets */, 0 /* rxBytes */, 0 /* rxErrors */, 0 /* txPackets */,
+                        0 /* txBytes */, 0 /* txErrors */));
+            } catch (ErrnoException | IllegalArgumentException e) {
+                mLog.e("Could not create stats entry: ", e);
+                return false;
+            }
+            rxBytes = 0;
+            txBytes = 0;
+        }
+
+        // rxBytes + txBytes won't overflow even at 5gbps for ~936 years.
+        long newLimit = rxBytes + txBytes + quotaBytes;
+
+        // if adding limit (e.g., if limit is QUOTA_UNLIMITED) caused overflow: clamp to 'infinity'
+        if (newLimit < rxBytes + txBytes) newLimit = QUOTA_UNLIMITED;
+
+        try {
+            mBpfLimitMap.updateEntry(new TetherLimitKey(ifIndex), new TetherLimitValue(newLimit));
+        } catch (ErrnoException e) {
+            mLog.e("Fail to set quota " + quotaBytes + " for interface index " + ifIndex + ": ", e);
+            return false;
+        }
+
+        return true;
+    }
+
+    @Override
+    @Nullable
+    public TetherStatsValue tetherOffloadGetAndClearStats(int ifIndex) {
+        if (!isInitialized()) return null;
+
+        // getAndClearTetherOffloadStats is called after all offload rules have already been
+        // deleted for the given upstream interface. Before starting to do cleanup stuff in this
+        // function, use synchronizeKernelRCU to make sure that all the current running eBPF
+        // programs are finished on all CPUs, especially the unfinished packet processing. After
+        // synchronizeKernelRCU returned, we can safely read or delete on the stats map or the
+        // limit map.
+        final int res = synchronizeKernelRCU();
+        if (res != 0) {
+            // Error log but don't return. Do as much cleanup as possible.
+            mLog.e("synchronize_rcu() failed: " + res);
+        }
+
+        TetherStatsValue statsValue = null;
+        try {
+            statsValue = mBpfStatsMap.getValue(new TetherStatsKey(ifIndex));
+        } catch (ErrnoException e) {
+            mLog.e("Could not get stats entry for interface index " + ifIndex + ": ", e);
+            return null;
+        }
+
+        if (statsValue == null) {
+            mLog.e("Could not get stats entry for interface index " + ifIndex);
+            return null;
+        }
+
+        try {
+            mBpfStatsMap.deleteEntry(new TetherStatsKey(ifIndex));
+        } catch (ErrnoException e) {
+            mLog.e("Could not delete stats entry for interface index " + ifIndex + ": ", e);
+            return null;
+        }
+
+        try {
+            mBpfLimitMap.deleteEntry(new TetherLimitKey(ifIndex));
+        } catch (ErrnoException e) {
+            mLog.e("Could not delete limit for interface index " + ifIndex + ": ", e);
+            return null;
+        }
+
+        return statsValue;
+    }
+
+    @Override
     public String toString() {
         return "mBpfIngressMap{"
                 + (mBpfIngressMap != null ? "initialized" : "not initialized") + "}, "
                 + "mBpfStatsMap{"
-                + (mBpfStatsMap != null ? "initialized" : "not initialized") + "} "
+                + (mBpfStatsMap != null ? "initialized" : "not initialized") + "}, "
+                + "mBpfLimitMap{"
+                + (mBpfLimitMap != null ? "initialized" : "not initialized") + "} "
                 + "}";
+    }
+
+    /**
+     * Call synchronize_rcu() to block until all existing RCU read-side critical sections have
+     * been completed.
+     * Note that BpfCoordinatorTest have no permissions to create or close pf_key socket. It is
+     * okay for now because the caller #bpfGetAndClearStats doesn't care the result of this
+     * function. The tests don't be broken.
+     * TODO: Wrap this function into Dependencies for mocking in tests.
+     */
+    private int synchronizeKernelRCU() {
+        // This is a temporary hack for network stats map swap on devices running
+        // 4.9 kernels. The kernel code of socket release on pf_key socket will
+        // explicitly call synchronize_rcu() which is exactly what we need.
+        FileDescriptor pfSocket;
+        try {
+            pfSocket = Os.socket(AF_KEY, OsConstants.SOCK_RAW | OsConstants.SOCK_CLOEXEC,
+                    PF_KEY_V2);
+        } catch (ErrnoException e) {
+            mLog.e("create PF_KEY socket failed: ", e);
+            return e.errno;
+        }
+
+        // When closing socket, synchronize_rcu() gets called in sock_release().
+        try {
+            Os.close(pfSocket);
+        } catch (ErrnoException e) {
+            mLog.e("failed to close the PF_KEY socket: ", e);
+            return e.errno;
+        }
+
+        return 0;
     }
 }

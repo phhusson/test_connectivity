@@ -34,15 +34,12 @@ import android.net.MacAddress;
 import android.net.NetworkStats;
 import android.net.NetworkStats.Entry;
 import android.net.TetherOffloadRuleParcel;
-import android.net.TetherStatsParcel;
 import android.net.ip.IpServer;
 import android.net.netstats.provider.NetworkStatsProvider;
 import android.net.util.SharedLog;
 import android.net.util.TetheringUtils.ForwardedStats;
 import android.os.ConditionVariable;
 import android.os.Handler;
-import android.os.RemoteException;
-import android.os.ServiceSpecificException;
 import android.system.ErrnoException;
 import android.text.TextUtils;
 import android.util.Log;
@@ -80,6 +77,8 @@ public class BpfCoordinator {
             "/sys/fs/bpf/map_offload_tether_ingress_map";
     private static final String TETHER_STATS_MAP_PATH =
             "/sys/fs/bpf/map_offload_tether_stats_map";
+    private static final String TETHER_LIMIT_MAP_PATH =
+            "/sys/fs/bpf/map_offload_tether_limit_map";
 
     @VisibleForTesting
     enum StatsType {
@@ -209,6 +208,17 @@ public class BpfCoordinator {
                     BpfMap.BPF_F_RDWR, TetherStatsKey.class, TetherStatsValue.class);
             } catch (ErrnoException e) {
                 Log.e(TAG, "Cannot create stats map: " + e);
+                return null;
+            }
+        }
+
+        /** Get limit BPF map. */
+        @Nullable public BpfMap<TetherLimitKey, TetherLimitValue> getBpfLimitMap() {
+            try {
+                return new BpfMap<>(TETHER_LIMIT_MAP_PATH,
+                    BpfMap.BPF_F_RDWR, TetherLimitKey.class, TetherLimitValue.class);
+            } catch (ErrnoException e) {
+                Log.e(TAG, "Cannot create limit map: " + e);
                 return null;
             }
         }
@@ -348,22 +358,19 @@ public class BpfCoordinator {
         // Do cleanup functionality if there is no more rule on the given upstream.
         final int upstreamIfindex = rule.upstreamIfindex;
         if (!isAnyRuleOnUpstream(upstreamIfindex)) {
-            try {
-                final TetherStatsParcel stats =
-                        mNetd.tetherOffloadGetAndClearStats(upstreamIfindex);
-                SparseArray<TetherStatsValue> tetherStatsList =
-                        new SparseArray<TetherStatsValue>();
-                tetherStatsList.put(stats.ifIndex, new TetherStatsValue(stats.rxPackets,
-                        stats.rxBytes, 0 /* rxErrors */, stats.txPackets, stats.txBytes,
-                        0 /* txErrors */));
-
-                // Update the last stats delta and delete the local cache for a given upstream.
-                updateQuotaAndStatsFromSnapshot(tetherStatsList);
-                mStats.remove(upstreamIfindex);
-            } catch (RemoteException | ServiceSpecificException e) {
-                Log.wtf(TAG, "Exception when cleanup tether stats for upstream index "
-                        + upstreamIfindex + ": ", e);
+            final TetherStatsValue statsValue =
+                    mBpfCoordinatorShim.tetherOffloadGetAndClearStats(upstreamIfindex);
+            if (statsValue == null) {
+                Log.wtf(TAG, "Fail to cleanup tether stats for upstream index " + upstreamIfindex);
+                return;
             }
+
+            SparseArray<TetherStatsValue> tetherStatsList = new SparseArray<TetherStatsValue>();
+            tetherStatsList.put(upstreamIfindex, statsValue);
+
+            // Update the last stats delta and delete the local cache for a given upstream.
+            updateQuotaAndStatsFromSnapshot(tetherStatsList);
+            mStats.remove(upstreamIfindex);
         }
     }
 
@@ -673,20 +680,13 @@ public class BpfCoordinator {
         return quotaBytes;
     }
 
-    private boolean sendDataLimitToNetd(int ifIndex, long quotaBytes) {
+    private boolean sendDataLimitToBpfMap(int ifIndex, long quotaBytes) {
         if (ifIndex == 0) {
             Log.wtf(TAG, "Invalid interface index.");
             return false;
         }
 
-        try {
-            mNetd.tetherOffloadSetInterfaceQuota(ifIndex, quotaBytes);
-        } catch (RemoteException | ServiceSpecificException e) {
-            mLog.e("Exception when updating quota " + quotaBytes + ": ", e);
-            return false;
-        }
-
-        return true;
+        return mBpfCoordinatorShim.tetherOffloadSetInterfaceQuota(ifIndex, quotaBytes);
     }
 
     // Handle the data limit update from the service which is the stats provider registered for.
@@ -699,7 +699,7 @@ public class BpfCoordinator {
         if (ifIndex == 0) return;
 
         final long quotaBytes = getQuotaBytes(iface);
-        sendDataLimitToNetd(ifIndex, quotaBytes);
+        sendDataLimitToBpfMap(ifIndex, quotaBytes);
     }
 
     // Handle the data limit update while adding forwarding rules.
@@ -710,7 +710,7 @@ public class BpfCoordinator {
             return false;
         }
         final long quotaBytes = getQuotaBytes(iface);
-        return sendDataLimitToNetd(ifIndex, quotaBytes);
+        return sendDataLimitToBpfMap(ifIndex, quotaBytes);
     }
 
     private boolean isAnyRuleOnUpstream(int upstreamIfindex) {
