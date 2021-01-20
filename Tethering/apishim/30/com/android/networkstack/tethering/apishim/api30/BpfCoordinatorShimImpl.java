@@ -92,6 +92,17 @@ public class BpfCoordinatorShimImpl
         return toTetherStatsValueSparseArray(tetherStatsList);
     }
 
+    @Override
+    public boolean tetherOffloadSetInterfaceQuota(int ifIndex, long quotaBytes) {
+        try {
+            mNetd.tetherOffloadSetInterfaceQuota(ifIndex, quotaBytes);
+        } catch (RemoteException | ServiceSpecificException e) {
+            mLog.e("Exception when updating quota " + quotaBytes + ": ", e);
+            return false;
+        }
+        return true;
+    }
+
     @NonNull
     private SparseArray<TetherStatsValue> toTetherStatsValueSparseArray(
             @NonNull final TetherStatsParcel[] parcels) {
@@ -103,6 +114,21 @@ public class BpfCoordinatorShimImpl
         }
 
         return tetherStatsList;
+    }
+
+    @Override
+    @Nullable
+    public TetherStatsValue tetherOffloadGetAndClearStats(int ifIndex) {
+        try {
+            final TetherStatsParcel stats =
+                    mNetd.tetherOffloadGetAndClearStats(ifIndex);
+            return new TetherStatsValue(stats.rxPackets, stats.rxBytes, 0 /* rxErrors */,
+                    stats.txPackets, stats.txBytes, 0 /* txErrors */);
+        } catch (RemoteException | ServiceSpecificException e) {
+            mLog.e("Exception when cleanup tether stats for upstream index "
+                    + ifIndex + ": ", e);
+            return null;
+        }
     }
 
     @Override
