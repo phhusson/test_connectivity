@@ -26,14 +26,14 @@ import java.net.UnknownHostException;
 import java.util.Arrays;
 
 /** The key of BpfMap which is used for bpf offload. */
-public class TetherIngressKey extends Struct {
+public class TetherDownstream6Key extends Struct {
     @Field(order = 0, type = Type.U32)
     public final long iif; // The input interface index.
 
     @Field(order = 1, type = Type.ByteArray, arraysize = 16)
     public final byte[] neigh6; // The destination IPv6 address.
 
-    public TetherIngressKey(final long iif, final byte[] neigh6) {
+    public TetherDownstream6Key(final long iif, final byte[] neigh6) {
         try {
             final Inet6Address unused = (Inet6Address) InetAddress.getByAddress(neigh6);
         } catch (ClassCastException | UnknownHostException e) {
@@ -48,9 +48,9 @@ public class TetherIngressKey extends Struct {
     public boolean equals(Object obj) {
         if (this == obj) return true;
 
-        if (!(obj instanceof TetherIngressKey)) return false;
+        if (!(obj instanceof TetherDownstream6Key)) return false;
 
-        final TetherIngressKey that = (TetherIngressKey) obj;
+        final TetherDownstream6Key that = (TetherDownstream6Key) obj;
 
         return iif == that.iif && Arrays.equals(neigh6, that.neigh6);
     }
@@ -66,7 +66,7 @@ public class TetherIngressKey extends Struct {
             return String.format("iif: %d, neigh: %s", iif, Inet6Address.getByAddress(neigh6));
         } catch (UnknownHostException e) {
             // Should not happen because construtor already verify neigh6.
-            throw new IllegalStateException("Invalid TetherIngressKey");
+            throw new IllegalStateException("Invalid TetherDownstream6Key");
         }
     }
 }
