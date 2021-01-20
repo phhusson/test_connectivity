@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 
+#include <linux/if_ether.h>
+#include <linux/in.h>
+#include <linux/ip.h>
+
 #include "bpf_helpers.h"
 #include "bpf_net_helpers.h"
 #include "netdbpf/bpf_shared.h"
@@ -21,5 +25,23 @@
 // Used only by TetheringPrivilegedTests, not by production code.
 DEFINE_BPF_MAP_GRW(tether_ingress_map, HASH, TetherIngressKey, TetherIngressValue, 16,
                    AID_NETWORK_STACK)
+
+DEFINE_BPF_PROG_KVER("xdp/drop_ipv4_udp_ether", AID_ROOT, AID_ROOT,
+                      xdp_test, KVER(5, 9, 0))
+(struct xdp_md *ctx) {
+    void *data = (void *)(long)ctx->data;
+    void *data_end = (void *)(long)ctx->data_end;
+
+    struct ethhdr *eth = data;
+    int hsize = sizeof(*eth);
+
+    struct iphdr *ip = data + hsize;
+    hsize += sizeof(struct iphdr);
+
+    if (data + hsize > data_end) return XDP_PASS;
+    if (eth->h_proto != htons(ETH_P_IP)) return XDP_PASS;
+    if (ip->protocol == IPPROTO_UDP) return XDP_DROP;
+    return XDP_PASS;
+}
 
 LICENSE("Apache 2.0");
