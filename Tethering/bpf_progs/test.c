@@ -26,7 +26,7 @@
 DEFINE_BPF_MAP_GRW(tether_downstream6_map, HASH, TetherDownstream6Key, TetherDownstream6Value, 16,
                    AID_NETWORK_STACK)
 
-DEFINE_BPF_PROG_KVER("xdp/drop_ipv4_udp_ether", AID_ROOT, AID_ROOT,
+DEFINE_BPF_PROG_KVER("xdp/drop_ipv4_udp_ether", AID_ROOT, AID_NETWORK_STACK,
                       xdp_test, KVER(5, 9, 0))
 (struct xdp_md *ctx) {
     void *data = (void *)(long)ctx->data;
