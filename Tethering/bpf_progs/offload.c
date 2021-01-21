@@ -293,5 +293,30 @@ DEFINE_BPF_PROG("schedcls/tether_upstream4_rawip", AID_ROOT, AID_NETWORK_STACK,
     return TC_ACT_OK;
 }
 
+// ----- XDP Support -----
+
+#define DEFINE_XDP_PROG(str, func) \
+    DEFINE_BPF_PROG_KVER(str, AID_ROOT, AID_NETWORK_STACK, func, KVER(5, 9, 0))(struct xdp_md *ctx)
+
+DEFINE_XDP_PROG("xdp/tether_downstream_ether",
+                 xdp_tether_downstream_ether) {
+    return XDP_PASS;
+}
+
+DEFINE_XDP_PROG("xdp/tether_downstream_rawip",
+                 xdp_tether_downstream_rawip) {
+    return XDP_PASS;
+}
+
+DEFINE_XDP_PROG("xdp/tether_upstream_ether",
+                 xdp_tether_upstream_ether) {
+    return XDP_PASS;
+}
+
+DEFINE_XDP_PROG("xdp/tether_upstream_rawip",
+                 xdp_tether_upstream_rawip) {
+    return XDP_PASS;
+}
+
 LICENSE("Apache 2.0");
 CRITICAL("netd");
