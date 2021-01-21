@@ -199,17 +199,22 @@ public class UpstreamNetworkMonitor {
 
     private void reevaluateUpstreamRequirements(boolean tryCell, boolean autoUpstream,
             boolean dunRequired) {
-        final boolean mobileRequestWasRequired = mTryCell && (mDunRequired || !mAutoUpstream);
-        final boolean mobileRequestIsRequired = tryCell && (dunRequired || !autoUpstream);
+        final boolean mobileRequestRequired = tryCell && (dunRequired || !autoUpstream);
         final boolean dunRequiredChanged = (mDunRequired != dunRequired);
 
         mTryCell = tryCell;
         mDunRequired = dunRequired;
         mAutoUpstream = autoUpstream;
 
-        if (dunRequiredChanged && mobileNetworkRequested()) {
-            releaseMobileNetworkRequest();
+        if (mobileRequestRequired && !mobileNetworkRequested()) {
             registerMobileNetworkRequest();
+        } else if (mobileNetworkRequested() && !mobileRequestRequired) {
+            releaseMobileNetworkRequest();
+        } else if (mobileNetworkRequested() && dunRequiredChanged) {
+            releaseMobileNetworkRequest();
+            if (mobileRequestRequired) {
+                registerMobileNetworkRequest();
+            }
         }
     }
 
@@ -221,11 +226,6 @@ public class UpstreamNetworkMonitor {
      */
     public void setTryCell(boolean tryCell) {
         reevaluateUpstreamRequirements(tryCell, mAutoUpstream, mDunRequired);
-        if (tryCell) {
-            registerMobileNetworkRequest();
-        } else {
-            releaseMobileNetworkRequest();
-        }
     }
 
     /** Informs UpstreamNetworkMonitor of upstream configuration parameters. */
@@ -274,7 +274,9 @@ public class UpstreamNetworkMonitor {
         // TODO: Change the timeout from 0 (no onUnavailable callback) to some
         // moderate callback timeout. This might be useful for updating some UI.
         // Additionally, we log a message to aid in any subsequent debugging.
-        mLog.i("requesting mobile upstream network: " + mobileUpstreamRequest);
+        mLog.i("requesting mobile upstream network: " + mobileUpstreamRequest
+                + " mTryCell=" + mTryCell + " mAutoUpstream=" + mAutoUpstream
+                + " mDunRequired=" + mDunRequired);
 
         cm().requestNetwork(mobileUpstreamRequest, 0, legacyType, mHandler,
                 mMobileNetworkCallback);
