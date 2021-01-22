@@ -30,12 +30,16 @@ import androidx.annotation.Nullable;
 import com.android.networkstack.tethering.BpfCoordinator.Dependencies;
 import com.android.networkstack.tethering.BpfCoordinator.Ipv6ForwardingRule;
 import com.android.networkstack.tethering.BpfMap;
+import com.android.networkstack.tethering.TetherDownstream4Key;
+import com.android.networkstack.tethering.TetherDownstream4Value;
 import com.android.networkstack.tethering.TetherDownstream6Key;
 import com.android.networkstack.tethering.TetherDownstream6Value;
 import com.android.networkstack.tethering.TetherLimitKey;
 import com.android.networkstack.tethering.TetherLimitValue;
 import com.android.networkstack.tethering.TetherStatsKey;
 import com.android.networkstack.tethering.TetherStatsValue;
+import com.android.networkstack.tethering.TetherUpstream4Key;
+import com.android.networkstack.tethering.TetherUpstream4Value;
 
 import java.io.FileDescriptor;
 
@@ -54,6 +58,16 @@ public class BpfCoordinatorShimImpl
     @NonNull
     private final SharedLog mLog;
 
+    // BPF map of ingress queueing discipline which pre-processes the packets by the IPv4
+    // downstream rules.
+    @Nullable
+    private final BpfMap<TetherDownstream4Key, TetherDownstream4Value> mBpfDownstream4Map;
+
+    // BPF map of ingress queueing discipline which pre-processes the packets by the IPv4
+    // upstream rules.
+    @Nullable
+    private final BpfMap<TetherUpstream4Key, TetherUpstream4Value> mBpfUpstream4Map;
+
     // BPF map of ingress queueing discipline which pre-processes the packets by the IPv6
     // forwarding rules.
     @Nullable
@@ -69,6 +83,8 @@ public class BpfCoordinatorShimImpl
 
     public BpfCoordinatorShimImpl(@NonNull final Dependencies deps) {
         mLog = deps.getSharedLog().forSubComponent(TAG);
+        mBpfDownstream4Map = deps.getBpfDownstream4Map();
+        mBpfUpstream4Map = deps.getBpfUpstream4Map();
         mBpfDownstream6Map = deps.getBpfDownstream6Map();
         mBpfStatsMap = deps.getBpfStatsMap();
         mBpfLimitMap = deps.getBpfLimitMap();
@@ -76,7 +92,8 @@ public class BpfCoordinatorShimImpl
 
     @Override
     public boolean isInitialized() {
-        return mBpfDownstream6Map != null && mBpfStatsMap != null  && mBpfLimitMap != null;
+        return mBpfDownstream4Map != null && mBpfUpstream4Map != null && mBpfDownstream6Map != null
+                && mBpfStatsMap != null && mBpfLimitMap != null;
     }
 
     @Override
@@ -233,14 +250,85 @@ public class BpfCoordinatorShimImpl
     }
 
     @Override
+    public boolean tetherOffloadRuleAdd(@NonNull TetherDownstream4Key key,
+            @NonNull TetherDownstream4Value value) {
+        if (!isInitialized()) return false;
+
+        try {
+            // The last used time field of the value is updated by the bpf program. Adding the same
+            // map pair twice causes the unexpected refresh. Must be fixed before starting the
+            // conntrack timeout extension implementation.
+            // TODO: consider using insertEntry.
+            mBpfDownstream4Map.updateEntry(key, value);
+        } catch (ErrnoException e) {
+            mLog.e("Could not update entry: ", e);
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    public boolean tetherOffloadRuleRemove(@NonNull TetherDownstream4Key key) {
+        if (!isInitialized()) return false;
+
+        try {
+            mBpfDownstream4Map.deleteEntry(key);
+        } catch (ErrnoException e) {
+            // Silent if the rule did not exist.
+            if (e.errno != OsConstants.ENOENT) {
+                mLog.e("Could not delete entry: ", e);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @Override
+    public boolean tetherOffloadRuleAdd(@NonNull TetherUpstream4Key key,
+            @NonNull TetherUpstream4Value value) {
+        if (!isInitialized()) return false;
+
+        try {
+            // The last used time field of the value is updated by the bpf program. Adding the same
+            // map pair twice causes the unexpected refresh. Must be fixed before starting the
+            // conntrack timeout extension implementation.
+            // TODO: consider using insertEntry.
+            mBpfUpstream4Map.updateEntry(key, value);
+        } catch (ErrnoException e) {
+            mLog.e("Could not update entry: ", e);
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    public boolean tetherOffloadRuleRemove(@NonNull TetherUpstream4Key key) {
+        if (!isInitialized()) return false;
+
+        try {
+            mBpfUpstream4Map.deleteEntry(key);
+        } catch (ErrnoException e) {
+            // Silent if the rule did not exist.
+            if (e.errno != OsConstants.ENOENT) {
+                mLog.e("Could not delete entry: ", e);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @Override
     public String toString() {
-        return "mBpfDownstream6Map{"
+        return "mBpfDownstream4Map{"
+                + (mBpfDownstream4Map != null ? "initialized" : "not initialized") + "}, "
+                + "mBpfUpstream4Map{"
+                + (mBpfUpstream4Map != null ? "initialized" : "not initialized") + "}, "
+                + "mBpfDownstream6Map{"
                 + (mBpfDownstream6Map != null ? "initialized" : "not initialized") + "}, "
                 + "mBpfStatsMap{"
                 + (mBpfStatsMap != null ? "initialized" : "not initialized") + "}, "
                 + "mBpfLimitMap{"
-                + (mBpfLimitMap != null ? "initialized" : "not initialized") + "} "
-                + "}";
+                + (mBpfLimitMap != null ? "initialized" : "not initialized") + "} ";
     }
 
     /**
