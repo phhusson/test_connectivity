@@ -56,6 +56,8 @@ import android.net.MacAddress;
 import android.net.NetworkStats;
 import android.net.TetherOffloadRuleParcel;
 import android.net.TetherStatsParcel;
+import android.net.ip.ConntrackMonitor;
+import android.net.ip.ConntrackMonitor.ConntrackEventConsumer;
 import android.net.ip.IpServer;
 import android.net.util.SharedLog;
 import android.os.Build;
@@ -153,7 +155,9 @@ public class BpfCoordinatorTest {
     @Mock private NetworkStatsManager mStatsManager;
     @Mock private INetd mNetd;
     @Mock private IpServer mIpServer;
+    @Mock private IpServer mIpServer2;
     @Mock private TetheringConfiguration mTetherConfig;
+    @Mock private ConntrackMonitor mConntrackMonitor;
     @Mock private BpfMap<TetherDownstream6Key, TetherDownstream6Value> mBpfDownstream6Map;
 
     // Late init since methods must be called by the thread that created this object.
@@ -191,6 +195,11 @@ public class BpfCoordinatorTest {
                     @Nullable
                     public TetheringConfiguration getTetherConfig() {
                         return mTetherConfig;
+                    }
+
+                    @NonNull
+                    public ConntrackMonitor getConntrackMonitor(ConntrackEventConsumer consumer) {
+                        return mConntrackMonitor;
                     }
 
                     @Nullable
@@ -982,5 +991,49 @@ public class BpfCoordinatorTest {
         mTestLooper.moveTimeForward((long) (pollingInterval * 0.1));
         waitForIdle();
         verifyTetherOffloadGetStats();
+    }
+
+    @Test
+    public void testStartStopConntrackMonitoring() throws Exception {
+        setupFunctioningNetdInterface();
+
+        final BpfCoordinator coordinator = makeBpfCoordinator();
+
+        // [1] Don't stop monitoring if it has never started.
+        coordinator.stopMonitoring(mIpServer);
+        verify(mConntrackMonitor, never()).start();
+
+        // [2] Start monitoring.
+        coordinator.startMonitoring(mIpServer);
+        verify(mConntrackMonitor).start();
+        clearInvocations(mConntrackMonitor);
+
+        // [3] Stop monitoring.
+        coordinator.stopMonitoring(mIpServer);
+        verify(mConntrackMonitor).stop();
+    }
+
+    @Test
+    public void testStartStopConntrackMonitoringWithTwoDownstreamIfaces() throws Exception {
+        setupFunctioningNetdInterface();
+
+        final BpfCoordinator coordinator = makeBpfCoordinator();
+
+        // [1] Start monitoring at the first IpServer adding.
+        coordinator.startMonitoring(mIpServer);
+        verify(mConntrackMonitor).start();
+        clearInvocations(mConntrackMonitor);
+
+        // [2] Don't start monitoring at the second IpServer adding.
+        coordinator.startMonitoring(mIpServer2);
+        verify(mConntrackMonitor, never()).start();
+
+        // [3] Don't stop monitoring if any downstream interface exists.
+        coordinator.stopMonitoring(mIpServer2);
+        verify(mConntrackMonitor, never()).stop();
+
+        // [4] Stop monitoring if no downstream exists.
+        coordinator.stopMonitoring(mIpServer);
+        verify(mConntrackMonitor).stop();
     }
 }
