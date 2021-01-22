@@ -74,11 +74,11 @@ public class BpfCoordinator {
     private static final String TAG = BpfCoordinator.class.getSimpleName();
     private static final int DUMP_TIMEOUT_MS = 10_000;
     private static final String TETHER_DOWNSTREAM6_FS_PATH =
-            "/sys/fs/bpf/map_offload_tether_downstream6_map";
+            "/sys/fs/bpf/tethering/map_offload_tether_downstream6_map";
     private static final String TETHER_STATS_MAP_PATH =
-            "/sys/fs/bpf/map_offload_tether_stats_map";
+            "/sys/fs/bpf/tethering/map_offload_tether_stats_map";
     private static final String TETHER_LIMIT_MAP_PATH =
-            "/sys/fs/bpf/map_offload_tether_limit_map";
+            "/sys/fs/bpf/tethering/map_offload_tether_limit_map";
 
     @VisibleForTesting
     enum StatsType {
