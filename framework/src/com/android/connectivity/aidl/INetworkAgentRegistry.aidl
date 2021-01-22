@@ -19,6 +19,8 @@ import android.net.LinkProperties;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
+import android.net.QosSession;
+import android.telephony.data.EpsBearerQosSessionAttributes;
 
 /**
  * Interface for NetworkAgents to send network network properties.
@@ -33,4 +35,7 @@ oneway interface INetworkAgentRegistry {
     void sendExplicitlySelected(boolean explicitlySelected, boolean acceptPartial);
     void sendSocketKeepaliveEvent(int slot, int reason);
     void sendUnderlyingNetworks(in @nullable List<Network> networks);
+    void sendEpsQosSessionAvailable(int callbackId, in QosSession session, in EpsBearerQosSessionAttributes attributes);
+    void sendQosSessionLost(int qosCallbackId, in QosSession session);
+    void sendQosCallbackError(int qosCallbackId, int exceptionType);
 }
