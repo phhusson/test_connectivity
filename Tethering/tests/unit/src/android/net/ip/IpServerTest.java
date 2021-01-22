@@ -172,6 +172,7 @@ public class IpServerTest {
     @Mock private PrivateAddressCoordinator mAddressCoordinator;
     @Mock private NetworkStatsManager mStatsManager;
     @Mock private TetheringConfiguration mTetherConfig;
+    @Mock private ConntrackMonitor mConntrackMonitor;
     @Mock private BpfMap<TetherDownstream6Key, TetherDownstream6Value> mBpfDownstream6Map;
     @Mock private BpfMap<TetherStatsKey, TetherStatsValue> mBpfStatsMap;
     @Mock private BpfMap<TetherLimitKey, TetherLimitValue> mBpfLimitMap;
@@ -293,6 +294,12 @@ public class IpServerTest {
                     @Nullable
                     public TetheringConfiguration getTetherConfig() {
                         return mTetherConfig;
+                    }
+
+                    @NonNull
+                    public ConntrackMonitor getConntrackMonitor(
+                            ConntrackMonitor.ConntrackEventConsumer consumer) {
+                        return mConntrackMonitor;
                     }
 
                     @Nullable
