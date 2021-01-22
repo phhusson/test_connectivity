@@ -16,6 +16,7 @@
 package com.android.connectivity.aidl;
 
 import android.net.NattKeepalivePacketData;
+import android.net.QosFilterParcelable;
 import android.net.TcpKeepalivePacketData;
 
 import com.android.connectivity.aidl.INetworkAgentRegistry;
@@ -43,4 +44,6 @@ oneway interface INetworkAgent {
     void onAddTcpKeepalivePacketFilter(int slot,
         in TcpKeepalivePacketData packetData);
     void onRemoveKeepalivePacketFilter(int slot);
+    void onQosFilterCallbackRegistered(int qosCallbackId, in QosFilterParcelable filterParcel);
+    void onQosCallbackUnregistered(int qosCallbackId);
 }
