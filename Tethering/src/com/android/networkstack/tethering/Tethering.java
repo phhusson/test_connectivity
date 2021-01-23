@@ -1636,6 +1636,13 @@ public class Tethering {
         protected void handleNewUpstreamNetworkState(UpstreamNetworkState ns) {
             mIPv6TetheringCoordinator.updateUpstreamNetworkState(ns);
             mOffload.updateUpstreamNetworkState(ns);
+
+            // TODO: Delete all related offload rules which are using this upstream.
+            if (ns != null) {
+                // Add upstream index to the map. The upstream interface index is required while
+                // the conntrack event builds the offload rules.
+                mBpfCoordinator.addUpstreamIfindexToMap(ns.linkProperties);
+            }
         }
 
         private void handleInterfaceServingStateActive(int mode, IpServer who) {
