@@ -66,6 +66,18 @@ static inline __always_inline int do_forward(struct __sk_buff* skb, const bool i
     // Let the kernel's stack handle these cases and generate appropriate ICMP errors.
     if (ip6->hop_limit <= 1) return TC_ACT_OK;
 
+    // If hardware offload is running and programming flows based on conntrack entries,
+    // try not to interfere with it.
+    if (ip6->nexthdr == IPPROTO_TCP) {
+        struct tcphdr* tcph = (void*)(ip6 + 1);
+
+        // Make sure we can get at the tcp header
+        if (data + l2_header_size + sizeof(*ip6) + sizeof(*tcph) > data_end) return TC_ACT_OK;
+
+        // Do not offload TCP packets with any one of the SYN/FIN/RST flags
+        if (tcph->syn || tcph->fin || tcph->rst) return TC_ACT_OK;
+    }
+
     // Protect against forwarding packets sourced from ::1 or fe80::/64 or other weirdness.
     __be32 src32 = ip6->saddr.s6_addr32[0];
     if (src32 != htonl(0x0064ff9b) &&                        // 64:ff9b:/32 incl. XLAT464 WKP
