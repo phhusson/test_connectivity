@@ -20,9 +20,16 @@
 #include <linux/pkt_cls.h>
 #include <linux/tcp.h>
 
+// bionic kernel uapi linux/udp.h header is munged...
+#define __kernel_udphdr udphdr
+#include <linux/udp.h>
+
 #include "bpf_helpers.h"
 #include "bpf_net_helpers.h"
 #include "netdbpf/bpf_shared.h"
+
+// From kernel:include/net/ip.h
+#define IP_DF 0x4000  // Flag: "Don't Fragment"
 
 // Tethering stats, indexed by upstream interface.
 DEFINE_BPF_MAP_GRW(tether_stats_map, HASH, TetherStatsKey, TetherStatsValue, 16, AID_NETWORK_STACK)
@@ -284,26 +291,197 @@ DEFINE_BPF_MAP_GRW(tether_downstream4_map, HASH, TetherDownstream4Key, TetherDow
 DEFINE_BPF_MAP_GRW(tether_upstream4_map, HASH, TetherUpstream4Key, TetherUpstream4Value, 64,
                    AID_NETWORK_STACK)
 
-DEFINE_BPF_PROG("schedcls/tether_downstream4_ether", AID_ROOT, AID_NETWORK_STACK,
-                sched_cls_tether_downstream4_ether)
+static inline __always_inline int do_forward4(struct __sk_buff* skb, const bool is_ethernet,
+        const bool downstream) {
+    const int l2_header_size = is_ethernet ? sizeof(struct ethhdr) : 0;
+    void* data = (void*)(long)skb->data;
+    const void* data_end = (void*)(long)skb->data_end;
+    struct ethhdr* eth = is_ethernet ? data : NULL;  // used iff is_ethernet
+    struct iphdr* ip = is_ethernet ? (void*)(eth + 1) : data;
+
+    // Require ethernet dst mac address to be our unicast address.
+    if (is_ethernet && (skb->pkt_type != PACKET_HOST)) return TC_ACT_OK;
+
+    // Must be meta-ethernet IPv4 frame
+    if (skb->protocol != htons(ETH_P_IP)) return TC_ACT_OK;
+
+    // Must have (ethernet and) ipv4 header
+    if (data + l2_header_size + sizeof(*ip) > data_end) return TC_ACT_OK;
+
+    // Ethertype - if present - must be IPv4
+    if (is_ethernet && (eth->h_proto != htons(ETH_P_IP))) return TC_ACT_OK;
+
+    // IP version must be 4
+    if (ip->version != 4) return TC_ACT_OK;
+
+    // We cannot handle IP options, just standard 20 byte == 5 dword minimal IPv4 header
+    if (ip->ihl != 5) return TC_ACT_OK;
+
+    // Calculate the IPv4 one's complement checksum of the IPv4 header.
+    __wsum sum4 = 0;
+    for (int i = 0; i < sizeof(*ip) / sizeof(__u16); ++i) {
+        sum4 += ((__u16*)ip)[i];
+    }
+    // Note that sum4 is guaranteed to be non-zero by virtue of ip4->version == 4
+    sum4 = (sum4 & 0xFFFF) + (sum4 >> 16);  // collapse u32 into range 1 .. 0x1FFFE
+    sum4 = (sum4 & 0xFFFF) + (sum4 >> 16);  // collapse any potential carry into u16
+    // for a correct checksum we should get *a* zero, but sum4 must be positive, ie 0xFFFF
+    if (sum4 != 0xFFFF) return TC_ACT_OK;
+
+    // Minimum IPv4 total length is the size of the header
+    if (ntohs(ip->tot_len) < sizeof(*ip)) return TC_ACT_OK;
+
+    // We are incapable of dealing with IPv4 fragments
+    if (ip->frag_off & ~htons(IP_DF)) return TC_ACT_OK;
+
+    // Cannot decrement during forward if already zero or would be zero,
+    // Let the kernel's stack handle these cases and generate appropriate ICMP errors.
+    if (ip->ttl <= 1) return TC_ACT_OK;
+
+    const bool is_tcp = (ip->protocol == IPPROTO_TCP);
+
+    // We do not support anything besides TCP and UDP
+    if (!is_tcp && (ip->protocol != IPPROTO_UDP)) return TC_ACT_OK;
+
+    struct tcphdr* tcph = is_tcp ? (void*)(ip + 1) : NULL;
+    struct udphdr* udph = is_tcp ? NULL : (void*)(ip + 1);
+
+    if (is_tcp) {
+        // Make sure we can get at the tcp header
+        if (data + l2_header_size + sizeof(*ip) + sizeof(*tcph) > data_end) return TC_ACT_OK;
+
+        // If hardware offload is running and programming flows based on conntrack entries, try not
+        // to interfere with it, so do not offload TCP packets with any one of the SYN/FIN/RST flags
+        if (tcph->syn || tcph->fin || tcph->rst) return TC_ACT_OK;
+    } else { // UDP
+        // Make sure we can get at the udp header
+        if (data + l2_header_size + sizeof(*ip) + sizeof(*udph) > data_end) return TC_ACT_OK;
+    }
+
+    TetherDownstream4Key kd = {
+            .iif = skb->ifindex,
+            .l4Proto = ip->protocol,
+            .src4.s_addr = ip->saddr,
+            .dst4.s_addr = ip->daddr,
+            .srcPort = is_tcp ? tcph->source : udph->source,
+            .dstPort = is_tcp ? tcph->dest : udph->dest,
+    };
+    if (is_ethernet) for (int i = 0; i < ETH_ALEN; ++i) kd.dstMac[i] = eth->h_dest[i];
+
+    TetherUpstream4Key ku = {
+            .iif = skb->ifindex,
+            .l4Proto = ip->protocol,
+            .src4.s_addr = ip->saddr,
+            .dst4.s_addr = ip->daddr,
+            .srcPort = is_tcp ? tcph->source : udph->source,
+            .dstPort = is_tcp ? tcph->dest : udph->dest,
+    };
+    if (is_ethernet) for (int i = 0; i < ETH_ALEN; ++i) ku.dstMac[i] = eth->h_dest[i];
+
+    TetherDownstream4Value* vd = downstream ? bpf_tether_downstream4_map_lookup_elem(&kd) : NULL;
+    TetherUpstream4Value* vu = downstream ? NULL : bpf_tether_upstream4_map_lookup_elem(&ku);
+
+    // If we don't find any offload information then simply let the core stack handle it...
+    if (downstream && !vd) return TC_ACT_OK;
+    if (!downstream && !vu) return TC_ACT_OK;
+
+    uint32_t stat_and_limit_k = downstream ? skb->ifindex : vu->oif;
+
+    TetherStatsValue* stat_v = bpf_tether_stats_map_lookup_elem(&stat_and_limit_k);
+
+    // If we don't have anywhere to put stats, then abort...
+    if (!stat_v) return TC_ACT_OK;
+
+    uint64_t* limit_v = bpf_tether_limit_map_lookup_elem(&stat_and_limit_k);
+
+    // If we don't have a limit, then abort...
+    if (!limit_v) return TC_ACT_OK;
+
+    // Required IPv4 minimum mtu is 68, below that not clear what we should do, abort...
+    const int pmtu = downstream ? vd->pmtu : vu->pmtu;
+    if (pmtu < 68) return TC_ACT_OK;
+
+    // Approximate handling of TCP/IPv4 overhead for incoming LRO/GRO packets: default
+    // outbound path mtu of 1500 is not necessarily correct, but worst case we simply
+    // undercount, which is still better then not accounting for this overhead at all.
+    // Note: this really shouldn't be device/path mtu at all, but rather should be
+    // derived from this particular connection's mss (ie. from gro segment size).
+    // This would require a much newer kernel with newer ebpf accessors.
+    // (This is also blindly assuming 12 bytes of tcp timestamp option in tcp header)
+    uint64_t packets = 1;
+    uint64_t bytes = skb->len;
+    if (bytes > pmtu) {
+        const int tcp_overhead = sizeof(struct iphdr) + sizeof(struct tcphdr) + 12;
+        const int mss = pmtu - tcp_overhead;
+        const uint64_t payload = bytes - tcp_overhead;
+        packets = (payload + mss - 1) / mss;
+        bytes = tcp_overhead * packets + payload;
+    }
+
+    // Are we past the limit?  If so, then abort...
+    // Note: will not overflow since u64 is 936 years even at 5Gbps.
+    // Do not drop here.  Offload is just that, whenever we fail to handle
+    // a packet we let the core stack deal with things.
+    // (The core stack needs to handle limits correctly anyway,
+    // since we don't offload all traffic in both directions)
+    if (stat_v->rxBytes + stat_v->txBytes + bytes > *limit_v) return TC_ACT_OK;
+
+    // TODO: replace Errors with Packets once implemented
+    __sync_fetch_and_add(downstream ? &stat_v->rxErrors : &stat_v->txErrors, packets);
+    __sync_fetch_and_add(downstream ? &stat_v->rxBytes : &stat_v->txBytes, bytes);
+
+    // TODO: not actually implemented yet
+    return TC_ACT_OK;
+}
+
+// Real implementations for 5.9+ kernels
+
+DEFINE_BPF_PROG_KVER("schedcls/tether_downstream4_ether$5_9", AID_ROOT, AID_NETWORK_STACK,
+                     sched_cls_tether_downstream4_ether_5_9, KVER(5, 9, 0))
+(struct __sk_buff* skb) {
+    return do_forward4(skb, /* is_ethernet */ true, /* downstream */ true);
+}
+
+DEFINE_BPF_PROG_KVER("schedcls/tether_downstream4_rawip$5_9", AID_ROOT, AID_NETWORK_STACK,
+                     sched_cls_tether_downstream4_rawip_5_9, KVER(5, 9, 0))
+(struct __sk_buff* skb) {
+    return do_forward4(skb, /* is_ethernet */ false, /* downstream */ true);
+}
+
+DEFINE_BPF_PROG_KVER("schedcls/tether_upstream4_ether$5_9", AID_ROOT, AID_NETWORK_STACK,
+                     sched_cls_tether_upstream4_ether_5_9, KVER(5, 9, 0))
+(struct __sk_buff* skb) {
+    return do_forward4(skb, /* is_ethernet */ true, /* downstream */ false);
+}
+
+DEFINE_BPF_PROG_KVER("schedcls/tether_upstream4_rawip$5_9", AID_ROOT, AID_NETWORK_STACK,
+                     sched_cls_tether_upstream4_rawip_5_9, KVER(5, 9, 0))
+(struct __sk_buff* skb) {
+    return do_forward4(skb, /* is_ethernet */ false, /* downstream */ false);
+}
+
+// Placeholder implementations for older pre-5.9 kernels
+
+DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_downstream4_ether$stub", AID_ROOT, AID_NETWORK_STACK,
+                           sched_cls_tether_downstream4_ether_stub, KVER_NONE, KVER(5, 9, 0))
 (struct __sk_buff* skb) {
     return TC_ACT_OK;
 }
 
-DEFINE_BPF_PROG("schedcls/tether_downstream4_rawip", AID_ROOT, AID_NETWORK_STACK,
-                sched_cls_tether_downstream4_rawip)
+DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_downstream4_rawip$stub", AID_ROOT, AID_NETWORK_STACK,
+                           sched_cls_tether_downstream4_rawip_stub, KVER_NONE, KVER(5, 9, 0))
 (struct __sk_buff* skb) {
     return TC_ACT_OK;
 }
 
-DEFINE_BPF_PROG("schedcls/tether_upstream4_ether", AID_ROOT, AID_NETWORK_STACK,
-                sched_cls_tether_upstream4_ether)
+DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_upstream4_ether$stub", AID_ROOT, AID_NETWORK_STACK,
+                           sched_cls_tether_upstream4_ether_stub, KVER_NONE, KVER(5, 9, 0))
 (struct __sk_buff* skb) {
     return TC_ACT_OK;
 }
 
-DEFINE_BPF_PROG("schedcls/tether_upstream4_rawip", AID_ROOT, AID_NETWORK_STACK,
-                sched_cls_tether_upstream4_rawip)
+DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_upstream4_rawip$stub", AID_ROOT, AID_NETWORK_STACK,
+                           sched_cls_tether_upstream4_rawip_stub, KVER_NONE, KVER(5, 9, 0))
 (struct __sk_buff* skb) {
     return TC_ACT_OK;
 }
