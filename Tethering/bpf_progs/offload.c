@@ -42,7 +42,7 @@ DEFINE_BPF_MAP_GRW(tether_downstream64_map, HASH, TetherDownstream64Key, TetherD
 DEFINE_BPF_MAP_GRW(tether_upstream6_map, HASH, TetherUpstream6Key, TetherUpstream6Value, 64,
                    AID_NETWORK_STACK)
 
-static inline __always_inline int do_forward(struct __sk_buff* skb, const bool is_ethernet,
+static inline __always_inline int do_forward6(struct __sk_buff* skb, const bool is_ethernet,
         const bool downstream) {
     const int l2_header_size = is_ethernet ? sizeof(struct ethhdr) : 0;
     void* data = (void*)(long)skb->data;
@@ -207,13 +207,13 @@ static inline __always_inline int do_forward(struct __sk_buff* skb, const bool i
 DEFINE_BPF_PROG("schedcls/tether_downstream6_ether", AID_ROOT, AID_NETWORK_STACK,
                 sched_cls_tether_downstream6_ether)
 (struct __sk_buff* skb) {
-    return do_forward(skb, /* is_ethernet */ true, /* downstream */ true);
+    return do_forward6(skb, /* is_ethernet */ true, /* downstream */ true);
 }
 
 DEFINE_BPF_PROG("schedcls/tether_upstream6_ether", AID_ROOT, AID_NETWORK_STACK,
                 sched_cls_tether_upstream6_ether)
 (struct __sk_buff* skb) {
-    return do_forward(skb, /* is_ethernet */ true, /* downstream */ false);
+    return do_forward6(skb, /* is_ethernet */ true, /* downstream */ false);
 }
 
 // Note: section names must be unique to prevent programs from appending to each other,
@@ -232,13 +232,13 @@ DEFINE_BPF_PROG("schedcls/tether_upstream6_ether", AID_ROOT, AID_NETWORK_STACK,
 DEFINE_BPF_PROG_KVER("schedcls/tether_downstream6_rawip$5_4", AID_ROOT, AID_NETWORK_STACK,
                      sched_cls_tether_downstream6_rawip_5_4, KVER(5, 4, 0))
 (struct __sk_buff* skb) {
-    return do_forward(skb, /* is_ethernet */ false, /* downstream */ true);
+    return do_forward6(skb, /* is_ethernet */ false, /* downstream */ true);
 }
 
 DEFINE_BPF_PROG_KVER("schedcls/tether_upstream6_rawip$5_4", AID_ROOT, AID_NETWORK_STACK,
                      sched_cls_tether_upstream6_rawip_5_4, KVER(5, 4, 0))
 (struct __sk_buff* skb) {
-    return do_forward(skb, /* is_ethernet */ false, /* downstream */ false);
+    return do_forward6(skb, /* is_ethernet */ false, /* downstream */ false);
 }
 
 // and these identical optional (may fail to load) implementations for [4.14..5.4) patched kernels:
@@ -247,7 +247,7 @@ DEFINE_OPTIONAL_BPF_PROG_KVER_RANGE("schedcls/tether_downstream6_rawip$4_14",
                                     sched_cls_tether_downstream6_rawip_4_14,
                                     KVER(4, 14, 0), KVER(5, 4, 0))
 (struct __sk_buff* skb) {
-    return do_forward(skb, /* is_ethernet */ false, /* downstream */ true);
+    return do_forward6(skb, /* is_ethernet */ false, /* downstream */ true);
 }
 
 DEFINE_OPTIONAL_BPF_PROG_KVER_RANGE("schedcls/tether_upstream6_rawip$4_14",
@@ -255,7 +255,7 @@ DEFINE_OPTIONAL_BPF_PROG_KVER_RANGE("schedcls/tether_upstream6_rawip$4_14",
                                     sched_cls_tether_upstream6_rawip_4_14,
                                     KVER(4, 14, 0), KVER(5, 4, 0))
 (struct __sk_buff* skb) {
-    return do_forward(skb, /* is_ethernet */ false, /* downstream */ false);
+    return do_forward6(skb, /* is_ethernet */ false, /* downstream */ false);
 }
 
 // and define no-op stubs for [4.9,4.14) and unpatched [4.14,5.4) kernels.
