@@ -50,6 +50,9 @@ static inline __always_inline int do_forward6(struct __sk_buff* skb, const bool 
     struct ethhdr* eth = is_ethernet ? data : NULL;  // used iff is_ethernet
     struct ipv6hdr* ip6 = is_ethernet ? (void*)(eth + 1) : data;
 
+    // Require ethernet dst mac address to be our unicast address.
+    if (is_ethernet && (skb->pkt_type != PACKET_HOST)) return TC_ACT_OK;
+
     // Must be meta-ethernet IPv6 frame
     if (skb->protocol != htons(ETH_P_IPV6)) return TC_ACT_OK;
 
