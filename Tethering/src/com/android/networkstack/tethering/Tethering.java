@@ -2225,6 +2225,13 @@ public class Tethering {
                 && !isProvisioningNeededButUnavailable();
     }
 
+    private void dumpBpf(IndentingPrintWriter pw) {
+        pw.println("BPF offload:");
+        pw.increaseIndent();
+        mBpfCoordinator.dump(pw);
+        pw.decreaseIndent();
+    }
+
     void dump(@NonNull FileDescriptor fd, @NonNull PrintWriter writer, @Nullable String[] args) {
         // Binder.java closes the resource for us.
         @SuppressWarnings("resource")
@@ -2232,6 +2239,11 @@ public class Tethering {
         if (mContext.checkCallingOrSelfPermission(android.Manifest.permission.DUMP)
                 != PERMISSION_GRANTED) {
             pw.println("Permission Denial: can't dump.");
+            return;
+        }
+
+        if (argsContain(args, "bpf")) {
+            dumpBpf(pw);
             return;
         }
 
@@ -2286,10 +2298,7 @@ public class Tethering {
         mOffloadController.dump(pw);
         pw.decreaseIndent();
 
-        pw.println("BPF offload:");
-        pw.increaseIndent();
-        mBpfCoordinator.dump(pw);
-        pw.decreaseIndent();
+        dumpBpf(pw);
 
         pw.println("Private address coordinator:");
         pw.increaseIndent();
