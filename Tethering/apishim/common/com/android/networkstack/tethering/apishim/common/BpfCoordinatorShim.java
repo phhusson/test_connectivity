@@ -23,11 +23,9 @@ import androidx.annotation.Nullable;
 
 import com.android.networkstack.tethering.BpfCoordinator.Dependencies;
 import com.android.networkstack.tethering.BpfCoordinator.Ipv6ForwardingRule;
-import com.android.networkstack.tethering.TetherDownstream4Key;
-import com.android.networkstack.tethering.TetherDownstream4Value;
+import com.android.networkstack.tethering.Tether4Key;
+import com.android.networkstack.tethering.Tether4Value;
 import com.android.networkstack.tethering.TetherStatsValue;
-import com.android.networkstack.tethering.TetherUpstream4Key;
-import com.android.networkstack.tethering.TetherUpstream4Value;
 
 /**
  * Bpf coordinator class for API shims.
@@ -114,25 +112,14 @@ public abstract class BpfCoordinatorShim {
     public abstract TetherStatsValue tetherOffloadGetAndClearStats(int ifIndex);
 
     /**
-     * Adds a tethering IPv4 downstream offload rule to BPF map.
+     * Adds a tethering IPv4 offload rule to appropriate BPF map.
      */
-    public abstract boolean tetherOffloadRuleAdd(@NonNull TetherDownstream4Key key,
-            @NonNull TetherDownstream4Value value);
+    public abstract boolean tetherOffloadRuleAdd(boolean downstream, @NonNull Tether4Key key,
+            @NonNull Tether4Value value);
 
     /**
-     * Deletes a tethering IPv4 downstream offload rule from the BPF map.
+     * Deletes a tethering IPv4 offload rule from the appropriate BPF map.
      */
-    public abstract boolean tetherOffloadRuleRemove(@NonNull TetherDownstream4Key key);
-
-    /**
-     * Adds a tethering IPv4 upstream offload rule to BPF map.
-     */
-    public abstract boolean tetherOffloadRuleAdd(@NonNull TetherUpstream4Key key,
-            @NonNull TetherUpstream4Value value);
-
-    /**
-     * Deletes a tethering IPv4 upstream offload rule from the BPF map.
-     */
-    public abstract boolean tetherOffloadRuleRemove(@NonNull TetherUpstream4Key key);
+    public abstract boolean tetherOffloadRuleRemove(boolean downstream, @NonNull Tether4Key key);
 }
 
