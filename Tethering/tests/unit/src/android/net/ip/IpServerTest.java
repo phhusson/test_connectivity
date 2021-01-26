@@ -881,6 +881,11 @@ public class IpServerTest {
                 .thenReturn(buildEmptyTetherStatsParcel(UPSTREAM_IFINDEX));
         when(mNetd.tetherOffloadGetAndClearStats(UPSTREAM_IFINDEX2))
                 .thenReturn(buildEmptyTetherStatsParcel(UPSTREAM_IFINDEX2));
+        // When the last rule is removed, tetherOffloadGetAndClearStats will log a WTF (and
+        // potentially crash the test) if the stats map is empty.
+        final TetherStatsValue allZeros = new TetherStatsValue(0, 0, 0, 0, 0, 0);
+        when(mBpfStatsMap.getValue(new TetherStatsKey(UPSTREAM_IFINDEX))).thenReturn(allZeros);
+        when(mBpfStatsMap.getValue(new TetherStatsKey(UPSTREAM_IFINDEX2))).thenReturn(allZeros);
     }
 
     @Test
