@@ -285,11 +285,9 @@ DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_upstream6_rawip$stub", AID_ROOT, AID
 
 // ----- IPv4 Support -----
 
-DEFINE_BPF_MAP_GRW(tether_downstream4_map, HASH, TetherDownstream4Key, TetherDownstream4Value, 64,
-                   AID_NETWORK_STACK)
+DEFINE_BPF_MAP_GRW(tether_downstream4_map, HASH, Tether4Key, Tether4Value, 64, AID_NETWORK_STACK)
 
-DEFINE_BPF_MAP_GRW(tether_upstream4_map, HASH, TetherUpstream4Key, TetherUpstream4Value, 64,
-                   AID_NETWORK_STACK)
+DEFINE_BPF_MAP_GRW(tether_upstream4_map, HASH, Tether4Key, Tether4Value, 64, AID_NETWORK_STACK)
 
 static inline __always_inline int do_forward4(struct __sk_buff* skb, const bool is_ethernet,
         const bool downstream) {
@@ -358,7 +356,7 @@ static inline __always_inline int do_forward4(struct __sk_buff* skb, const bool 
         if (data + l2_header_size + sizeof(*ip) + sizeof(*udph) > data_end) return TC_ACT_OK;
     }
 
-    TetherDownstream4Key kd = {
+    Tether4Key k = {
             .iif = skb->ifindex,
             .l4Proto = ip->protocol,
             .src4.s_addr = ip->saddr,
@@ -366,26 +364,15 @@ static inline __always_inline int do_forward4(struct __sk_buff* skb, const bool 
             .srcPort = is_tcp ? tcph->source : udph->source,
             .dstPort = is_tcp ? tcph->dest : udph->dest,
     };
-    if (is_ethernet) for (int i = 0; i < ETH_ALEN; ++i) kd.dstMac[i] = eth->h_dest[i];
+    if (is_ethernet) for (int i = 0; i < ETH_ALEN; ++i) k.dstMac[i] = eth->h_dest[i];
 
-    TetherUpstream4Key ku = {
-            .iif = skb->ifindex,
-            .l4Proto = ip->protocol,
-            .src4.s_addr = ip->saddr,
-            .dst4.s_addr = ip->daddr,
-            .srcPort = is_tcp ? tcph->source : udph->source,
-            .dstPort = is_tcp ? tcph->dest : udph->dest,
-    };
-    if (is_ethernet) for (int i = 0; i < ETH_ALEN; ++i) ku.dstMac[i] = eth->h_dest[i];
-
-    TetherDownstream4Value* vd = downstream ? bpf_tether_downstream4_map_lookup_elem(&kd) : NULL;
-    TetherUpstream4Value* vu = downstream ? NULL : bpf_tether_upstream4_map_lookup_elem(&ku);
+    Tether4Value* v = downstream ? bpf_tether_downstream4_map_lookup_elem(&k)
+                                 : bpf_tether_upstream4_map_lookup_elem(&k);
 
     // If we don't find any offload information then simply let the core stack handle it...
-    if (downstream && !vd) return TC_ACT_OK;
-    if (!downstream && !vu) return TC_ACT_OK;
+    if (!v) return TC_ACT_OK;
 
-    uint32_t stat_and_limit_k = downstream ? skb->ifindex : vu->oif;
+    uint32_t stat_and_limit_k = downstream ? skb->ifindex : v->oif;
 
     TetherStatsValue* stat_v = bpf_tether_stats_map_lookup_elem(&stat_and_limit_k);
 
@@ -398,8 +385,7 @@ static inline __always_inline int do_forward4(struct __sk_buff* skb, const bool 
     if (!limit_v) return TC_ACT_OK;
 
     // Required IPv4 minimum mtu is 68, below that not clear what we should do, abort...
-    const int pmtu = downstream ? vd->pmtu : vu->pmtu;
-    if (pmtu < 68) return TC_ACT_OK;
+    if (v->pmtu < 68) return TC_ACT_OK;
 
     // Approximate handling of TCP/IPv4 overhead for incoming LRO/GRO packets: default
     // outbound path mtu of 1500 is not necessarily correct, but worst case we simply
@@ -410,9 +396,9 @@ static inline __always_inline int do_forward4(struct __sk_buff* skb, const bool 
     // (This is also blindly assuming 12 bytes of tcp timestamp option in tcp header)
     uint64_t packets = 1;
     uint64_t bytes = skb->len;
-    if (bytes > pmtu) {
+    if (bytes > v->pmtu) {
         const int tcp_overhead = sizeof(struct iphdr) + sizeof(struct tcphdr) + 12;
-        const int mss = pmtu - tcp_overhead;
+        const int mss = v->pmtu - tcp_overhead;
         const uint64_t payload = bytes - tcp_overhead;
         packets = (payload + mss - 1) / mss;
         bytes = tcp_overhead * packets + payload;

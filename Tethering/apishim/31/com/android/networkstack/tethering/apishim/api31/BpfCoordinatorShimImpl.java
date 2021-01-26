@@ -30,16 +30,14 @@ import androidx.annotation.Nullable;
 import com.android.networkstack.tethering.BpfCoordinator.Dependencies;
 import com.android.networkstack.tethering.BpfCoordinator.Ipv6ForwardingRule;
 import com.android.networkstack.tethering.BpfMap;
-import com.android.networkstack.tethering.TetherDownstream4Key;
-import com.android.networkstack.tethering.TetherDownstream4Value;
+import com.android.networkstack.tethering.Tether4Key;
+import com.android.networkstack.tethering.Tether4Value;
 import com.android.networkstack.tethering.TetherDownstream6Key;
 import com.android.networkstack.tethering.TetherDownstream6Value;
 import com.android.networkstack.tethering.TetherLimitKey;
 import com.android.networkstack.tethering.TetherLimitValue;
 import com.android.networkstack.tethering.TetherStatsKey;
 import com.android.networkstack.tethering.TetherStatsValue;
-import com.android.networkstack.tethering.TetherUpstream4Key;
-import com.android.networkstack.tethering.TetherUpstream4Value;
 
 import java.io.FileDescriptor;
 
@@ -61,12 +59,12 @@ public class BpfCoordinatorShimImpl
     // BPF map of ingress queueing discipline which pre-processes the packets by the IPv4
     // downstream rules.
     @Nullable
-    private final BpfMap<TetherDownstream4Key, TetherDownstream4Value> mBpfDownstream4Map;
+    private final BpfMap<Tether4Key, Tether4Value> mBpfDownstream4Map;
 
     // BPF map of ingress queueing discipline which pre-processes the packets by the IPv4
     // upstream rules.
     @Nullable
-    private final BpfMap<TetherUpstream4Key, TetherUpstream4Value> mBpfUpstream4Map;
+    private final BpfMap<Tether4Key, Tether4Value> mBpfUpstream4Map;
 
     // BPF map of ingress queueing discipline which pre-processes the packets by the IPv6
     // forwarding rules.
@@ -250,8 +248,8 @@ public class BpfCoordinatorShimImpl
     }
 
     @Override
-    public boolean tetherOffloadRuleAdd(@NonNull TetherDownstream4Key key,
-            @NonNull TetherDownstream4Value value) {
+    public boolean tetherOffloadRuleAdd(boolean downstream, @NonNull Tether4Key key,
+            @NonNull Tether4Value value) {
         if (!isInitialized()) return false;
 
         try {
@@ -259,41 +257,11 @@ public class BpfCoordinatorShimImpl
             // map pair twice causes the unexpected refresh. Must be fixed before starting the
             // conntrack timeout extension implementation.
             // TODO: consider using insertEntry.
-            mBpfDownstream4Map.updateEntry(key, value);
-        } catch (ErrnoException e) {
-            mLog.e("Could not update entry: ", e);
-            return false;
-        }
-        return true;
-    }
-
-    @Override
-    public boolean tetherOffloadRuleRemove(@NonNull TetherDownstream4Key key) {
-        if (!isInitialized()) return false;
-
-        try {
-            mBpfDownstream4Map.deleteEntry(key);
-        } catch (ErrnoException e) {
-            // Silent if the rule did not exist.
-            if (e.errno != OsConstants.ENOENT) {
-                mLog.e("Could not delete entry: ", e);
-                return false;
+            if (downstream) {
+                mBpfDownstream4Map.updateEntry(key, value);
+            } else {
+                mBpfUpstream4Map.updateEntry(key, value);
             }
-        }
-        return true;
-    }
-
-    @Override
-    public boolean tetherOffloadRuleAdd(@NonNull TetherUpstream4Key key,
-            @NonNull TetherUpstream4Value value) {
-        if (!isInitialized()) return false;
-
-        try {
-            // The last used time field of the value is updated by the bpf program. Adding the same
-            // map pair twice causes the unexpected refresh. Must be fixed before starting the
-            // conntrack timeout extension implementation.
-            // TODO: consider using insertEntry.
-            mBpfUpstream4Map.updateEntry(key, value);
         } catch (ErrnoException e) {
             mLog.e("Could not update entry: ", e);
             return false;
@@ -302,11 +270,15 @@ public class BpfCoordinatorShimImpl
     }
 
     @Override
-    public boolean tetherOffloadRuleRemove(@NonNull TetherUpstream4Key key) {
+    public boolean tetherOffloadRuleRemove(boolean downstream, @NonNull Tether4Key key) {
         if (!isInitialized()) return false;
 
         try {
-            mBpfUpstream4Map.deleteEntry(key);
+            if (downstream) {
+                mBpfDownstream4Map.deleteEntry(key);
+            } else {
+                mBpfUpstream4Map.deleteEntry(key);
+            }
         } catch (ErrnoException e) {
             // Silent if the rule did not exist.
             if (e.errno != OsConstants.ENOENT) {

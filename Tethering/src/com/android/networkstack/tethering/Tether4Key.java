@@ -18,6 +18,8 @@ package com.android.networkstack.tethering;
 
 import android.net.MacAddress;
 
+import androidx.annotation.NonNull;
+
 import com.android.net.module.util.Struct;
 import com.android.net.module.util.Struct.Field;
 import com.android.net.module.util.Struct.Type;
@@ -27,7 +29,7 @@ import java.net.UnknownHostException;
 import java.util.Objects;
 
 /** The key of BpfMap which is used for IPv4 bpf offload. */
-public class TetherDownstream4Key extends Struct {
+public class Tether4Key extends Struct {
     @Field(order = 0, type = Type.U32)
     public final long iif;
 
@@ -49,7 +51,7 @@ public class TetherDownstream4Key extends Struct {
     @Field(order = 6, type = Type.UBE16)
     public final int dstPort;
 
-    public TetherDownstream4Key(final long iif, final MacAddress dstMac, final short l4proto,
+    public Tether4Key(final long iif, @NonNull final MacAddress dstMac, final short l4proto,
             final byte[] src4, final byte[] dst4, final int srcPort,
             final int dstPort) {
         Objects.requireNonNull(dstMac);
