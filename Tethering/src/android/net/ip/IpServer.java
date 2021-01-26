@@ -71,10 +71,8 @@ import com.android.networkstack.tethering.BpfCoordinator.ClientInfo;
 import com.android.networkstack.tethering.BpfCoordinator.Ipv6ForwardingRule;
 import com.android.networkstack.tethering.PrivateAddressCoordinator;
 
-import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
-import java.net.NetworkInterface;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -185,16 +183,6 @@ public class IpServer extends StateMachine {
         /** Get |ifName|'s interface information.*/
         public InterfaceParams getInterfaceParams(String ifName) {
             return InterfaceParams.getByName(ifName);
-        }
-
-        /** Get |ifName|'s interface index. */
-        public int getIfindex(String ifName) {
-            try {
-                return NetworkInterface.getByName(ifName).getIndex();
-            } catch (IOException | NullPointerException e) {
-                Log.e(TAG, "Can't determine interface index for interface " + ifName);
-                return 0;
-            }
         }
 
         /** Create a DhcpServer instance to be used by IpServer. */

@@ -206,9 +206,6 @@ public class IpServerTest {
         when(mDependencies.getInterfaceParams(UPSTREAM_IFACE)).thenReturn(UPSTREAM_IFACE_PARAMS);
         when(mDependencies.getInterfaceParams(UPSTREAM_IFACE2)).thenReturn(UPSTREAM_IFACE_PARAMS2);
 
-        when(mDependencies.getIfindex(eq(UPSTREAM_IFACE))).thenReturn(UPSTREAM_IFINDEX);
-        when(mDependencies.getIfindex(eq(UPSTREAM_IFACE2))).thenReturn(UPSTREAM_IFINDEX2);
-
         mInterfaceConfiguration = new InterfaceConfigurationParcel();
         mInterfaceConfiguration.flags = new String[0];
         if (interfaceType == TETHERING_BLUETOOTH) {
