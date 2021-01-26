@@ -237,11 +237,11 @@ public class BpfCoordinator {
         }
 
         /** Get downstream4 BPF map. */
-        @Nullable public BpfMap<TetherDownstream4Key, TetherDownstream4Value>
+        @Nullable public BpfMap<Tether4Key, Tether4Value>
                 getBpfDownstream4Map() {
             try {
                 return new BpfMap<>(TETHER_DOWNSTREAM4_MAP_PATH,
-                    BpfMap.BPF_F_RDWR, TetherDownstream4Key.class, TetherDownstream4Value.class);
+                    BpfMap.BPF_F_RDWR, Tether4Key.class, Tether4Value.class);
             } catch (ErrnoException e) {
                 Log.e(TAG, "Cannot create downstream4 map: " + e);
                 return null;
@@ -249,11 +249,11 @@ public class BpfCoordinator {
         }
 
         /** Get upstream4 BPF map. */
-        @Nullable public BpfMap<TetherUpstream4Key, TetherUpstream4Value>
+        @Nullable public BpfMap<Tether4Key, Tether4Value>
                 getBpfUpstream4Map() {
             try {
                 return new BpfMap<>(TETHER_UPSTREAM4_MAP_PATH,
-                    BpfMap.BPF_F_RDWR, TetherUpstream4Key.class, TetherUpstream4Value.class);
+                    BpfMap.BPF_F_RDWR, Tether4Key.class, Tether4Value.class);
             } catch (ErrnoException e) {
                 Log.e(TAG, "Cannot create upstream4 map: " + e);
                 return null;
@@ -906,25 +906,25 @@ public class BpfCoordinator {
     // TODO: add ether ip support.
     private class BpfConntrackEventConsumer implements ConntrackEventConsumer {
         @NonNull
-        private TetherUpstream4Key makeTetherUpstream4Key(
+        private Tether4Key makeTether4Key(
                 @NonNull ConntrackEvent e, @NonNull ClientInfo c) {
-            return new TetherUpstream4Key(c.downstreamIfindex, c.downstreamMac,
+            return new Tether4Key(c.downstreamIfindex, c.downstreamMac,
                     e.tupleOrig.protoNum, e.tupleOrig.srcIp.getAddress(),
                     e.tupleOrig.dstIp.getAddress(), e.tupleOrig.srcPort, e.tupleOrig.dstPort);
         }
 
         @NonNull
-        private TetherDownstream4Key makeTetherDownstream4Key(
+        private Tether4Key makeTether4Key(
                 @NonNull ConntrackEvent e, @NonNull ClientInfo c, int upstreamIndex) {
-            return new TetherDownstream4Key(upstreamIndex, NULL_MAC_ADDRESS /* dstMac (rawip) */,
+            return new Tether4Key(upstreamIndex, NULL_MAC_ADDRESS /* dstMac (rawip) */,
                     e.tupleReply.protoNum, e.tupleReply.srcIp.getAddress(),
                     e.tupleReply.dstIp.getAddress(), e.tupleReply.srcPort, e.tupleReply.dstPort);
         }
 
         @NonNull
-        private TetherUpstream4Value makeTetherUpstream4Value(@NonNull ConntrackEvent e,
+        private Tether4Value makeTether4Value(@NonNull ConntrackEvent e,
                 int upstreamIndex) {
-            return new TetherUpstream4Value(upstreamIndex,
+            return new Tether4Value(upstreamIndex,
                     NULL_MAC_ADDRESS /* ethDstMac (rawip) */,
                     NULL_MAC_ADDRESS /* ethSrcMac (rawip) */, ETH_P_IP,
                     NetworkStackConstants.ETHER_MTU, toIpv4MappedAddressBytes(e.tupleReply.dstIp),
@@ -933,9 +933,9 @@ public class BpfCoordinator {
         }
 
         @NonNull
-        private TetherDownstream4Value makeTetherDownstream4Value(@NonNull ConntrackEvent e,
+        private Tether4Value makeTether4Value(@NonNull ConntrackEvent e,
                 @NonNull ClientInfo c, int upstreamIndex) {
-            return new TetherDownstream4Value(c.downstreamIfindex,
+            return new Tether4Value(c.downstreamIfindex,
                     c.clientMac, c.downstreamMac, ETH_P_IP, NetworkStackConstants.ETHER_MTU,
                     e.tupleOrig.dstIp.getAddress(), e.tupleOrig.srcIp.getAddress(),
                     e.tupleOrig.dstPort, e.tupleOrig.srcPort,
@@ -962,8 +962,8 @@ public class BpfCoordinator {
             final Integer upstreamIndex = mIpv4UpstreamIndices.get(e.tupleReply.dstIp);
             if (upstreamIndex == null) return;
 
-            final TetherUpstream4Key upstream4Key = makeTetherUpstream4Key(e, tetherClient);
-            final TetherDownstream4Key downstream4Key = makeTetherDownstream4Key(e,
+            final Tether4Key upstream4Key = makeTether4Key(e, tetherClient);
+            final Tether4Key downstream4Key = makeTether4Key(e,
                     tetherClient, upstreamIndex);
 
             if (e.msgType == (NetlinkConstants.NFNL_SUBSYS_CTNETLINK << 8
@@ -973,9 +973,9 @@ public class BpfCoordinator {
                 return;
             }
 
-            final TetherUpstream4Value upstream4Value = makeTetherUpstream4Value(e,
+            final Tether4Value upstream4Value = makeTether4Value(e,
                     upstreamIndex);
-            final TetherDownstream4Value downstream4Value = makeTetherDownstream4Value(e,
+            final Tether4Value downstream4Value = makeTether4Value(e,
                     tetherClient, upstreamIndex);
 
             mBpfCoordinatorShim.tetherOffloadRuleAdd(upstream4Key, upstream4Value);
