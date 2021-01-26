@@ -104,12 +104,16 @@ import com.android.networkstack.tethering.BpfCoordinator;
 import com.android.networkstack.tethering.BpfCoordinator.Ipv6ForwardingRule;
 import com.android.networkstack.tethering.BpfMap;
 import com.android.networkstack.tethering.PrivateAddressCoordinator;
+import com.android.networkstack.tethering.TetherDownstream4Key;
+import com.android.networkstack.tethering.TetherDownstream4Value;
 import com.android.networkstack.tethering.TetherDownstream6Key;
 import com.android.networkstack.tethering.TetherDownstream6Value;
 import com.android.networkstack.tethering.TetherLimitKey;
 import com.android.networkstack.tethering.TetherLimitValue;
 import com.android.networkstack.tethering.TetherStatsKey;
 import com.android.networkstack.tethering.TetherStatsValue;
+import com.android.networkstack.tethering.TetherUpstream4Key;
+import com.android.networkstack.tethering.TetherUpstream4Value;
 import com.android.networkstack.tethering.TetheringConfiguration;
 import com.android.testutils.DevSdkIgnoreRule;
 import com.android.testutils.DevSdkIgnoreRule.IgnoreAfter;
@@ -173,6 +177,8 @@ public class IpServerTest {
     @Mock private NetworkStatsManager mStatsManager;
     @Mock private TetheringConfiguration mTetherConfig;
     @Mock private ConntrackMonitor mConntrackMonitor;
+    @Mock private BpfMap<TetherDownstream4Key, TetherDownstream4Value> mBpfDownstream4Map;
+    @Mock private BpfMap<TetherUpstream4Key, TetherUpstream4Value> mBpfUpstream4Map;
     @Mock private BpfMap<TetherDownstream6Key, TetherDownstream6Value> mBpfDownstream6Map;
     @Mock private BpfMap<TetherStatsKey, TetherStatsValue> mBpfStatsMap;
     @Mock private BpfMap<TetherLimitKey, TetherLimitValue> mBpfLimitMap;
@@ -300,6 +306,18 @@ public class IpServerTest {
                     public ConntrackMonitor getConntrackMonitor(
                             ConntrackMonitor.ConntrackEventConsumer consumer) {
                         return mConntrackMonitor;
+                    }
+
+                    @Nullable
+                    public BpfMap<TetherDownstream4Key, TetherDownstream4Value>
+                            getBpfDownstream4Map() {
+                        return mBpfDownstream4Map;
+                    }
+
+                    @Nullable
+                    public BpfMap<TetherUpstream4Key, TetherUpstream4Value>
+                            getBpfUpstream4Map() {
+                        return mBpfUpstream4Map;
                     }
 
                     @Nullable

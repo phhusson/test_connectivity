@@ -28,7 +28,11 @@ import androidx.annotation.Nullable;
 
 import com.android.networkstack.tethering.BpfCoordinator.Dependencies;
 import com.android.networkstack.tethering.BpfCoordinator.Ipv6ForwardingRule;
+import com.android.networkstack.tethering.TetherDownstream4Key;
+import com.android.networkstack.tethering.TetherDownstream4Value;
 import com.android.networkstack.tethering.TetherStatsValue;
+import com.android.networkstack.tethering.TetherUpstream4Key;
+import com.android.networkstack.tethering.TetherUpstream4Value;
 
 /**
  * Bpf coordinator class for API shims.
@@ -129,6 +133,32 @@ public class BpfCoordinatorShimImpl
                     + ifIndex + ": ", e);
             return null;
         }
+    }
+
+    @Override
+    public boolean tetherOffloadRuleAdd(@NonNull TetherDownstream4Key key,
+            @NonNull TetherDownstream4Value value) {
+        /* no op */
+        return true;
+    }
+
+    @Override
+    public boolean tetherOffloadRuleRemove(@NonNull TetherDownstream4Key key) {
+        /* no op */
+        return true;
+    }
+
+    @Override
+    public boolean tetherOffloadRuleAdd(@NonNull TetherUpstream4Key key,
+            @NonNull TetherUpstream4Value value) {
+        /* no op */
+        return true;
+    }
+
+    @Override
+    public boolean tetherOffloadRuleRemove(@NonNull TetherUpstream4Key key) {
+        /* no op */
+        return true;
     }
 
     @Override
