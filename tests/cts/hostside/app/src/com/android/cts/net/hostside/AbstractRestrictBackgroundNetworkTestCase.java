@@ -25,7 +25,8 @@ import static com.android.cts.net.hostside.NetworkPolicyTestUtils.executeShellCo
 import static com.android.cts.net.hostside.NetworkPolicyTestUtils.getConnectivityManager;
 import static com.android.cts.net.hostside.NetworkPolicyTestUtils.getContext;
 import static com.android.cts.net.hostside.NetworkPolicyTestUtils.getInstrumentation;
-import static com.android.cts.net.hostside.NetworkPolicyTestUtils.getWifiManager;
+import static com.android.cts.net.hostside.NetworkPolicyTestUtils.isAppStandbySupported;
+import static com.android.cts.net.hostside.NetworkPolicyTestUtils.isBatterySaverSupported;
 import static com.android.cts.net.hostside.NetworkPolicyTestUtils.isDozeModeSupported;
 import static com.android.cts.net.hostside.NetworkPolicyTestUtils.restrictBackgroundValueToString;
 
@@ -46,12 +47,10 @@ import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo.DetailedState;
 import android.net.NetworkInfo.State;
-import android.net.wifi.WifiManager;
 import android.os.BatteryManager;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.SystemClock;
-import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
 import android.util.Log;
 
@@ -628,6 +627,9 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     }
 
     protected void setBatterySaverMode(boolean enabled) throws Exception {
+        if (!isBatterySaverSupported()) {
+            return;
+        }
         Log.i(TAG, "Setting Battery Saver Mode to " + enabled);
         if (enabled) {
             turnBatteryOn();
@@ -639,8 +641,9 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     }
 
     protected void setDozeMode(boolean enabled) throws Exception {
-        // Check doze mode is supported.
-        assertTrue("Device does not support Doze Mode", isDozeModeSupported());
+        if (!isDozeModeSupported()) {
+            return;
+        }
 
         Log.i(TAG, "Setting Doze Mode to " + enabled);
         if (enabled) {
@@ -660,12 +663,18 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     }
 
     protected void setAppIdle(boolean enabled) throws Exception {
+        if (!isAppStandbySupported()) {
+            return;
+        }
         Log.i(TAG, "Setting app idle to " + enabled);
         executeSilentShellCommand("am set-inactive " + TEST_APP2_PKG + " " + enabled );
         assertAppIdle(enabled);
     }
 
     protected void setAppIdleNoAssert(boolean enabled) throws Exception {
+        if (!isAppStandbySupported()) {
+            return;
+        }
         Log.i(TAG, "Setting app idle to " + enabled);
         executeSilentShellCommand("am set-inactive " + TEST_APP2_PKG + " " + enabled );
     }
