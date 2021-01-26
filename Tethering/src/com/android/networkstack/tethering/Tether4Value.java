@@ -29,7 +29,7 @@ import java.net.UnknownHostException;
 import java.util.Objects;
 
 /** The value of BpfMap which is used for IPv4 bpf offload. */
-public class TetherDownstream4Value extends Struct {
+public class Tether4Value extends Struct {
     @Field(order = 0, type = Type.U32)
     public final long oif;
 
@@ -44,11 +44,11 @@ public class TetherDownstream4Value extends Struct {
     @Field(order = 4, type = Type.U16)
     public final int pmtu;
 
-    @Field(order = 5, type = Type.ByteArray, arraysize = 4)
-    public final byte[] src4;
+    @Field(order = 5, type = Type.ByteArray, arraysize = 16)
+    public final byte[] src46;
 
-    @Field(order = 6, type = Type.ByteArray, arraysize = 4)
-    public final byte[] dst4;
+    @Field(order = 6, type = Type.ByteArray, arraysize = 16)
+    public final byte[] dst46;
 
     @Field(order = 7, type = Type.UBE16)
     public final int srcPort;
@@ -60,9 +60,9 @@ public class TetherDownstream4Value extends Struct {
     @Field(order = 9, type = Type.U63)
     public final long lastUsed;
 
-    public TetherDownstream4Value(final long oif, @NonNull final MacAddress ethDstMac,
+    public Tether4Value(final long oif, @NonNull final MacAddress ethDstMac,
             @NonNull final MacAddress ethSrcMac, final int ethProto, final int pmtu,
-            final byte[] src4, final byte[] dst4, final int srcPort,
+            final byte[] src46, final byte[] dst46, final int srcPort,
             final int dstPort, final long lastUsed) {
         Objects.requireNonNull(ethDstMac);
         Objects.requireNonNull(ethSrcMac);
@@ -72,8 +72,8 @@ public class TetherDownstream4Value extends Struct {
         this.ethSrcMac = ethSrcMac;
         this.ethProto = ethProto;
         this.pmtu = pmtu;
-        this.src4 = src4;
-        this.dst4 = dst4;
+        this.src46 = src46;
+        this.dst46 = dst46;
         this.srcPort = srcPort;
         this.dstPort = dstPort;
         this.lastUsed = lastUsed;
@@ -84,10 +84,10 @@ public class TetherDownstream4Value extends Struct {
         try {
             return String.format(
                     "oif: %d, ethDstMac: %s, ethSrcMac: %s, ethProto: %d, pmtu: %d, "
-                            + "src4: %s, dst4: %s, srcPort: %d, dstPort: %d, "
+                            + "src46: %s, dst46: %s, srcPort: %d, dstPort: %d, "
                             + "lastUsed: %d",
                     oif, ethDstMac, ethSrcMac, ethProto, pmtu,
-                    InetAddress.getByAddress(src4), InetAddress.getByAddress(dst4),
+                    InetAddress.getByAddress(src46), InetAddress.getByAddress(dst46),
                     Short.toUnsignedInt((short) srcPort), Short.toUnsignedInt((short) dstPort),
                     lastUsed);
         } catch (UnknownHostException | IllegalArgumentException e) {

@@ -158,8 +158,8 @@ public class BpfCoordinatorTest {
     @Mock private IpServer mIpServer2;
     @Mock private TetheringConfiguration mTetherConfig;
     @Mock private ConntrackMonitor mConntrackMonitor;
-    @Mock private BpfMap<TetherDownstream4Key, TetherDownstream4Value> mBpfDownstream4Map;
-    @Mock private BpfMap<TetherUpstream4Key, TetherUpstream4Value> mBpfUpstream4Map;
+    @Mock private BpfMap<Tether4Key, Tether4Value> mBpfDownstream4Map;
+    @Mock private BpfMap<Tether4Key, Tether4Value> mBpfUpstream4Map;
     @Mock private BpfMap<TetherDownstream6Key, TetherDownstream6Value> mBpfDownstream6Map;
 
     // Late init since methods must be called by the thread that created this object.
@@ -205,13 +205,13 @@ public class BpfCoordinatorTest {
                     }
 
                     @Nullable
-                    public BpfMap<TetherDownstream4Key, TetherDownstream4Value>
+                    public BpfMap<Tether4Key, Tether4Value>
                             getBpfDownstream4Map() {
                         return mBpfDownstream4Map;
                     }
 
                     @Nullable
-                    public BpfMap<TetherUpstream4Key, TetherUpstream4Value>
+                    public BpfMap<Tether4Key, Tether4Value>
                             getBpfUpstream4Map() {
                         return mBpfUpstream4Map;
                     }
