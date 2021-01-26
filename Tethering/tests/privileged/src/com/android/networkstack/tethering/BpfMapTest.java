@@ -91,6 +91,7 @@ public final class BpfMapTest {
             }
         });
         assertNull(mTestMap.getFirstKey());
+        assertTrue(mTestMap.isEmpty());
     }
 
     private TetherDownstream6Key createTetherDownstream6Key(long iif, String address)
@@ -133,6 +134,18 @@ public final class BpfMapTest {
                 TetherDownstream6Key.class, Tether6Value.class)) {
             assertNotNull(readWriteMap);
         }
+    }
+
+    @Test
+    public void testIsEmpty() throws Exception {
+        assertNull(mTestMap.getFirstKey());
+        assertTrue(mTestMap.isEmpty());
+
+        mTestMap.insertEntry(mTestData.keyAt(0), mTestData.valueAt(0));
+        assertFalse(mTestMap.isEmpty());
+
+        mTestMap.deleteEntry((mTestData.keyAt(0)));
+        assertTrue(mTestMap.isEmpty());
     }
 
     @Test

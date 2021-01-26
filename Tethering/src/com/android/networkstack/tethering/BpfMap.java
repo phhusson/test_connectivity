@@ -134,6 +134,11 @@ public class BpfMap<K extends Struct, V extends Struct> implements AutoCloseable
         return deleteMapEntry(mMapFd, key.writeToBytes());
     }
 
+    /** Returns {@code true} if this map contains no elements. */
+    public boolean isEmpty() throws ErrnoException {
+        return getFirstKey() == null;
+    }
+
     private K getNextKeyInternal(@Nullable K key) throws ErrnoException {
         final byte[] rawKey = getNextRawKey(
                 key == null ? null : key.writeToBytes());
