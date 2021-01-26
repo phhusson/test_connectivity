@@ -134,27 +134,14 @@ public class BpfCoordinatorShimImpl
     }
 
     @Override
-    public boolean tetherOffloadRuleAdd(@NonNull Tether4Key key,
+    public boolean tetherOffloadRuleAdd(boolean downstream, @NonNull Tether4Key key,
             @NonNull Tether4Value value) {
         /* no op */
         return true;
     }
 
     @Override
-    public boolean tetherOffloadRuleRemove(@NonNull Tether4Key key) {
-        /* no op */
-        return true;
-    }
-
-    @Override
-    public boolean tetherOffloadRuleAdd(@NonNull Tether4Key key,
-            @NonNull Tether4Value value) {
-        /* no op */
-        return true;
-    }
-
-    @Override
-    public boolean tetherOffloadRuleRemove(@NonNull Tether4Key key) {
+    public boolean tetherOffloadRuleRemove(boolean downstream, @NonNull Tether4Key key) {
         /* no op */
         return true;
     }

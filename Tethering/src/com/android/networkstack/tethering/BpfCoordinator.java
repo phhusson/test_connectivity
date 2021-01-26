@@ -968,8 +968,8 @@ public class BpfCoordinator {
 
             if (e.msgType == (NetlinkConstants.NFNL_SUBSYS_CTNETLINK << 8
                     | NetlinkConstants.IPCTNL_MSG_CT_DELETE)) {
-                mBpfCoordinatorShim.tetherOffloadRuleRemove(upstream4Key);
-                mBpfCoordinatorShim.tetherOffloadRuleRemove(downstream4Key);
+                mBpfCoordinatorShim.tetherOffloadRuleRemove(false, upstream4Key);
+                mBpfCoordinatorShim.tetherOffloadRuleRemove(true, downstream4Key);
                 return;
             }
 
@@ -978,8 +978,8 @@ public class BpfCoordinator {
             final Tether4Value downstream4Value = makeTether4Value(e,
                     tetherClient, upstreamIndex);
 
-            mBpfCoordinatorShim.tetherOffloadRuleAdd(upstream4Key, upstream4Value);
-            mBpfCoordinatorShim.tetherOffloadRuleAdd(downstream4Key, downstream4Value);
+            mBpfCoordinatorShim.tetherOffloadRuleAdd(false, upstream4Key, upstream4Value);
+            mBpfCoordinatorShim.tetherOffloadRuleAdd(true, downstream4Key, downstream4Value);
         }
     }
 

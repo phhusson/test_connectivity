@@ -248,7 +248,7 @@ public class BpfCoordinatorShimImpl
     }
 
     @Override
-    public boolean tetherOffloadRuleAdd(@NonNull Tether4Key key,
+    public boolean tetherOffloadRuleAdd(boolean downstream, @NonNull Tether4Key key,
             @NonNull Tether4Value value) {
         if (!isInitialized()) return false;
 
@@ -257,41 +257,11 @@ public class BpfCoordinatorShimImpl
             // map pair twice causes the unexpected refresh. Must be fixed before starting the
             // conntrack timeout extension implementation.
             // TODO: consider using insertEntry.
-            mBpfDownstream4Map.updateEntry(key, value);
-        } catch (ErrnoException e) {
-            mLog.e("Could not update entry: ", e);
-            return false;
-        }
-        return true;
-    }
-
-    @Override
-    public boolean tetherOffloadRuleRemove(@NonNull Tether4Key key) {
-        if (!isInitialized()) return false;
-
-        try {
-            mBpfDownstream4Map.deleteEntry(key);
-        } catch (ErrnoException e) {
-            // Silent if the rule did not exist.
-            if (e.errno != OsConstants.ENOENT) {
-                mLog.e("Could not delete entry: ", e);
-                return false;
+            if (downstream) {
+                mBpfDownstream4Map.updateEntry(key, value);
+            } else {
+                mBpfUpstream4Map.updateEntry(key, value);
             }
-        }
-        return true;
-    }
-
-    @Override
-    public boolean tetherOffloadRuleAdd(@NonNull Tether4Key key,
-            @NonNull Tether4Value value) {
-        if (!isInitialized()) return false;
-
-        try {
-            // The last used time field of the value is updated by the bpf program. Adding the same
-            // map pair twice causes the unexpected refresh. Must be fixed before starting the
-            // conntrack timeout extension implementation.
-            // TODO: consider using insertEntry.
-            mBpfUpstream4Map.updateEntry(key, value);
         } catch (ErrnoException e) {
             mLog.e("Could not update entry: ", e);
             return false;
@@ -300,11 +270,15 @@ public class BpfCoordinatorShimImpl
     }
 
     @Override
-    public boolean tetherOffloadRuleRemove(@NonNull Tether4Key key) {
+    public boolean tetherOffloadRuleRemove(boolean downstream, @NonNull Tether4Key key) {
         if (!isInitialized()) return false;
 
         try {
-            mBpfUpstream4Map.deleteEntry(key);
+            if (downstream) {
+                mBpfDownstream4Map.deleteEntry(key);
+            } else {
+                mBpfUpstream4Map.deleteEntry(key);
+            }
         } catch (ErrnoException e) {
             // Silent if the rule did not exist.
             if (e.errno != OsConstants.ENOENT) {

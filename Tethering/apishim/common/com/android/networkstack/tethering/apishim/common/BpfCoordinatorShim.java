@@ -112,25 +112,14 @@ public abstract class BpfCoordinatorShim {
     public abstract TetherStatsValue tetherOffloadGetAndClearStats(int ifIndex);
 
     /**
-     * Adds a tethering IPv4 downstream offload rule to BPF map.
+     * Adds a tethering IPv4 offload rule to appropriate BPF map.
      */
-    public abstract boolean tetherOffloadRuleAdd(@NonNull Tether4Key key,
+    public abstract boolean tetherOffloadRuleAdd(boolean downstream, @NonNull Tether4Key key,
             @NonNull Tether4Value value);
 
     /**
-     * Deletes a tethering IPv4 downstream offload rule from the BPF map.
+     * Deletes a tethering IPv4 offload rule from the appropriate BPF map.
      */
-    public abstract boolean tetherOffloadRuleRemove(@NonNull Tether4Key key);
-
-    /**
-     * Adds a tethering IPv4 upstream offload rule to BPF map.
-     */
-    public abstract boolean tetherOffloadRuleAdd(@NonNull Tether4Key key,
-            @NonNull Tether4Value value);
-
-    /**
-     * Deletes a tethering IPv4 upstream offload rule from the BPF map.
-     */
-    public abstract boolean tetherOffloadRuleRemove(@NonNull Tether4Key key);
+    public abstract boolean tetherOffloadRuleRemove(boolean downstream, @NonNull Tether4Key key);
 }
 
