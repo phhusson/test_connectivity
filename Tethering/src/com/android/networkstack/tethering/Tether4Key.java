@@ -28,7 +28,7 @@ import java.net.Inet4Address;
 import java.net.UnknownHostException;
 import java.util.Objects;
 
-/** The key of BpfMap which is used for IPv4 bpf offload. */
+/** Key type for upstream IPv4 forwarding map. */
 public class Tether4Key extends Struct {
     @Field(order = 0, type = Type.U32)
     public final long iif;

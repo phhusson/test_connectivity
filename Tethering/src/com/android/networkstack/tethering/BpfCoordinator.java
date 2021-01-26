@@ -83,20 +83,28 @@ import java.util.Set;
  * @hide
  */
 public class BpfCoordinator {
+    static final boolean DOWNSTREAM = true;
+    static final boolean UPSTREAM = false;
+
     private static final String TAG = BpfCoordinator.class.getSimpleName();
     private static final int DUMP_TIMEOUT_MS = 10_000;
     private static final MacAddress NULL_MAC_ADDRESS = MacAddress.fromString(
             "00:00:00:00:00:00");
-    private static final String TETHER_DOWNSTREAM4_MAP_PATH =
-            "/sys/fs/bpf/tethering/map_offload_tether_downstream4_map";
-    private static final String TETHER_UPSTREAM4_MAP_PATH =
-            "/sys/fs/bpf/tethering/map_offload_tether_upstream4_map";
-    private static final String TETHER_DOWNSTREAM6_FS_PATH =
-            "/sys/fs/bpf/tethering/map_offload_tether_downstream6_map";
-    private static final String TETHER_STATS_MAP_PATH =
-            "/sys/fs/bpf/tethering/map_offload_tether_stats_map";
-    private static final String TETHER_LIMIT_MAP_PATH =
-            "/sys/fs/bpf/tethering/map_offload_tether_limit_map";
+    private static final String TETHER_DOWNSTREAM4_MAP_PATH = makeMapPath(DOWNSTREAM, 4);
+    private static final String TETHER_UPSTREAM4_MAP_PATH = makeMapPath(UPSTREAM, 4);
+    private static final String TETHER_DOWNSTREAM6_FS_PATH = makeMapPath(DOWNSTREAM, 6);
+    private static final String TETHER_UPSTREAM6_FS_PATH = makeMapPath(UPSTREAM, 6);
+    private static final String TETHER_STATS_MAP_PATH = makeMapPath("stats");
+    private static final String TETHER_LIMIT_MAP_PATH = makeMapPath("limit");
+
+    private static String makeMapPath(String which) {
+        return "/sys/fs/bpf/tethering/map_offload_tether_" + which + "_map";
+    }
+
+    private static String makeMapPath(boolean downstream, int ipVersion) {
+        return makeMapPath((downstream ? "downstream" : "upstream") + ipVersion);
+    }
+
 
     @VisibleForTesting
     enum StatsType {
@@ -256,16 +264,16 @@ public class BpfCoordinator {
                     BpfMap.BPF_F_RDWR, Tether4Key.class, Tether4Value.class);
             } catch (ErrnoException e) {
                 Log.e(TAG, "Cannot create upstream4 map: " + e);
-                return null;
             }
+            return null;
         }
 
         /** Get downstream6 BPF map. */
-        @Nullable public BpfMap<TetherDownstream6Key, TetherDownstream6Value>
+        @Nullable public BpfMap<TetherDownstream6Key, Tether6Value>
                 getBpfDownstream6Map() {
             try {
                 return new BpfMap<>(TETHER_DOWNSTREAM6_FS_PATH,
-                    BpfMap.BPF_F_RDWR, TetherDownstream6Key.class, TetherDownstream6Value.class);
+                    BpfMap.BPF_F_RDWR, TetherDownstream6Key.class, Tether6Value.class);
             } catch (ErrnoException e) {
                 Log.e(TAG, "Cannot create downstream6 map: " + e);
                 return null;
@@ -755,11 +763,11 @@ public class BpfCoordinator {
         }
 
         /**
-         * Return a TetherDownstream6Value object built from the rule.
+         * Return a Tether6Value object built from the rule.
          */
         @NonNull
-        public TetherDownstream6Value makeTetherDownstream6Value() {
-            return new TetherDownstream6Value(downstreamIfindex, dstMac, srcMac, ETH_P_IPV6,
+        public Tether6Value makeTether6Value() {
+            return new Tether6Value(downstreamIfindex, dstMac, srcMac, ETH_P_IPV6,
                     NetworkStackConstants.ETHER_MTU);
         }
 
