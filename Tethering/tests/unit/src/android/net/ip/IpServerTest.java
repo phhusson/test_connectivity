@@ -206,9 +206,6 @@ public class IpServerTest {
         when(mDependencies.getInterfaceParams(UPSTREAM_IFACE)).thenReturn(UPSTREAM_IFACE_PARAMS);
         when(mDependencies.getInterfaceParams(UPSTREAM_IFACE2)).thenReturn(UPSTREAM_IFACE_PARAMS2);
 
-        when(mDependencies.getIfindex(eq(UPSTREAM_IFACE))).thenReturn(UPSTREAM_IFINDEX);
-        when(mDependencies.getIfindex(eq(UPSTREAM_IFACE2))).thenReturn(UPSTREAM_IFINDEX2);
-
         mInterfaceConfiguration = new InterfaceConfigurationParcel();
         mInterfaceConfiguration.flags = new String[0];
         if (interfaceType == TETHERING_BLUETOOTH) {
@@ -309,26 +306,22 @@ public class IpServerTest {
                     }
 
                     @Nullable
-                    public BpfMap<Tether4Key, Tether4Value>
-                            getBpfDownstream4Map() {
+                    public BpfMap<Tether4Key, Tether4Value> getBpfDownstream4Map() {
                         return mBpfDownstream4Map;
                     }
 
                     @Nullable
-                    public BpfMap<Tether4Key, Tether4Value>
-                            getBpfUpstream4Map() {
+                    public BpfMap<Tether4Key, Tether4Value> getBpfUpstream4Map() {
                         return mBpfUpstream4Map;
                     }
 
                     @Nullable
-                    public BpfMap<TetherDownstream6Key, Tether6Value>
-                            getBpfDownstream6Map() {
+                    public BpfMap<TetherDownstream6Key, Tether6Value> getBpfDownstream6Map() {
                         return mBpfDownstream6Map;
                     }
 
                     @Nullable
-                    public BpfMap<TetherUpstream6Key, Tether6Value>
-                            getBpfUpstream6Map() {
+                    public BpfMap<TetherUpstream6Key, Tether6Value> getBpfUpstream6Map() {
                         return mBpfUpstream6Map;
                     }
 
