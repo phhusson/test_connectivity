@@ -28,7 +28,7 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Objects;
 
-/** The value of BpfMap which is used for IPv4 bpf offload. */
+/** Value type for upstream IPv4 forwarding map. */
 public class Tether4Value extends Struct {
     @Field(order = 0, type = Type.U32)
     public final long oif;

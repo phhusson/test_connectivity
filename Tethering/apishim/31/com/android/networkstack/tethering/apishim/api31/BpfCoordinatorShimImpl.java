@@ -32,8 +32,8 @@ import com.android.networkstack.tethering.BpfCoordinator.Ipv6ForwardingRule;
 import com.android.networkstack.tethering.BpfMap;
 import com.android.networkstack.tethering.Tether4Key;
 import com.android.networkstack.tethering.Tether4Value;
+import com.android.networkstack.tethering.Tether6Value;
 import com.android.networkstack.tethering.TetherDownstream6Key;
-import com.android.networkstack.tethering.TetherDownstream6Value;
 import com.android.networkstack.tethering.TetherLimitKey;
 import com.android.networkstack.tethering.TetherLimitValue;
 import com.android.networkstack.tethering.TetherStatsKey;
@@ -56,20 +56,17 @@ public class BpfCoordinatorShimImpl
     @NonNull
     private final SharedLog mLog;
 
-    // BPF map of ingress queueing discipline which pre-processes the packets by the IPv4
-    // downstream rules.
+    // BPF map for downstream IPv4 forwarding.
     @Nullable
     private final BpfMap<Tether4Key, Tether4Value> mBpfDownstream4Map;
 
-    // BPF map of ingress queueing discipline which pre-processes the packets by the IPv4
-    // upstream rules.
+    // BPF map for downstream IPv4 forwarding.
     @Nullable
     private final BpfMap<Tether4Key, Tether4Value> mBpfUpstream4Map;
 
-    // BPF map of ingress queueing discipline which pre-processes the packets by the IPv6
-    // forwarding rules.
+    // BPF map for downstream IPv6 forwarding.
     @Nullable
-    private final BpfMap<TetherDownstream6Key, TetherDownstream6Value> mBpfDownstream6Map;
+    private final BpfMap<TetherDownstream6Key, Tether6Value> mBpfDownstream6Map;
 
     // BPF map of tethering statistics of the upstream interface since tethering startup.
     @Nullable
@@ -99,7 +96,7 @@ public class BpfCoordinatorShimImpl
         if (!isInitialized()) return false;
 
         final TetherDownstream6Key key = rule.makeTetherDownstream6Key();
-        final TetherDownstream6Value value = rule.makeTetherDownstream6Value();
+        final Tether6Value value = rule.makeTether6Value();
 
         try {
             mBpfDownstream6Map.updateEntry(key, value);
