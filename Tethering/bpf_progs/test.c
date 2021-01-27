@@ -23,7 +23,7 @@
 #include "netdbpf/bpf_shared.h"
 
 // Used only by TetheringPrivilegedTests, not by production code.
-DEFINE_BPF_MAP_GRW(tether_downstream6_map, HASH, TetherDownstream6Key, TetherDownstream6Value, 16,
+DEFINE_BPF_MAP_GRW(tether_downstream6_map, HASH, TetherDownstream6Key, Tether6Value, 16,
                    AID_NETWORK_STACK)
 
 DEFINE_BPF_PROG_KVER("xdp/drop_ipv4_udp_ether", AID_ROOT, AID_NETWORK_STACK,
