@@ -40,13 +40,13 @@ DEFINE_BPF_MAP_GRW(tether_limit_map, HASH, TetherLimitKey, TetherLimitValue, 16,
 
 // ----- IPv6 Support -----
 
-DEFINE_BPF_MAP_GRW(tether_downstream6_map, HASH, TetherDownstream6Key, TetherDownstream6Value, 64,
+DEFINE_BPF_MAP_GRW(tether_downstream6_map, HASH, TetherDownstream6Key, Tether6Value, 64,
                    AID_NETWORK_STACK)
 
 DEFINE_BPF_MAP_GRW(tether_downstream64_map, HASH, TetherDownstream64Key, TetherDownstream64Value,
                    64, AID_NETWORK_STACK)
 
-DEFINE_BPF_MAP_GRW(tether_upstream6_map, HASH, TetherUpstream6Key, TetherUpstream6Value, 64,
+DEFINE_BPF_MAP_GRW(tether_upstream6_map, HASH, TetherUpstream6Key, Tether6Value, 64,
                    AID_NETWORK_STACK)
 
 static inline __always_inline int do_forward6(struct __sk_buff* skb, const bool is_ethernet,
@@ -113,14 +113,13 @@ static inline __always_inline int do_forward6(struct __sk_buff* skb, const bool 
             .iif = skb->ifindex,
     };
 
-    TetherDownstream6Value* vd = downstream ? bpf_tether_downstream6_map_lookup_elem(&kd) : NULL;
-    TetherUpstream6Value* vu = downstream ? NULL : bpf_tether_upstream6_map_lookup_elem(&ku);
+    Tether6Value* v = downstream ? bpf_tether_downstream6_map_lookup_elem(&kd)
+                                 : bpf_tether_upstream6_map_lookup_elem(&ku);
 
     // If we don't find any offload information then simply let the core stack handle it...
-    if (downstream && !vd) return TC_ACT_OK;
-    if (!downstream && !vu) return TC_ACT_OK;
+    if (!v) return TC_ACT_OK;
 
-    uint32_t stat_and_limit_k = downstream ? skb->ifindex : vu->oif;
+    uint32_t stat_and_limit_k = downstream ? skb->ifindex : v->oif;
 
     TetherStatsValue* stat_v = bpf_tether_stats_map_lookup_elem(&stat_and_limit_k);
 
@@ -133,8 +132,7 @@ static inline __always_inline int do_forward6(struct __sk_buff* skb, const bool 
     if (!limit_v) return TC_ACT_OK;
 
     // Required IPv6 minimum mtu is 1280, below that not clear what we should do, abort...
-    const int pmtu = downstream ? vd->pmtu : vu->pmtu;
-    if (pmtu < IPV6_MIN_MTU) return TC_ACT_OK;
+    if (v->pmtu < IPV6_MIN_MTU) return TC_ACT_OK;
 
     // Approximate handling of TCP/IPv6 overhead for incoming LRO/GRO packets: default
     // outbound path mtu of 1500 is not necessarily correct, but worst case we simply
@@ -145,9 +143,9 @@ static inline __always_inline int do_forward6(struct __sk_buff* skb, const bool 
     // (This is also blindly assuming 12 bytes of tcp timestamp option in tcp header)
     uint64_t packets = 1;
     uint64_t bytes = skb->len;
-    if (bytes > pmtu) {
+    if (bytes > v->pmtu) {
         const int tcp_overhead = sizeof(struct ipv6hdr) + sizeof(struct tcphdr) + 12;
-        const int mss = pmtu - tcp_overhead;
+        const int mss = v->pmtu - tcp_overhead;
         const uint64_t payload = bytes - tcp_overhead;
         packets = (payload + mss - 1) / mss;
         bytes = tcp_overhead * packets + payload;
@@ -203,7 +201,7 @@ static inline __always_inline int do_forward6(struct __sk_buff* skb, const bool 
 
     // Overwrite any mac header with the new one
     // For a rawip tx interface it will simply be a bunch of zeroes and later stripped.
-    *eth = downstream ? vd->macHeader : vu->macHeader;
+    *eth = v->macHeader;
 
     // Redirect to forwarded interface.
     //
@@ -211,7 +209,7 @@ static inline __always_inline int do_forward6(struct __sk_buff* skb, const bool 
     // The redirect actually happens after the ebpf program has already terminated,
     // and can fail for example for mtu reasons at that point in time, but there's nothing
     // we can do about it here.
-    return bpf_redirect(downstream ? vd->oif : vu->oif, 0 /* this is effectively BPF_F_EGRESS */);
+    return bpf_redirect(v->oif, 0 /* this is effectively BPF_F_EGRESS */);
 }
 
 DEFINE_BPF_PROG("schedcls/tether_downstream6_ether", AID_ROOT, AID_NETWORK_STACK,
