@@ -64,6 +64,7 @@ import com.android.networkstack.tethering.apishim.common.BpfCoordinatorShim;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -677,6 +678,12 @@ public class BpfCoordinator {
         }
     }
 
+
+    // TODO: make mInterfaceNames accessible to the shim and move this code to there.
+    private String getIfName(long ifindex) {
+        return mInterfaceNames.get((int) ifindex, Long.toString(ifindex));
+    }
+
     /**
      * Dump information.
      * Block the function until all the data are dumped on the handler thread or timed-out. The
@@ -705,11 +712,9 @@ public class BpfCoordinator {
 
             pw.println("Forwarding rules:");
             pw.increaseIndent();
-            if (mIpv6ForwardingRules.size() == 0) {
-                pw.println("<empty>");
-            } else {
-                dumpIpv6ForwardingRules(pw);
-            }
+            dumpIpv6UpstreamRules(pw);
+            dumpIpv6ForwardingRules(pw);
+            dumpIpv4ForwardingRules(pw);
             pw.decreaseIndent();
 
             dumpDone.open();
@@ -729,6 +734,11 @@ public class BpfCoordinator {
     }
 
     private void dumpIpv6ForwardingRules(@NonNull IndentingPrintWriter pw) {
+        if (mIpv6ForwardingRules.size() == 0) {
+            pw.println("No IPv6 rules");
+            return;
+        }
+
         for (Map.Entry<IpServer, LinkedHashMap<Inet6Address, Ipv6ForwardingRule>> entry :
                 mIpv6ForwardingRules.entrySet()) {
             IpServer ipServer = entry.getKey();
@@ -747,6 +757,63 @@ public class BpfCoordinator {
             }
             pw.decreaseIndent();
         }
+    }
+
+    private String ipv6UpstreamRuletoString(TetherUpstream6Key key, Tether6Value value) {
+        return String.format("%d(%s) -> %d(%s) %04x %s %s",
+                key.iif, getIfName(key.iif), value.oif, getIfName(value.oif),
+                value.ethProto, value.ethSrcMac, value.ethDstMac);
+    }
+
+    private void dumpIpv6UpstreamRules(IndentingPrintWriter pw) {
+        final BpfMap<TetherUpstream6Key, Tether6Value> ipv6UpstreamMap = mDeps.getBpfUpstream6Map();
+        if (ipv6UpstreamMap == null) {
+            pw.println("No IPv6 upstream");
+            return;
+        }
+        try {
+            if (ipv6UpstreamMap.isEmpty()) {
+                pw.println("No IPv6 upstream rules");
+                return;
+            }
+            ipv6UpstreamMap.forEach((k, v) -> pw.println(ipv6UpstreamRuletoString(k, v)));
+        } catch (ErrnoException e) {
+            pw.println("Error dumping IPv4 map: " + e);
+        }
+    }
+
+    private String ipv4RuleToString(Tether4Key key, Tether4Value value) {
+        final String private4, public4, dst4;
+        try {
+            private4 = InetAddress.getByAddress(key.src4).getHostAddress();
+            dst4 = InetAddress.getByAddress(key.dst4).getHostAddress();
+            public4 = InetAddress.getByAddress(value.src46).getHostAddress();
+        } catch (UnknownHostException impossible) {
+            throw new AssertionError("4-byte array not valid IPv4 address!");
+        }
+        return String.format("%d(%s) %d(%s) %s:%d -> %s:%d -> %s:%d",
+                key.iif, getIfName(key.iif), value.oif, getIfName(value.oif),
+                private4, key.srcPort, public4, value.srcPort, dst4, key.dstPort);
+    }
+
+    private void dumpIpv4ForwardingRules(IndentingPrintWriter pw) {
+        final BpfMap<Tether4Key, Tether4Value> ipv4UpstreamMap = mDeps.getBpfUpstream4Map();
+        if (ipv4UpstreamMap == null) {
+            pw.println("No IPv4 support");
+            return;
+        }
+        try {
+            if (ipv4UpstreamMap.isEmpty()) {
+                pw.println("No IPv4 rules");
+                return;
+            }
+            pw.println("[IPv4]: iif(iface) oif(iface) src nat dst");
+            pw.increaseIndent();
+            ipv4UpstreamMap.forEach((k, v) -> pw.println(ipv4RuleToString(k, v)));
+        } catch (ErrnoException e) {
+            pw.println("Error dumping IPv4 map: " + e);
+        }
+        pw.decreaseIndent();
     }
 
     /** IPv6 forwarding rule class. */

@@ -324,20 +324,20 @@ public class BpfCoordinatorShimImpl
         return true;
     }
 
+    private String mapStatus(BpfMap m, String name) {
+        return name + "{" + (m != null ? "OK" : "ERROR") + "}";
+    }
+
     @Override
     public String toString() {
-        return "mBpfDownstream4Map{"
-                + (mBpfDownstream4Map != null ? "initialized" : "not initialized") + "}, "
-                + "mBpfUpstream4Map{"
-                + (mBpfUpstream4Map != null ? "initialized" : "not initialized") + "}, "
-                + "mBpfUpstream6Map{"
-                + (mBpfUpstream6Map != null ? "initialized" : "not initialized") + "}, "
-                + "mBpfDownstream6Map{"
-                + (mBpfDownstream6Map != null ? "initialized" : "not initialized") + "}, "
-                + "mBpfStatsMap{"
-                + (mBpfStatsMap != null ? "initialized" : "not initialized") + "}, "
-                + "mBpfLimitMap{"
-                + (mBpfLimitMap != null ? "initialized" : "not initialized") + "} ";
+        return String.join(", ", new String[] {
+                mapStatus(mBpfDownstream6Map, "mBpfDownstream6Map"),
+                mapStatus(mBpfUpstream6Map, "mBpfUpstream6Map"),
+                mapStatus(mBpfDownstream4Map, "mBpfDownstream4Map"),
+                mapStatus(mBpfUpstream4Map, "mBpfUpstream4Map"),
+                mapStatus(mBpfStatsMap, "mBpfStatsMap"),
+                mapStatus(mBpfLimitMap, "mBpfLimitMap")
+        });
     }
 
     /**
