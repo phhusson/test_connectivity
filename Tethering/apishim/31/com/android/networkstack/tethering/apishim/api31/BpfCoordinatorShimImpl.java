@@ -18,6 +18,7 @@ package com.android.networkstack.tethering.apishim.api31;
 
 import static android.net.netstats.provider.NetworkStatsProvider.QUOTA_UNLIMITED;
 
+import android.net.MacAddress;
 import android.net.util.SharedLog;
 import android.system.ErrnoException;
 import android.system.Os;
@@ -38,6 +39,7 @@ import com.android.networkstack.tethering.TetherLimitKey;
 import com.android.networkstack.tethering.TetherLimitValue;
 import com.android.networkstack.tethering.TetherStatsKey;
 import com.android.networkstack.tethering.TetherStatsValue;
+import com.android.networkstack.tethering.TetherUpstream6Key;
 
 import java.io.FileDescriptor;
 
@@ -68,6 +70,10 @@ public class BpfCoordinatorShimImpl
     @Nullable
     private final BpfMap<TetherDownstream6Key, Tether6Value> mBpfDownstream6Map;
 
+    // BPF map for upstream IPv6 forwarding.
+    @Nullable
+    private final BpfMap<TetherUpstream6Key, Tether6Value> mBpfUpstream6Map;
+
     // BPF map of tethering statistics of the upstream interface since tethering startup.
     @Nullable
     private final BpfMap<TetherStatsKey, TetherStatsValue> mBpfStatsMap;
@@ -81,6 +87,7 @@ public class BpfCoordinatorShimImpl
         mBpfDownstream4Map = deps.getBpfDownstream4Map();
         mBpfUpstream4Map = deps.getBpfUpstream4Map();
         mBpfDownstream6Map = deps.getBpfDownstream6Map();
+        mBpfUpstream6Map = deps.getBpfUpstream6Map();
         mBpfStatsMap = deps.getBpfStatsMap();
         mBpfLimitMap = deps.getBpfLimitMap();
     }
@@ -88,7 +95,7 @@ public class BpfCoordinatorShimImpl
     @Override
     public boolean isInitialized() {
         return mBpfDownstream4Map != null && mBpfUpstream4Map != null && mBpfDownstream6Map != null
-                && mBpfStatsMap != null && mBpfLimitMap != null;
+                && mBpfUpstream6Map != null && mBpfStatsMap != null && mBpfLimitMap != null;
     }
 
     @Override
@@ -120,6 +127,37 @@ public class BpfCoordinatorShimImpl
                 mLog.e("Could not update entry: ", e);
                 return false;
             }
+        }
+        return true;
+    }
+
+    @Override
+    public boolean startUpstreamIpv6Forwarding(int downstreamIfindex, int upstreamIfindex,
+            MacAddress srcMac, MacAddress dstMac, int mtu) {
+        if (!isInitialized()) return false;
+
+        final TetherUpstream6Key key = new TetherUpstream6Key(downstreamIfindex);
+        final Tether6Value value = new Tether6Value(upstreamIfindex, srcMac,
+                dstMac, OsConstants.ETH_P_IPV6, mtu);
+        try {
+            mBpfUpstream6Map.insertEntry(key, value);
+        } catch (ErrnoException | IllegalStateException e) {
+            mLog.e("Could not insert upstream6 entry: " + e);
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    public boolean stopUpstreamIpv6Forwarding(int downstreamIfindex, int upstreamIfindex) {
+        if (!isInitialized()) return false;
+
+        final TetherUpstream6Key key = new TetherUpstream6Key(downstreamIfindex);
+        try {
+            mBpfUpstream6Map.deleteEntry(key);
+        } catch (ErrnoException e) {
+            mLog.e("Could not delete upstream IPv6 entry: " + e);
+            return false;
         }
         return true;
     }
@@ -292,6 +330,8 @@ public class BpfCoordinatorShimImpl
                 + (mBpfDownstream4Map != null ? "initialized" : "not initialized") + "}, "
                 + "mBpfUpstream4Map{"
                 + (mBpfUpstream4Map != null ? "initialized" : "not initialized") + "}, "
+                + "mBpfUpstream6Map{"
+                + (mBpfUpstream6Map != null ? "initialized" : "not initialized") + "}, "
                 + "mBpfDownstream6Map{"
                 + (mBpfDownstream6Map != null ? "initialized" : "not initialized") + "}, "
                 + "mBpfStatsMap{"

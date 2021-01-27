@@ -280,6 +280,17 @@ public class BpfCoordinator {
             }
         }
 
+        /** Get upstream6 BPF map. */
+        @Nullable public BpfMap<TetherUpstream6Key, Tether6Value> getBpfUpstream6Map() {
+            try {
+                return new BpfMap<>(TETHER_UPSTREAM6_FS_PATH, BpfMap.BPF_F_RDWR,
+                        TetherUpstream6Key.class, Tether6Value.class);
+            } catch (ErrnoException e) {
+                Log.e(TAG, "Cannot create upstream6 map: " + e);
+                return null;
+            }
+        }
+
         /** Get stats BPF map. */
         @Nullable public BpfMap<TetherStatsKey, TetherStatsValue> getBpfStatsMap() {
             try {
@@ -444,7 +455,7 @@ public class BpfCoordinator {
         }
         LinkedHashMap<Inet6Address, Ipv6ForwardingRule> rules = mIpv6ForwardingRules.get(ipServer);
 
-        // Setup the data limit on the given upstream if the first rule is added.
+        // When the first rule is added to an upstream, setup upstream forwarding and data limit.
         final int upstreamIfindex = rule.upstreamIfindex;
         if (!isAnyRuleOnUpstream(upstreamIfindex)) {
             // If failed to set a data limit, probably should not use this upstream, because
@@ -454,6 +465,19 @@ public class BpfCoordinator {
             if (!success) {
                 final String iface = mInterfaceNames.get(upstreamIfindex);
                 mLog.e("Setting data limit for " + iface + " failed.");
+            }
+
+        }
+
+        if (!isAnyRuleFromDownstreamToUpstream(rule.downstreamIfindex, rule.upstreamIfindex)) {
+            final int downstream = rule.downstreamIfindex;
+            final int upstream = rule.upstreamIfindex;
+            // TODO: support upstream forwarding on non-point-to-point interfaces.
+            // TODO: get the MTU from LinkProperties and update the rules when it changes.
+            if (!mBpfCoordinatorShim.startUpstreamIpv6Forwarding(downstream, upstream,
+                    NULL_MAC_ADDRESS, NULL_MAC_ADDRESS, NetworkStackConstants.ETHER_MTU)) {
+                mLog.e("Failed to enable upstream IPv6 forwarding from "
+                        + mInterfaceNames.get(downstream) + " to " + mInterfaceNames.get(upstream));
             }
         }
 
@@ -485,6 +509,16 @@ public class BpfCoordinator {
         // Remove the downstream entry if it has no more rule.
         if (rules.isEmpty()) {
             mIpv6ForwardingRules.remove(ipServer);
+        }
+
+        // If no more rules between this upstream and downstream, stop upstream forwarding.
+        if (!isAnyRuleFromDownstreamToUpstream(rule.downstreamIfindex, rule.upstreamIfindex)) {
+            final int downstream = rule.downstreamIfindex;
+            final int upstream = rule.upstreamIfindex;
+            if (!mBpfCoordinatorShim.stopUpstreamIpv6Forwarding(downstream, upstream)) {
+                mLog.e("Failed to disable upstream IPv6 forwarding from "
+                        + mInterfaceNames.get(downstream) + " to " + mInterfaceNames.get(upstream));
+            }
         }
 
         // Do cleanup functionality if there is no more rule on the given upstream.
@@ -535,12 +569,22 @@ public class BpfCoordinator {
         if (rules == null) return;
 
         // Need to build a rule list because the rule map may be changed in the iteration.
-        for (final Ipv6ForwardingRule rule : new ArrayList<Ipv6ForwardingRule>(rules.values())) {
+        // First remove all the old rules, then add all the new rules. This is because the upstream
+        // forwarding code in tetherOffloadRuleAdd cannot support rules on two upstreams at the
+        // same time. Deleting the rules first ensures that upstream forwarding is disabled on the
+        // old upstream when the last rule is removed from it, and re-enabled on the new upstream
+        // when the first rule is added to it.
+        // TODO: Once the IPv6 client processing code has moved from IpServer to BpfCoordinator, do
+        // something smarter.
+        final ArrayList<Ipv6ForwardingRule> rulesCopy = new ArrayList<>(rules.values());
+        for (final Ipv6ForwardingRule rule : rulesCopy) {
             // Remove the old rule before adding the new one because the map uses the same key for
             // both rules. Reversing the processing order causes that the new rule is removed as
             // unexpected.
             // TODO: Add new rule first to reduce the latency which has no rule.
             tetherOffloadRuleRemove(ipServer, rule);
+        }
+        for (final Ipv6ForwardingRule rule : rulesCopy) {
             tetherOffloadRuleAdd(ipServer, rule.onNewUpstream(newUpstreamIfindex));
         }
     }
@@ -1054,6 +1098,19 @@ public class BpfCoordinator {
                 .values()) {
             for (Ipv6ForwardingRule rule : rules.values()) {
                 if (upstreamIfindex == rule.upstreamIfindex) return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isAnyRuleFromDownstreamToUpstream(int downstreamIfindex, int upstreamIfindex) {
+        for (LinkedHashMap<Inet6Address, Ipv6ForwardingRule> rules : mIpv6ForwardingRules
+                .values()) {
+            for (Ipv6ForwardingRule rule : rules.values()) {
+                if (downstreamIfindex == rule.downstreamIfindex
+                        && upstreamIfindex == rule.upstreamIfindex) {
+                    return true;
+                }
             }
         }
         return false;

@@ -17,6 +17,7 @@
 package com.android.networkstack.tethering.apishim.api30;
 
 import android.net.INetd;
+import android.net.MacAddress;
 import android.net.TetherStatsParcel;
 import android.net.util.SharedLog;
 import android.os.RemoteException;
@@ -74,6 +75,17 @@ public class BpfCoordinatorShimImpl
             mLog.e("Could not remove IPv6 forwarding rule: ", e);
             return false;
         }
+        return true;
+    }
+
+    @Override
+    public boolean startUpstreamIpv6Forwarding(int downstreamIfindex, int upstreamIfindex,
+            MacAddress srcMac, MacAddress dstMac, int mtu) {
+        return true;
+    }
+
+    @Override
+    public boolean stopUpstreamIpv6Forwarding(int downstreamIfindex, int upstreamIfindex) {
         return true;
     }
 
