@@ -62,7 +62,7 @@ public class BpfCoordinatorShimImpl
     @Nullable
     private final BpfMap<Tether4Key, Tether4Value> mBpfDownstream4Map;
 
-    // BPF map for downstream IPv4 forwarding.
+    // BPF map for upstream IPv4 forwarding.
     @Nullable
     private final BpfMap<Tether4Key, Tether4Value> mBpfUpstream4Map;
 
