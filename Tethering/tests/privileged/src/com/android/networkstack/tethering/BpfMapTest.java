@@ -35,7 +35,6 @@ import androidx.test.runner.AndroidJUnit4;
 
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
 
-import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -56,6 +55,8 @@ public final class BpfMapTest {
 
     private ArrayMap<TetherDownstream6Key, Tether6Value> mTestData;
 
+    private BpfMap<TetherDownstream6Key, Tether6Value> mTestMap;
+
     @BeforeClass
     public static void setupOnce() {
         System.loadLibrary("tetherutilsjni");
@@ -63,12 +64,6 @@ public final class BpfMapTest {
 
     @Before
     public void setUp() throws Exception {
-        // TODO: Simply the test map creation and deletion.
-        // - Make the map a class member (mTestMap)
-        // - Open the test map RW in setUp
-        // - Close the test map in tearDown.
-        cleanTestMap();
-
         mTestData = new ArrayMap<>();
         mTestData.put(createTetherDownstream6Key(101, "2001:db8::1"),
                 createTether6Value(11, "00:00:00:00:00:0a", "11:11:11:00:00:0b",
@@ -79,30 +74,23 @@ public final class BpfMapTest {
         mTestData.put(createTetherDownstream6Key(103, "2001:db8::3"),
                 createTether6Value(33, "00:00:00:00:00:0e", "33:33:33:00:00:0f",
                 ETH_P_IPV6, 1500));
+
+        initTestMap();
     }
 
-    @After
-    public void tearDown() throws Exception {
-        cleanTestMap();
-    }
-
-    private BpfMap<TetherDownstream6Key, Tether6Value> getTestMap() throws Exception {
-        return new BpfMap<>(
+    private void initTestMap() throws Exception {
+        mTestMap = new BpfMap<>(
                 TETHER_DOWNSTREAM6_FS_PATH, BpfMap.BPF_F_RDWR,
                 TetherDownstream6Key.class, Tether6Value.class);
-    }
 
-    private void cleanTestMap() throws Exception {
-        try (BpfMap<TetherDownstream6Key, Tether6Value> bpfMap = getTestMap()) {
-            bpfMap.forEach((key, value) -> {
-                try {
-                    assertTrue(bpfMap.deleteEntry(key));
-                } catch (ErrnoException e) {
-                    fail("Fail to delete the key " + key + ": " + e);
-                }
-            });
-            assertNull(bpfMap.getFirstKey());
-        }
+        mTestMap.forEach((key, value) -> {
+            try {
+                assertTrue(mTestMap.deleteEntry(key));
+            } catch (ErrnoException e) {
+                fail("Fail to delete the key " + key + ": " + e);
+            }
+        });
+        assertNull(mTestMap.getFirstKey());
     }
 
     private TetherDownstream6Key createTetherDownstream6Key(long iif, String address)
@@ -112,8 +100,7 @@ public final class BpfMapTest {
         return new TetherDownstream6Key(iif, ipv6Address.getAddress());
     }
 
-    private Tether6Value createTether6Value(int oif, String src, String dst,
-            int proto, int pmtu) throws Exception {
+    private Tether6Value createTether6Value(int oif, String src, String dst, int proto, int pmtu) {
         final MacAddress srcMac = MacAddress.fromString(src);
         final MacAddress dstMac = MacAddress.fromString(dst);
 
@@ -150,210 +137,192 @@ public final class BpfMapTest {
 
     @Test
     public void testGetFirstKey() throws Exception {
-        try (BpfMap<TetherDownstream6Key, Tether6Value> bpfMap = getTestMap()) {
-            // getFirstKey on an empty map returns null.
-            assertFalse(bpfMap.containsKey(mTestData.keyAt(0)));
-            assertNull(bpfMap.getFirstKey());
-            assertNull(bpfMap.getValue(mTestData.keyAt(0)));
+        // getFirstKey on an empty map returns null.
+        assertFalse(mTestMap.containsKey(mTestData.keyAt(0)));
+        assertNull(mTestMap.getFirstKey());
+        assertNull(mTestMap.getValue(mTestData.keyAt(0)));
 
-            // getFirstKey on a non-empty map returns the first key.
-            bpfMap.insertEntry(mTestData.keyAt(0), mTestData.valueAt(0));
-            assertEquals(mTestData.keyAt(0), bpfMap.getFirstKey());
-        }
+        // getFirstKey on a non-empty map returns the first key.
+        mTestMap.insertEntry(mTestData.keyAt(0), mTestData.valueAt(0));
+        assertEquals(mTestData.keyAt(0), mTestMap.getFirstKey());
     }
 
     @Test
     public void testGetNextKey() throws Exception {
-        try (BpfMap<TetherDownstream6Key, Tether6Value> bpfMap = getTestMap()) {
-            // [1] If the passed-in key is not found on empty map, return null.
-            final TetherDownstream6Key nonexistentKey =
-                    createTetherDownstream6Key(1234, "2001:db8::10");
-            assertNull(bpfMap.getNextKey(nonexistentKey));
+        // [1] If the passed-in key is not found on empty map, return null.
+        final TetherDownstream6Key nonexistentKey =
+                createTetherDownstream6Key(1234, "2001:db8::10");
+        assertNull(mTestMap.getNextKey(nonexistentKey));
 
-            // [2] If the passed-in key is null on empty map, throw NullPointerException.
-            try {
-                bpfMap.getNextKey(null);
-                fail("Getting next key with null key should throw NullPointerException");
-            } catch (NullPointerException expected) { }
+        // [2] If the passed-in key is null on empty map, throw NullPointerException.
+        try {
+            mTestMap.getNextKey(null);
+            fail("Getting next key with null key should throw NullPointerException");
+        } catch (NullPointerException expected) { }
 
-            // The BPF map has one entry now.
-            final ArrayMap<TetherDownstream6Key, Tether6Value> resultMap =
-                    new ArrayMap<>();
-            bpfMap.insertEntry(mTestData.keyAt(0), mTestData.valueAt(0));
-            resultMap.put(mTestData.keyAt(0), mTestData.valueAt(0));
+        // The BPF map has one entry now.
+        final ArrayMap<TetherDownstream6Key, Tether6Value> resultMap =
+                new ArrayMap<>();
+        mTestMap.insertEntry(mTestData.keyAt(0), mTestData.valueAt(0));
+        resultMap.put(mTestData.keyAt(0), mTestData.valueAt(0));
 
-            // [3] If the passed-in key is the last key, return null.
-            // Because there is only one entry in the map, the first key equals the last key.
-            final TetherDownstream6Key lastKey = bpfMap.getFirstKey();
-            assertNull(bpfMap.getNextKey(lastKey));
+        // [3] If the passed-in key is the last key, return null.
+        // Because there is only one entry in the map, the first key equals the last key.
+        final TetherDownstream6Key lastKey = mTestMap.getFirstKey();
+        assertNull(mTestMap.getNextKey(lastKey));
 
-            // The BPF map has two entries now.
-            bpfMap.insertEntry(mTestData.keyAt(1), mTestData.valueAt(1));
-            resultMap.put(mTestData.keyAt(1), mTestData.valueAt(1));
+        // The BPF map has two entries now.
+        mTestMap.insertEntry(mTestData.keyAt(1), mTestData.valueAt(1));
+        resultMap.put(mTestData.keyAt(1), mTestData.valueAt(1));
 
-            // [4] If the passed-in key is found, return the next key.
-            TetherDownstream6Key nextKey = bpfMap.getFirstKey();
-            while (nextKey != null) {
-                if (resultMap.remove(nextKey).equals(nextKey)) {
-                    fail("Unexpected result: " + nextKey);
-                }
-                nextKey = bpfMap.getNextKey(nextKey);
+        // [4] If the passed-in key is found, return the next key.
+        TetherDownstream6Key nextKey = mTestMap.getFirstKey();
+        while (nextKey != null) {
+            if (resultMap.remove(nextKey).equals(nextKey)) {
+                fail("Unexpected result: " + nextKey);
             }
-            assertTrue(resultMap.isEmpty());
-
-            // [5] If the passed-in key is not found on non-empty map, return the first key.
-            assertEquals(bpfMap.getFirstKey(), bpfMap.getNextKey(nonexistentKey));
-
-            // [6] If the passed-in key is null on non-empty map, throw NullPointerException.
-            try {
-                bpfMap.getNextKey(null);
-                fail("Getting next key with null key should throw NullPointerException");
-            } catch (NullPointerException expected) { }
+            nextKey = mTestMap.getNextKey(nextKey);
         }
+        assertTrue(resultMap.isEmpty());
+
+        // [5] If the passed-in key is not found on non-empty map, return the first key.
+        assertEquals(mTestMap.getFirstKey(), mTestMap.getNextKey(nonexistentKey));
+
+        // [6] If the passed-in key is null on non-empty map, throw NullPointerException.
+        try {
+            mTestMap.getNextKey(null);
+            fail("Getting next key with null key should throw NullPointerException");
+        } catch (NullPointerException expected) { }
     }
 
     @Test
     public void testUpdateBpfMap() throws Exception {
-        try (BpfMap<TetherDownstream6Key, Tether6Value> bpfMap = getTestMap()) {
+        final TetherDownstream6Key key = mTestData.keyAt(0);
+        final Tether6Value value = mTestData.valueAt(0);
+        final Tether6Value value2 = mTestData.valueAt(1);
+        assertFalse(mTestMap.deleteEntry(key));
 
-            final TetherDownstream6Key key = mTestData.keyAt(0);
-            final Tether6Value value = mTestData.valueAt(0);
-            final Tether6Value value2 = mTestData.valueAt(1);
-            assertFalse(bpfMap.deleteEntry(key));
+        // updateEntry will create an entry if it does not exist already.
+        mTestMap.updateEntry(key, value);
+        assertTrue(mTestMap.containsKey(key));
+        final Tether6Value result = mTestMap.getValue(key);
+        assertEquals(value, result);
 
-            // updateEntry will create an entry if it does not exist already.
-            bpfMap.updateEntry(key, value);
-            assertTrue(bpfMap.containsKey(key));
-            final Tether6Value result = bpfMap.getValue(key);
-            assertEquals(value, result);
+        // updateEntry will update an entry that already exists.
+        mTestMap.updateEntry(key, value2);
+        assertTrue(mTestMap.containsKey(key));
+        final Tether6Value result2 = mTestMap.getValue(key);
+        assertEquals(value2, result2);
 
-            // updateEntry will update an entry that already exists.
-            bpfMap.updateEntry(key, value2);
-            assertTrue(bpfMap.containsKey(key));
-            final Tether6Value result2 = bpfMap.getValue(key);
-            assertEquals(value2, result2);
-
-            assertTrue(bpfMap.deleteEntry(key));
-            assertFalse(bpfMap.containsKey(key));
-        }
+        assertTrue(mTestMap.deleteEntry(key));
+        assertFalse(mTestMap.containsKey(key));
     }
 
     @Test
     public void testInsertReplaceEntry() throws Exception {
-        try (BpfMap<TetherDownstream6Key, Tether6Value> bpfMap = getTestMap()) {
+        final TetherDownstream6Key key = mTestData.keyAt(0);
+        final Tether6Value value = mTestData.valueAt(0);
+        final Tether6Value value2 = mTestData.valueAt(1);
 
-            final TetherDownstream6Key key = mTestData.keyAt(0);
-            final Tether6Value value = mTestData.valueAt(0);
-            final Tether6Value value2 = mTestData.valueAt(1);
+        try {
+            mTestMap.replaceEntry(key, value);
+            fail("Replacing non-existent key " + key + " should throw NoSuchElementException");
+        } catch (NoSuchElementException expected) { }
+        assertFalse(mTestMap.containsKey(key));
 
-            try {
-                bpfMap.replaceEntry(key, value);
-                fail("Replacing non-existent key " + key + " should throw NoSuchElementException");
-            } catch (NoSuchElementException expected) { }
-            assertFalse(bpfMap.containsKey(key));
+        mTestMap.insertEntry(key, value);
+        assertTrue(mTestMap.containsKey(key));
+        final Tether6Value result = mTestMap.getValue(key);
+        assertEquals(value, result);
+        try {
+            mTestMap.insertEntry(key, value);
+            fail("Inserting existing key " + key + " should throw IllegalStateException");
+        } catch (IllegalStateException expected) { }
 
-            bpfMap.insertEntry(key, value);
-            assertTrue(bpfMap.containsKey(key));
-            final Tether6Value result = bpfMap.getValue(key);
-            assertEquals(value, result);
-            try {
-                bpfMap.insertEntry(key, value);
-                fail("Inserting existing key " + key + " should throw IllegalStateException");
-            } catch (IllegalStateException expected) { }
-
-            bpfMap.replaceEntry(key, value2);
-            assertTrue(bpfMap.containsKey(key));
-            final Tether6Value result2 = bpfMap.getValue(key);
-            assertEquals(value2, result2);
-        }
+        mTestMap.replaceEntry(key, value2);
+        assertTrue(mTestMap.containsKey(key));
+        final Tether6Value result2 = mTestMap.getValue(key);
+        assertEquals(value2, result2);
     }
 
     @Test
     public void testIterateBpfMap() throws Exception {
-        try (BpfMap<TetherDownstream6Key, Tether6Value> bpfMap = getTestMap()) {
-            final ArrayMap<TetherDownstream6Key, Tether6Value> resultMap =
-                    new ArrayMap<>(mTestData);
+        final ArrayMap<TetherDownstream6Key, Tether6Value> resultMap =
+                new ArrayMap<>(mTestData);
 
-            for (int i = 0; i < resultMap.size(); i++) {
-                bpfMap.insertEntry(resultMap.keyAt(i), resultMap.valueAt(i));
-            }
-
-            bpfMap.forEach((key, value) -> {
-                if (!value.equals(resultMap.remove(key))) {
-                    fail("Unexpected result: " + key + ", value: " + value);
-                }
-            });
-            assertTrue(resultMap.isEmpty());
+        for (int i = 0; i < resultMap.size(); i++) {
+            mTestMap.insertEntry(resultMap.keyAt(i), resultMap.valueAt(i));
         }
+
+        mTestMap.forEach((key, value) -> {
+            if (!value.equals(resultMap.remove(key))) {
+                fail("Unexpected result: " + key + ", value: " + value);
+            }
+        });
+        assertTrue(resultMap.isEmpty());
     }
 
     @Test
     public void testIterateEmptyMap() throws Exception {
-        try (BpfMap<TetherDownstream6Key, Tether6Value> bpfMap = getTestMap()) {
-            // Can't use an int because variables used in a lambda must be final.
-            final AtomicInteger count = new AtomicInteger();
-            bpfMap.forEach((key, value) -> count.incrementAndGet());
-            // Expect that the consumer was never called.
-            assertEquals(0, count.get());
-        }
+        // Can't use an int because variables used in a lambda must be final.
+        final AtomicInteger count = new AtomicInteger();
+        mTestMap.forEach((key, value) -> count.incrementAndGet());
+        // Expect that the consumer was never called.
+        assertEquals(0, count.get());
     }
 
     @Test
     public void testIterateDeletion() throws Exception {
-        try (BpfMap<TetherDownstream6Key, Tether6Value> bpfMap = getTestMap()) {
-            final ArrayMap<TetherDownstream6Key, Tether6Value> resultMap =
-                    new ArrayMap<>(mTestData);
+        final ArrayMap<TetherDownstream6Key, Tether6Value> resultMap =
+                new ArrayMap<>(mTestData);
 
-            for (int i = 0; i < resultMap.size(); i++) {
-                bpfMap.insertEntry(resultMap.keyAt(i), resultMap.valueAt(i));
-            }
-
-            // Can't use an int because variables used in a lambda must be final.
-            final AtomicInteger count = new AtomicInteger();
-            bpfMap.forEach((key, value) -> {
-                try {
-                    assertTrue(bpfMap.deleteEntry(key));
-                } catch (ErrnoException e) {
-                    fail("Fail to delete key " + key + ": " + e);
-                }
-                if (!value.equals(resultMap.remove(key))) {
-                    fail("Unexpected result: " + key + ", value: " + value);
-                }
-                count.incrementAndGet();
-            });
-            assertEquals(3, count.get());
-            assertTrue(resultMap.isEmpty());
-            assertNull(bpfMap.getFirstKey());
+        for (int i = 0; i < resultMap.size(); i++) {
+            mTestMap.insertEntry(resultMap.keyAt(i), resultMap.valueAt(i));
         }
+
+        // Can't use an int because variables used in a lambda must be final.
+        final AtomicInteger count = new AtomicInteger();
+        mTestMap.forEach((key, value) -> {
+            try {
+                assertTrue(mTestMap.deleteEntry(key));
+            } catch (ErrnoException e) {
+                fail("Fail to delete key " + key + ": " + e);
+            }
+            if (!value.equals(resultMap.remove(key))) {
+                fail("Unexpected result: " + key + ", value: " + value);
+            }
+            count.incrementAndGet();
+        });
+        assertEquals(3, count.get());
+        assertTrue(resultMap.isEmpty());
+        assertNull(mTestMap.getFirstKey());
     }
 
     @Test
     public void testInsertOverflow() throws Exception {
-        try (BpfMap<TetherDownstream6Key, Tether6Value> bpfMap = getTestMap()) {
-            final ArrayMap<TetherDownstream6Key, Tether6Value> testData =
-                    new ArrayMap<>();
+        final ArrayMap<TetherDownstream6Key, Tether6Value> testData =
+                new ArrayMap<>();
 
-            // Build test data for TEST_MAP_SIZE + 1 entries.
-            for (int i = 1; i <= TEST_MAP_SIZE + 1; i++) {
-                testData.put(createTetherDownstream6Key(i, "2001:db8::1"),
-                        createTether6Value(100, "de:ad:be:ef:00:01", "de:ad:be:ef:00:02",
-                        ETH_P_IPV6, 1500));
-            }
+        // Build test data for TEST_MAP_SIZE + 1 entries.
+        for (int i = 1; i <= TEST_MAP_SIZE + 1; i++) {
+            testData.put(createTetherDownstream6Key(i, "2001:db8::1"),
+                    createTether6Value(100, "de:ad:be:ef:00:01", "de:ad:be:ef:00:02",
+                    ETH_P_IPV6, 1500));
+        }
 
-            // Insert #TEST_MAP_SIZE test entries to the map. The map has reached the limit.
-            for (int i = 0; i < TEST_MAP_SIZE; i++) {
-                bpfMap.insertEntry(testData.keyAt(i), testData.valueAt(i));
-            }
+        // Insert #TEST_MAP_SIZE test entries to the map. The map has reached the limit.
+        for (int i = 0; i < TEST_MAP_SIZE; i++) {
+            mTestMap.insertEntry(testData.keyAt(i), testData.valueAt(i));
+        }
 
-            // The map won't allow inserting any more entries.
-            try {
-                bpfMap.insertEntry(testData.keyAt(TEST_MAP_SIZE), testData.valueAt(TEST_MAP_SIZE));
-                fail("Writing too many entries should throw ErrnoException");
-            } catch (ErrnoException expected) {
-                // Expect that can't insert the entry anymore because the number of elements in the
-                // map reached the limit. See man-pages/bpf.
-                assertEquals(OsConstants.E2BIG, expected.errno);
-            }
+        // The map won't allow inserting any more entries.
+        try {
+            mTestMap.insertEntry(testData.keyAt(TEST_MAP_SIZE), testData.valueAt(TEST_MAP_SIZE));
+            fail("Writing too many entries should throw ErrnoException");
+        } catch (ErrnoException expected) {
+            // Expect that can't insert the entry anymore because the number of elements in the
+            // map reached the limit. See man-pages/bpf.
+            assertEquals(OsConstants.E2BIG, expected.errno);
         }
     }
 }
