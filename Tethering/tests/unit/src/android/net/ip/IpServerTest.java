@@ -106,8 +106,8 @@ import com.android.networkstack.tethering.BpfMap;
 import com.android.networkstack.tethering.PrivateAddressCoordinator;
 import com.android.networkstack.tethering.Tether4Key;
 import com.android.networkstack.tethering.Tether4Value;
+import com.android.networkstack.tethering.Tether6Value;
 import com.android.networkstack.tethering.TetherDownstream6Key;
-import com.android.networkstack.tethering.TetherDownstream6Value;
 import com.android.networkstack.tethering.TetherLimitKey;
 import com.android.networkstack.tethering.TetherLimitValue;
 import com.android.networkstack.tethering.TetherStatsKey;
@@ -177,7 +177,7 @@ public class IpServerTest {
     @Mock private ConntrackMonitor mConntrackMonitor;
     @Mock private BpfMap<Tether4Key, Tether4Value> mBpfDownstream4Map;
     @Mock private BpfMap<Tether4Key, Tether4Value> mBpfUpstream4Map;
-    @Mock private BpfMap<TetherDownstream6Key, TetherDownstream6Value> mBpfDownstream6Map;
+    @Mock private BpfMap<TetherDownstream6Key, Tether6Value> mBpfDownstream6Map;
     @Mock private BpfMap<TetherStatsKey, TetherStatsValue> mBpfStatsMap;
     @Mock private BpfMap<TetherLimitKey, TetherLimitValue> mBpfLimitMap;
 
@@ -319,7 +319,7 @@ public class IpServerTest {
                     }
 
                     @Nullable
-                    public BpfMap<TetherDownstream6Key, TetherDownstream6Value>
+                    public BpfMap<TetherDownstream6Key, Tether6Value>
                             getBpfDownstream6Map() {
                         return mBpfDownstream6Map;
                     }
@@ -800,8 +800,8 @@ public class IpServerTest {
     }
 
     @NonNull
-    private static TetherDownstream6Value makeDownstream6Value(@NonNull final MacAddress dstMac) {
-        return new TetherDownstream6Value(TEST_IFACE_PARAMS.index, dstMac,
+    private static Tether6Value makeDownstream6Value(@NonNull final MacAddress dstMac) {
+        return new Tether6Value(TEST_IFACE_PARAMS.index, dstMac,
                 TEST_IFACE_PARAMS.macAddr, ETH_P_IPV6, NetworkStackConstants.ETHER_MTU);
     }
 

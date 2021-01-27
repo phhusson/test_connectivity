@@ -21,15 +21,13 @@ import android.net.MacAddress;
 import androidx.annotation.NonNull;
 
 import com.android.net.module.util.Struct;
-import com.android.net.module.util.Struct.Field;
-import com.android.net.module.util.Struct.Type;
 
 import java.util.Objects;
 
-/** The value of BpfMap which is used for bpf offload. */
-public class TetherDownstream6Value extends Struct {
-    @Field(order = 0, type = Type.U32)
-    public final long oif; // The output interface index.
+/** Value type for downstream and upstream IPv6 forwarding maps. */
+public class Tether6Value extends Struct {
+    @Field(order = 0, type = Type.S32)
+    public final int oif; // The output interface index.
 
     // The ethhdr struct which is defined in uapi/linux/if_ether.h
     @Field(order = 1, type = Type.EUI48)
@@ -42,7 +40,7 @@ public class TetherDownstream6Value extends Struct {
     @Field(order = 4, type = Type.U16)
     public final int pmtu; // The maximum L3 output path/route mtu.
 
-    public TetherDownstream6Value(final long oif, @NonNull final MacAddress ethDstMac,
+    public Tether6Value(final int oif, @NonNull final MacAddress ethDstMac,
             @NonNull final MacAddress ethSrcMac, final int ethProto, final int pmtu) {
         Objects.requireNonNull(ethSrcMac);
         Objects.requireNonNull(ethDstMac);
@@ -52,24 +50,6 @@ public class TetherDownstream6Value extends Struct {
         this.ethSrcMac = ethSrcMac;
         this.ethProto = ethProto;
         this.pmtu = pmtu;
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-        if (this == obj) return true;
-
-        if (!(obj instanceof TetherDownstream6Value)) return false;
-
-        final TetherDownstream6Value that = (TetherDownstream6Value) obj;
-
-        return oif == that.oif && ethDstMac.equals(that.ethDstMac)
-                && ethSrcMac.equals(that.ethSrcMac) && ethProto == that.ethProto
-                && pmtu == that.pmtu;
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(oif, ethDstMac, ethSrcMac, ethProto, pmtu);
     }
 
     @Override
