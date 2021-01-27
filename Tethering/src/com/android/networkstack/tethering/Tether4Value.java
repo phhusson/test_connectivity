@@ -28,7 +28,7 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Objects;
 
-/** Value type for upstream IPv4 forwarding map. */
+/** Value type for downstream & upstream IPv4 forwarding maps. */
 public class Tether4Value extends Struct {
     @Field(order = 0, type = Type.U32)
     public final long oif;

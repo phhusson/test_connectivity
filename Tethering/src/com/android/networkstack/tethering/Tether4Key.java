@@ -28,7 +28,7 @@ import java.net.Inet4Address;
 import java.net.UnknownHostException;
 import java.util.Objects;
 
-/** Key type for upstream IPv4 forwarding map. */
+/** Key type for downstream & upstream IPv4 forwarding maps. */
 public class Tether4Key extends Struct {
     @Field(order = 0, type = Type.U32)
     public final long iif;
