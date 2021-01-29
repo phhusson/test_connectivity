@@ -25,10 +25,12 @@ import static android.content.pm.PackageManager.FEATURE_USB_HOST;
 import static android.content.pm.PackageManager.FEATURE_WIFI;
 import static android.content.pm.PackageManager.GET_PERMISSIONS;
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
+import static android.net.NetworkCapabilities.NET_CAPABILITY_FOREGROUND;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_IMS;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED;
+import static android.net.NetworkCapabilities.TRANSPORT_TEST;
 import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
 import static android.net.cts.util.CtsNetUtils.ConnectivityActionReceiver;
 import static android.net.cts.util.CtsNetUtils.HTTP_PORT;
@@ -43,6 +45,7 @@ import static android.system.OsConstants.AF_UNSPEC;
 
 import static com.android.compatibility.common.util.SystemUtil.runShellCommand;
 import static com.android.compatibility.common.util.SystemUtil.runWithShellPermissionIdentity;
+import static com.android.testutils.MiscAsserts.assertThrows;
 import static com.android.testutils.TestPermissionUtil.runAsShell;
 
 import static org.junit.Assert.assertEquals;
@@ -68,8 +71,10 @@ import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.NetworkCallback;
+import android.net.InetAddresses;
 import android.net.IpSecManager;
 import android.net.IpSecManager.UdpEncapsulationSocket;
+import android.net.LinkAddress;
 import android.net.LinkProperties;
 import android.net.Network;
 import android.net.NetworkCapabilities;
@@ -80,6 +85,9 @@ import android.net.NetworkInfo.State;
 import android.net.NetworkRequest;
 import android.net.NetworkUtils;
 import android.net.SocketKeepalive;
+import android.net.StringNetworkSpecifier;
+import android.net.TestNetworkInterface;
+import android.net.TestNetworkManager;
 import android.net.cts.util.CtsNetUtils;
 import android.net.util.KeepaliveUtils;
 import android.net.wifi.WifiManager;
@@ -104,9 +112,9 @@ import com.android.testutils.RecorderCallback.CallbackEntry;
 import com.android.testutils.SkipPresubmit;
 import com.android.testutils.TestableNetworkCallback;
 
-import libcore.io.Streams;
-
 import junit.framework.AssertionFailedError;
+
+import libcore.io.Streams;
 
 import org.junit.After;
 import org.junit.Before;
@@ -175,6 +183,9 @@ public class ConnectivityManagerTest {
             "config_allowedUnprivilegedKeepalivePerUid";
     private static final String KEEPALIVE_RESERVED_PER_SLOT_RES_NAME =
             "config_reservedPrivilegedKeepaliveSlots";
+
+    private static final LinkAddress TEST_LINKADDR = new LinkAddress(
+            InetAddresses.parseNumericAddress("2001:db8::8"), 64);
 
     private Context mContext;
     private Instrumentation mInstrumentation;
@@ -1529,6 +1540,73 @@ public class ConnectivityManagerTest {
             assertEquals("Invalid captive portal URL protocol", "http", parsedUrl.getProtocol());
         } catch (MalformedURLException e) {
             throw new AssertionFailedError("Captive portal server URL is invalid: " + e);
+        }
+    }
+
+    /**
+     * Verify background request can only be requested when acquiring
+     * {@link android.Manifest.permission.NETWORK_SETTINGS}.
+     */
+    @Test
+    public void testRequestBackgroundNetwork() throws Exception {
+        // Create a tun interface. Use the returned interface name as the specifier to create
+        // a test network request.
+        final TestNetworkInterface testNetworkInterface = runWithShellPermissionIdentity(() -> {
+            final TestNetworkManager tnm =
+                    mContext.getSystemService(TestNetworkManager.class);
+            return tnm.createTunInterface(new LinkAddress[]{TEST_LINKADDR});
+        }, android.Manifest.permission.MANAGE_TEST_NETWORKS,
+                android.Manifest.permission.NETWORK_SETTINGS);
+        assertNotNull(testNetworkInterface);
+
+        final NetworkRequest testRequest = new NetworkRequest.Builder()
+                .addTransportType(TRANSPORT_TEST)
+                // Test networks do not have NOT_VPN or TRUSTED capabilities by default
+                .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                .removeCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)
+                .setNetworkSpecifier(
+                        new StringNetworkSpecifier(testNetworkInterface.getInterfaceName()))
+                .build();
+
+        // Verify background network cannot be requested without NETWORK_SETTINGS permission.
+        final TestableNetworkCallback callback = new TestableNetworkCallback();
+        assertThrows(SecurityException.class,
+                () -> mCm.requestBackgroundNetwork(testRequest, null, callback));
+
+        try {
+            // Request background test network via Shell identity which has NETWORK_SETTINGS
+            // permission granted.
+            runWithShellPermissionIdentity(
+                    () -> mCm.requestBackgroundNetwork(testRequest, null, callback),
+                    android.Manifest.permission.NETWORK_SETTINGS);
+
+            // Register the test network agent which has no foreground request associated to it.
+            // And verify it can satisfy the background network request just fired.
+            final Binder binder = new Binder();
+            runWithShellPermissionIdentity(() -> {
+                final TestNetworkManager tnm =
+                        mContext.getSystemService(TestNetworkManager.class);
+                tnm.setupTestNetwork(testNetworkInterface.getInterfaceName(), binder);
+            }, android.Manifest.permission.MANAGE_TEST_NETWORKS,
+                    android.Manifest.permission.NETWORK_SETTINGS);
+            waitForAvailable(callback);
+            final Network testNetwork = callback.getLastAvailableNetwork();
+            assertNotNull(testNetwork);
+
+            // The test network that has just connected is a foreground network,
+            // non-listen requests will get available callback before it can be put into
+            // background if no foreground request can be satisfied. Thus, wait for a short
+            // period is needed to let foreground capability go away.
+            callback.eventuallyExpect(CallbackEntry.NETWORK_CAPS_UPDATED,
+                    callback.getDefaultTimeoutMs(),
+                    c -> c instanceof CallbackEntry.CapabilitiesChanged
+                            && !((CallbackEntry.CapabilitiesChanged) c).getCaps()
+                            .hasCapability(NET_CAPABILITY_FOREGROUND));
+            final NetworkCapabilities nc = mCm.getNetworkCapabilities(testNetwork);
+            assertFalse("expected background network, but got " + nc,
+                    nc.hasCapability(NET_CAPABILITY_FOREGROUND));
+        } finally {
+            mCm.unregisterNetworkCallback(callback);
         }
     }
 }
