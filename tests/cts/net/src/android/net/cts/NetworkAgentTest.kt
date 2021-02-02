@@ -48,6 +48,8 @@ import android.net.RouteInfo
 import android.net.SocketKeepalive
 import android.net.StringNetworkSpecifier
 import android.net.Uri
+import android.net.VpnManager
+import android.net.VpnTransportInfo
 import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnAddKeepalivePacketFilter
 import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnAutomaticReconnectDisabled
 import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnBandwidthUpdateRequested
@@ -545,7 +547,7 @@ class NetworkAgentTest {
 
     @Test
     @IgnoreUpTo(Build.VERSION_CODES.R)
-    fun testSetUnderlyingNetworks() {
+    fun testSetUnderlyingNetworksAndVpnSpecifier() {
         val request = NetworkRequest.Builder()
                 .addTransportType(TRANSPORT_TEST)
                 .addTransportType(TRANSPORT_VPN)
@@ -560,6 +562,7 @@ class NetworkAgentTest {
             addTransportType(TRANSPORT_VPN)
             removeCapability(NET_CAPABILITY_NOT_VPN)
             addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
+            setTransportInfo(VpnTransportInfo(VpnManager.TYPE_VPN_SERVICE))
         }
         val defaultNetwork = mCM.activeNetwork
         assertNotNull(defaultNetwork)
@@ -574,6 +577,8 @@ class NetworkAgentTest {
         // Check that the default network's transport is propagated to the VPN.
         var vpnNc = mCM.getNetworkCapabilities(agent.network)
         assertNotNull(vpnNc)
+        assertEquals(VpnManager.TYPE_VPN_SERVICE,
+                (vpnNc.transportInfo as VpnTransportInfo).type)
 
         val testAndVpn = intArrayOf(TRANSPORT_TEST, TRANSPORT_VPN)
         assertTrue(hasAllTransports(vpnNc, testAndVpn))
