@@ -62,7 +62,10 @@ cc_library {
         "com.android.tethering",
     ],
     min_sdk_version: "30",
-    header_libs: ["bpf_syscall_wrappers"],
+    header_libs: [
+        "bpf_syscall_wrappers",
+        "bpf_tethering_headers",
+    ],
     srcs: [
         "jni/*.cpp",
     ],
