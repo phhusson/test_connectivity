@@ -20,14 +20,17 @@ import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_DISABLE
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED;
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_WHITELISTED;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED;
+import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
 
 import static com.android.compatibility.common.util.SystemUtil.runShellCommand;
 import static com.android.cts.net.hostside.AbstractRestrictBackgroundNetworkTestCase.TAG;
+import static com.android.cts.net.hostside.AbstractRestrictBackgroundNetworkTestCase.TEST_PKG;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -41,17 +44,22 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.wifi.WifiManager;
 import android.os.Process;
+import android.telephony.SubscriptionManager;
+import android.telephony.SubscriptionPlan;
 import android.text.TextUtils;
 import android.util.Log;
-import android.util.Pair;
+
+import androidx.test.platform.app.InstrumentationRegistry;
 
 import com.android.compatibility.common.util.AppStandbyUtils;
 import com.android.compatibility.common.util.BatteryUtils;
+import com.android.compatibility.common.util.ThrowingRunnable;
 
+import java.time.Period;
+import java.time.ZonedDateTime;
+import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-
-import androidx.test.platform.app.InstrumentationRegistry;
 
 public class NetworkPolicyTestUtils {
 
@@ -59,6 +67,7 @@ public class NetworkPolicyTestUtils {
 
     private static ConnectivityManager mCm;
     private static WifiManager mWm;
+    private static SubscriptionManager mSm;
 
     private static Boolean mBatterySaverSupported;
     private static Boolean mDataSaverSupported;
@@ -135,16 +144,40 @@ public class NetworkPolicyTestUtils {
     }
 
     public static boolean canChangeActiveNetworkMeteredness() {
-        final Network activeNetwork = getConnectivityManager().getActiveNetwork();
-        final NetworkCapabilities networkCapabilities
-                = getConnectivityManager().getNetworkCapabilities(activeNetwork);
-        return networkCapabilities.hasTransport(TRANSPORT_WIFI);
+        final NetworkCapabilities networkCapabilities = getActiveNetworkCapabilities();
+        return networkCapabilities.hasTransport(TRANSPORT_WIFI)
+                || networkCapabilities.hasTransport(TRANSPORT_CELLULAR);
     }
 
-    public static Pair<String, Boolean> setupMeteredNetwork(boolean metered) throws Exception {
+    /**
+     * Updates the meteredness of the active network. Right now we can only change meteredness
+     * of either Wifi or cellular network, so if the active network is not either of these, this
+     * will throw an exception.
+     *
+     * @return a {@link ThrowingRunnable} object that can used to reset the meteredness change
+     *         made by this method.
+     */
+    public static ThrowingRunnable setupActiveNetworkMeteredness(boolean metered) throws Exception {
         if (isActiveNetworkMetered(metered)) {
             return null;
         }
+        final NetworkCapabilities networkCapabilities = getActiveNetworkCapabilities();
+        if (networkCapabilities.hasTransport(TRANSPORT_WIFI)) {
+            final String ssid = getWifiSsid();
+            setWifiMeteredStatus(ssid, metered);
+            return () -> setWifiMeteredStatus(ssid, !metered);
+        } else if (networkCapabilities.hasTransport(TRANSPORT_CELLULAR)) {
+            final int subId = SubscriptionManager.getActiveDataSubscriptionId();
+            setCellularMeteredStatus(subId, metered);
+            return () -> setCellularMeteredStatus(subId, !metered);
+        } else {
+            // Right now, we don't have a way to change meteredness of networks other
+            // than Wi-Fi or Cellular, so just throw an exception.
+            throw new IllegalStateException("Can't change meteredness of current active network");
+        }
+    }
+
+    private static String getWifiSsid() {
         final boolean isLocationEnabled = isLocationEnabled();
         try {
             if (!isLocationEnabled) {
@@ -152,8 +185,7 @@ public class NetworkPolicyTestUtils {
             }
             final String ssid = unquoteSSID(getWifiManager().getConnectionInfo().getSSID());
             assertNotEquals(WifiManager.UNKNOWN_SSID, ssid);
-            setWifiMeteredStatus(ssid, metered);
-            return Pair.create(ssid, !metered);
+            return ssid;
         } finally {
             // Reset the location enabled state
             if (!isLocationEnabled) {
@@ -162,11 +194,13 @@ public class NetworkPolicyTestUtils {
         }
     }
 
-    public static void resetMeteredNetwork(String ssid, boolean metered) throws Exception {
-        setWifiMeteredStatus(ssid, metered);
+    private static NetworkCapabilities getActiveNetworkCapabilities() {
+        final Network activeNetwork = getConnectivityManager().getActiveNetwork();
+        assertNotNull("No active network available", activeNetwork);
+        return getConnectivityManager().getNetworkCapabilities(activeNetwork);
     }
 
-    public static void setWifiMeteredStatus(String ssid, boolean metered) throws Exception {
+    private static void setWifiMeteredStatus(String ssid, boolean metered) throws Exception {
         assertFalse("SSID should not be empty", TextUtils.isEmpty(ssid));
         final String cmd = "cmd netpolicy set metered-network " + ssid + " " + metered;
         executeShellCommand(cmd);
@@ -174,15 +208,29 @@ public class NetworkPolicyTestUtils {
         assertActiveNetworkMetered(metered);
     }
 
-    public static void assertWifiMeteredStatus(String ssid, boolean expectedMeteredStatus) {
+    private static void assertWifiMeteredStatus(String ssid, boolean expectedMeteredStatus) {
         final String result = executeShellCommand("cmd netpolicy list wifi-networks");
         final String expectedLine = ssid + ";" + expectedMeteredStatus;
         assertTrue("Expected line: " + expectedLine + "; Actual result: " + result,
                 result.contains(expectedLine));
     }
 
+    private static void setCellularMeteredStatus(int subId, boolean metered) throws Exception {
+        setSubPlanOwner(subId, TEST_PKG);
+        try {
+            getSubscriptionManager().setSubscriptionPlans(subId,
+                    Arrays.asList(buildValidSubscriptionPlan(System.currentTimeMillis())));
+            final boolean unmeteredOverride = !metered;
+            getSubscriptionManager().setSubscriptionOverrideUnmetered(subId, unmeteredOverride,
+                    /*timeoutMillis=*/ 0);
+            assertActiveNetworkMetered(metered);
+        } finally {
+            setSubPlanOwner(subId, null);
+        }
+    }
+
     // Copied from cts/tests/tests/net/src/android/net/cts/ConnectivityManagerTest.java
-    public static void assertActiveNetworkMetered(boolean expectedMeteredStatus) throws Exception {
+    private static void assertActiveNetworkMetered(boolean expectedMeteredStatus) throws Exception {
         final CountDownLatch latch = new CountDownLatch(1);
         final NetworkCallback networkCallback = new NetworkCallback() {
             @Override
@@ -197,12 +245,29 @@ public class NetworkPolicyTestUtils {
         // with the current setting. Therefore, if the setting has already been changed,
         // this method will return right away, and if not it will wait for the setting to change.
         getConnectivityManager().registerDefaultNetworkCallback(networkCallback);
-        if (!latch.await(TIMEOUT_CHANGE_METEREDNESS_MS, TimeUnit.MILLISECONDS)) {
-            fail("Timed out waiting for active network metered status to change to "
-                    + expectedMeteredStatus + " ; network = "
-                    + getConnectivityManager().getActiveNetwork());
+        try {
+            if (!latch.await(TIMEOUT_CHANGE_METEREDNESS_MS, TimeUnit.MILLISECONDS)) {
+                fail("Timed out waiting for active network metered status to change to "
+                        + expectedMeteredStatus + "; network = "
+                        + getConnectivityManager().getActiveNetwork());
+            }
+        } finally {
+            getConnectivityManager().unregisterNetworkCallback(networkCallback);
         }
-        getConnectivityManager().unregisterNetworkCallback(networkCallback);
+    }
+
+    private static void setSubPlanOwner(int subId, String packageName) {
+        executeShellCommand("cmd netpolicy set sub-plan-owner " + subId + " " + packageName);
+    }
+
+    private static SubscriptionPlan buildValidSubscriptionPlan(long dataUsageTime) {
+        return SubscriptionPlan.Builder
+                .createRecurring(ZonedDateTime.parse("2007-03-14T00:00:00.000Z"),
+                        Period.ofMonths(1))
+                .setTitle("CTS")
+                .setDataLimit(1_000_000_000, SubscriptionPlan.LIMIT_BEHAVIOR_DISABLED)
+                .setDataUsage(500_000_000, dataUsageTime)
+                .build();
     }
 
     public static void setRestrictBackground(boolean enabled) {
@@ -272,6 +337,14 @@ public class NetworkPolicyTestUtils {
             mWm = (WifiManager) getContext().getSystemService(Context.WIFI_SERVICE);
         }
         return mWm;
+    }
+
+    public static SubscriptionManager getSubscriptionManager() {
+        if (mSm == null) {
+            mSm = (SubscriptionManager) getContext().getSystemService(
+                    Context.TELEPHONY_SUBSCRIPTION_SERVICE);
+        }
+        return mSm;
     }
 
     public static Context getContext() {
