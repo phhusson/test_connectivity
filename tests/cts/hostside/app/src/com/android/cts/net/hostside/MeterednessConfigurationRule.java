@@ -15,21 +15,20 @@
  */
 package com.android.cts.net.hostside;
 
-import static com.android.cts.net.hostside.NetworkPolicyTestUtils.resetMeteredNetwork;
-import static com.android.cts.net.hostside.NetworkPolicyTestUtils.setupMeteredNetwork;
+import static com.android.cts.net.hostside.NetworkPolicyTestUtils.setupActiveNetworkMeteredness;
 import static com.android.cts.net.hostside.Property.METERED_NETWORK;
 import static com.android.cts.net.hostside.Property.NON_METERED_NETWORK;
 
 import android.util.ArraySet;
-import android.util.Pair;
 
 import com.android.compatibility.common.util.BeforeAfterRule;
+import com.android.compatibility.common.util.ThrowingRunnable;
 
 import org.junit.runner.Description;
 import org.junit.runners.model.Statement;
 
 public class MeterednessConfigurationRule extends BeforeAfterRule {
-    private Pair<String, Boolean> mSsidAndInitialMeteredness;
+    private ThrowingRunnable mMeterednessResetter;
 
     @Override
     public void onBefore(Statement base, Description description) throws Throwable {
@@ -48,13 +47,13 @@ public class MeterednessConfigurationRule extends BeforeAfterRule {
     }
 
     public void configureNetworkMeteredness(boolean metered) throws Exception {
-        mSsidAndInitialMeteredness = setupMeteredNetwork(metered);
+        mMeterednessResetter = setupActiveNetworkMeteredness(metered);
     }
 
     public void resetNetworkMeteredness() throws Exception {
-        if (mSsidAndInitialMeteredness != null) {
-            resetMeteredNetwork(mSsidAndInitialMeteredness.first,
-                    mSsidAndInitialMeteredness.second);
+        if (mMeterednessResetter != null) {
+            mMeterednessResetter.run();
+            mMeterednessResetter = null;
         }
     }
 }

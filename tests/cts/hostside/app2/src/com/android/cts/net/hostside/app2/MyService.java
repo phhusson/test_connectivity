@@ -138,7 +138,7 @@ public class MyService extends Service {
                     }
                 }
             };
-            mCm.registerNetworkCallback(makeWifiNetworkRequest(), mNetworkCallback);
+            mCm.registerNetworkCallback(makeNetworkRequest(), mNetworkCallback);
             try {
                 cb.asBinder().linkToDeath(() -> unregisterNetworkCallback(), 0);
             } catch (RemoteException e) {
@@ -156,9 +156,8 @@ public class MyService extends Service {
         }
       };
 
-    private NetworkRequest makeWifiNetworkRequest() {
+    private NetworkRequest makeNetworkRequest() {
         return new NetworkRequest.Builder()
-                .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
                 .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
                 .build();
     }
