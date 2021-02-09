@@ -1547,6 +1547,7 @@ public class ConnectivityManagerTest {
      * Verify background request can only be requested when acquiring
      * {@link android.Manifest.permission.NETWORK_SETTINGS}.
      */
+    @SkipPresubmit(reason = "Flaky: b/179554972; add to presubmit after fixing")
     @Test
     public void testRequestBackgroundNetwork() throws Exception {
         // Create a tun interface. Use the returned interface name as the specifier to create
