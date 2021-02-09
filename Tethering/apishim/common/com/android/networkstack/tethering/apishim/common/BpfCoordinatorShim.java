@@ -145,6 +145,11 @@ public abstract class BpfCoordinatorShim {
     public abstract boolean tetherOffloadRuleRemove(boolean downstream, @NonNull Tether4Key key);
 
     /**
+     * Whether there is currently any IPv4 rule on the specified upstream.
+     */
+    public abstract boolean isAnyIpv4RuleOnUpstream(int ifIndex);
+
+    /**
      * Attach BPF program.
      *
      * TODO: consider using InterfaceParams to replace interface name.

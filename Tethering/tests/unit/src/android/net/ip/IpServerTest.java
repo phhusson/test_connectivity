@@ -474,6 +474,8 @@ public class IpServerTest {
         InOrder inOrder = inOrder(mNetd, mBpfCoordinator);
 
         // Add the forwarding pair <IFACE_NAME, UPSTREAM_IFACE>.
+        inOrder.verify(mBpfCoordinator).addUpstreamNameToLookupTable(UPSTREAM_IFINDEX,
+                UPSTREAM_IFACE);
         inOrder.verify(mBpfCoordinator).maybeAttachProgram(IFACE_NAME, UPSTREAM_IFACE);
         inOrder.verify(mNetd).tetherAddForward(IFACE_NAME, UPSTREAM_IFACE);
         inOrder.verify(mNetd).ipfwdAddInterfaceForward(IFACE_NAME, UPSTREAM_IFACE);
@@ -494,6 +496,8 @@ public class IpServerTest {
         inOrder.verify(mNetd).tetherRemoveForward(IFACE_NAME, UPSTREAM_IFACE);
 
         // Add the forwarding pair <IFACE_NAME, UPSTREAM_IFACE2>.
+        inOrder.verify(mBpfCoordinator).addUpstreamNameToLookupTable(UPSTREAM_IFINDEX2,
+                UPSTREAM_IFACE2);
         inOrder.verify(mBpfCoordinator).maybeAttachProgram(IFACE_NAME, UPSTREAM_IFACE2);
         inOrder.verify(mNetd).tetherAddForward(IFACE_NAME, UPSTREAM_IFACE2);
         inOrder.verify(mNetd).ipfwdAddInterfaceForward(IFACE_NAME, UPSTREAM_IFACE2);
@@ -517,6 +521,8 @@ public class IpServerTest {
 
         // Add the forwarding pair <IFACE_NAME, UPSTREAM_IFACE2> and expect that failed on
         // tetherAddForward.
+        inOrder.verify(mBpfCoordinator).addUpstreamNameToLookupTable(UPSTREAM_IFINDEX2,
+                UPSTREAM_IFACE2);
         inOrder.verify(mBpfCoordinator).maybeAttachProgram(IFACE_NAME, UPSTREAM_IFACE2);
         inOrder.verify(mNetd).tetherAddForward(IFACE_NAME, UPSTREAM_IFACE2);
 
@@ -543,6 +549,8 @@ public class IpServerTest {
 
         // Add the forwarding pair <IFACE_NAME, UPSTREAM_IFACE2> and expect that failed on
         // ipfwdAddInterfaceForward.
+        inOrder.verify(mBpfCoordinator).addUpstreamNameToLookupTable(UPSTREAM_IFINDEX2,
+                UPSTREAM_IFACE2);
         inOrder.verify(mBpfCoordinator).maybeAttachProgram(IFACE_NAME, UPSTREAM_IFACE2);
         inOrder.verify(mNetd).tetherAddForward(IFACE_NAME, UPSTREAM_IFACE2);
         inOrder.verify(mNetd).ipfwdAddInterfaceForward(IFACE_NAME, UPSTREAM_IFACE2);

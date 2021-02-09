@@ -23,6 +23,7 @@ import android.net.util.SharedLog;
 import android.system.ErrnoException;
 import android.system.Os;
 import android.system.OsConstants;
+import android.util.Log;
 import android.util.SparseArray;
 
 import androidx.annotation.NonNull;
@@ -83,6 +84,20 @@ public class BpfCoordinatorShimImpl
     // BPF map of per-interface quota for tethering offload.
     @Nullable
     private final BpfMap<TetherLimitKey, TetherLimitValue> mBpfLimitMap;
+
+    // Tracking IPv4 rule count while any rule is using the given upstream interfaces. Used for
+    // reducing the BPF map iteration query. The count is increased or decreased when the rule is
+    // added or removed successfully on mBpfDownstream4Map. Counting the rules on downstream4 map
+    // is because tetherOffloadRuleRemove can't get upstream interface index from upstream key,
+    // unless pass upstream value which is not required for deleting map entry. The upstream
+    // interface index is the same in Upstream4Value.oif and Downstream4Key.iif. For now, it is
+    // okay to count on Downstream4Key. See BpfConntrackEventConsumer#accept.
+    // Note that except the constructor, any calls to mBpfDownstream4Map.clear() need to clear
+    // this counter as well.
+    // TODO: Count the rule on upstream if multi-upstream is supported and the
+    // packet needs to be sent and responded on different upstream interfaces.
+    // TODO: Add IPv6 rule count.
+    private final SparseArray<Integer> mRule4CountOnUpstream = new SparseArray<>();
 
     public BpfCoordinatorShimImpl(@NonNull final Dependencies deps) {
         mLog = deps.getSharedLog().forSubComponent(TAG);
@@ -324,18 +339,22 @@ public class BpfCoordinatorShimImpl
         if (!isInitialized()) return false;
 
         try {
-            // The last used time field of the value is updated by the bpf program. Adding the same
-            // map pair twice causes the unexpected refresh. Must be fixed before starting the
-            // conntrack timeout extension implementation.
-            // TODO: consider using insertEntry.
             if (downstream) {
-                mBpfDownstream4Map.updateEntry(key, value);
+                mBpfDownstream4Map.insertEntry(key, value);
+
+                // Increase the rule count while a adding rule is using a given upstream interface.
+                final int upstreamIfindex = (int) key.iif;
+                int count = mRule4CountOnUpstream.get(upstreamIfindex, 0 /* default */);
+                mRule4CountOnUpstream.put(upstreamIfindex, ++count);
             } else {
-                mBpfUpstream4Map.updateEntry(key, value);
+                mBpfUpstream4Map.insertEntry(key, value);
             }
         } catch (ErrnoException e) {
-            mLog.e("Could not update entry: ", e);
+            mLog.e("Could not insert entry (" + key + ", " + value + "): " + e);
             return false;
+        } catch (IllegalStateException e) {
+            // Silent if the rule already exists. Note that the errno EEXIST was rethrown as
+            // IllegalStateException. See BpfMap#insertEntry.
         }
         return true;
     }
@@ -346,7 +365,26 @@ public class BpfCoordinatorShimImpl
 
         try {
             if (downstream) {
-                mBpfDownstream4Map.deleteEntry(key);
+                if (!mBpfDownstream4Map.deleteEntry(key)) {
+                    mLog.e("Could not delete entry (key: " + key + ")");
+                    return false;
+                }
+
+                // Decrease the rule count while a deleting rule is not using a given upstream
+                // interface anymore.
+                final int upstreamIfindex = (int) key.iif;
+                Integer count = mRule4CountOnUpstream.get(upstreamIfindex);
+                if (count == null) {
+                    Log.wtf(TAG, "Could not delete count for interface " + upstreamIfindex);
+                    return false;
+                }
+
+                if (--count == 0) {
+                    // Remove the entry if the count decreases to zero.
+                    mRule4CountOnUpstream.remove(upstreamIfindex);
+                } else {
+                    mRule4CountOnUpstream.put(upstreamIfindex, count);
+                }
             } else {
                 mBpfUpstream4Map.deleteEntry(key);
             }
@@ -384,6 +422,12 @@ public class BpfCoordinatorShimImpl
             return false;
         }
         return true;
+    }
+
+    @Override
+    public boolean isAnyIpv4RuleOnUpstream(int ifIndex) {
+        // No entry means no rule for the given interface because 0 has never been stored.
+        return mRule4CountOnUpstream.get(ifIndex) != null;
     }
 
     private String mapStatus(BpfMap m, String name) {

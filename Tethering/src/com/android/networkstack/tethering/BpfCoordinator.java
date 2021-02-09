@@ -478,18 +478,7 @@ public class BpfCoordinator {
         LinkedHashMap<Inet6Address, Ipv6ForwardingRule> rules = mIpv6ForwardingRules.get(ipServer);
 
         // When the first rule is added to an upstream, setup upstream forwarding and data limit.
-        final int upstreamIfindex = rule.upstreamIfindex;
-        if (!isAnyRuleOnUpstream(upstreamIfindex)) {
-            // If failed to set a data limit, probably should not use this upstream, because
-            // the upstream may not want to blow through the data limit that was told to apply.
-            // TODO: Perhaps stop the coordinator.
-            boolean success = updateDataLimit(upstreamIfindex);
-            if (!success) {
-                final String iface = mInterfaceNames.get(upstreamIfindex);
-                mLog.e("Setting data limit for " + iface + " failed.");
-            }
-
-        }
+        maybeSetLimit(rule.upstreamIfindex);
 
         if (!isAnyRuleFromDownstreamToUpstream(rule.downstreamIfindex, rule.upstreamIfindex)) {
             final int downstream = rule.downstreamIfindex;
@@ -544,22 +533,7 @@ public class BpfCoordinator {
         }
 
         // Do cleanup functionality if there is no more rule on the given upstream.
-        final int upstreamIfindex = rule.upstreamIfindex;
-        if (!isAnyRuleOnUpstream(upstreamIfindex)) {
-            final TetherStatsValue statsValue =
-                    mBpfCoordinatorShim.tetherOffloadGetAndClearStats(upstreamIfindex);
-            if (statsValue == null) {
-                Log.wtf(TAG, "Fail to cleanup tether stats for upstream index " + upstreamIfindex);
-                return;
-            }
-
-            SparseArray<TetherStatsValue> tetherStatsList = new SparseArray<TetherStatsValue>();
-            tetherStatsList.put(upstreamIfindex, statsValue);
-
-            // Update the last stats delta and delete the local cache for a given upstream.
-            updateQuotaAndStatsFromSnapshot(tetherStatsList);
-            mStats.remove(upstreamIfindex);
-        }
+        maybeClearLimit(rule.upstreamIfindex);
     }
 
     /**
@@ -1113,6 +1087,8 @@ public class BpfCoordinator {
 
     // Support raw ip only.
     // TODO: add ether ip support.
+    // TODO: parse CTA_PROTOINFO of conntrack event in ConntrackMonitor. For TCP, only add rules
+    // while TCP status is established.
     private class BpfConntrackEventConsumer implements ConntrackEventConsumer {
         @NonNull
         private Tether4Key makeTetherUpstream4Key(
@@ -1178,8 +1154,9 @@ public class BpfCoordinator {
 
             if (e.msgType == (NetlinkConstants.NFNL_SUBSYS_CTNETLINK << 8
                     | NetlinkConstants.IPCTNL_MSG_CT_DELETE)) {
-                mBpfCoordinatorShim.tetherOffloadRuleRemove(false, upstream4Key);
-                mBpfCoordinatorShim.tetherOffloadRuleRemove(true, downstream4Key);
+                mBpfCoordinatorShim.tetherOffloadRuleRemove(UPSTREAM, upstream4Key);
+                mBpfCoordinatorShim.tetherOffloadRuleRemove(DOWNSTREAM, downstream4Key);
+                maybeClearLimit(upstreamIndex);
                 return;
             }
 
@@ -1187,8 +1164,9 @@ public class BpfCoordinator {
             final Tether4Value downstream4Value = makeTetherDownstream4Value(e, tetherClient,
                     upstreamIndex);
 
-            mBpfCoordinatorShim.tetherOffloadRuleAdd(false, upstream4Key, upstream4Value);
-            mBpfCoordinatorShim.tetherOffloadRuleAdd(true, downstream4Key, downstream4Value);
+            maybeSetLimit(upstreamIndex);
+            mBpfCoordinatorShim.tetherOffloadRuleAdd(UPSTREAM, upstream4Key, upstream4Value);
+            mBpfCoordinatorShim.tetherOffloadRuleAdd(DOWNSTREAM, downstream4Key, downstream4Value);
         }
     }
 
@@ -1250,6 +1228,47 @@ public class BpfCoordinator {
         return sendDataLimitToBpfMap(ifIndex, quotaBytes);
     }
 
+    private void maybeSetLimit(int upstreamIfindex) {
+        if (isAnyRuleOnUpstream(upstreamIfindex)
+                || mBpfCoordinatorShim.isAnyIpv4RuleOnUpstream(upstreamIfindex)) {
+            return;
+        }
+
+        // If failed to set a data limit, probably should not use this upstream, because
+        // the upstream may not want to blow through the data limit that was told to apply.
+        // TODO: Perhaps stop the coordinator.
+        boolean success = updateDataLimit(upstreamIfindex);
+        if (!success) {
+            final String iface = mInterfaceNames.get(upstreamIfindex);
+            mLog.e("Setting data limit for " + iface + " failed.");
+        }
+    }
+
+    // TODO: This should be also called while IpServer wants to clear all IPv4 rules. Relying on
+    // conntrack event can't cover this case.
+    private void maybeClearLimit(int upstreamIfindex) {
+        if (isAnyRuleOnUpstream(upstreamIfindex)
+                || mBpfCoordinatorShim.isAnyIpv4RuleOnUpstream(upstreamIfindex)) {
+            return;
+        }
+
+        final TetherStatsValue statsValue =
+                mBpfCoordinatorShim.tetherOffloadGetAndClearStats(upstreamIfindex);
+        if (statsValue == null) {
+            Log.wtf(TAG, "Fail to cleanup tether stats for upstream index " + upstreamIfindex);
+            return;
+        }
+
+        SparseArray<TetherStatsValue> tetherStatsList = new SparseArray<TetherStatsValue>();
+        tetherStatsList.put(upstreamIfindex, statsValue);
+
+        // Update the last stats delta and delete the local cache for a given upstream.
+        updateQuotaAndStatsFromSnapshot(tetherStatsList);
+        mStats.remove(upstreamIfindex);
+    }
+
+    // TODO: Rename to isAnyIpv6RuleOnUpstream and define an isAnyRuleOnUpstream method that called
+    // both isAnyIpv6RuleOnUpstream and mBpfCoordinatorShim.isAnyIpv4RuleOnUpstream.
     private boolean isAnyRuleOnUpstream(int upstreamIfindex) {
         for (LinkedHashMap<Inet6Address, Ipv6ForwardingRule> rules : mIpv6ForwardingRules
                 .values()) {

@@ -171,6 +171,12 @@ public class BpfCoordinatorShimImpl
     }
 
     @Override
+    public boolean isAnyIpv4RuleOnUpstream(int ifIndex) {
+        /* no op */
+        return false;
+    }
+
+    @Override
     public String toString() {
         return "Netd used";
     }
