@@ -766,17 +766,16 @@ public class BpfCoordinator {
     }
 
     private void dumpIpv6UpstreamRules(IndentingPrintWriter pw) {
-        final BpfMap<TetherUpstream6Key, Tether6Value> ipv6UpstreamMap = mDeps.getBpfUpstream6Map();
-        if (ipv6UpstreamMap == null) {
-            pw.println("No IPv6 upstream");
-            return;
-        }
-        try {
-            if (ipv6UpstreamMap.isEmpty()) {
+        try (BpfMap<TetherUpstream6Key, Tether6Value> map = mDeps.getBpfUpstream6Map()) {
+            if (map == null) {
+                pw.println("No IPv6 upstream");
+                return;
+            }
+            if (map.isEmpty()) {
                 pw.println("No IPv6 upstream rules");
                 return;
             }
-            ipv6UpstreamMap.forEach((k, v) -> pw.println(ipv6UpstreamRuletoString(k, v)));
+            map.forEach((k, v) -> pw.println(ipv6UpstreamRuletoString(k, v)));
         } catch (ErrnoException e) {
             pw.println("Error dumping IPv4 map: " + e);
         }
@@ -797,19 +796,18 @@ public class BpfCoordinator {
     }
 
     private void dumpIpv4ForwardingRules(IndentingPrintWriter pw) {
-        final BpfMap<Tether4Key, Tether4Value> ipv4UpstreamMap = mDeps.getBpfUpstream4Map();
-        if (ipv4UpstreamMap == null) {
-            pw.println("No IPv4 support");
-            return;
-        }
-        try {
-            if (ipv4UpstreamMap.isEmpty()) {
+        try (BpfMap<Tether4Key, Tether4Value> map = mDeps.getBpfUpstream4Map()) {
+            if (map == null) {
+                pw.println("No IPv4 support");
+                return;
+            }
+            if (map.isEmpty()) {
                 pw.println("No IPv4 rules");
                 return;
             }
             pw.println("[IPv4]: iif(iface) oif(iface) src nat dst");
             pw.increaseIndent();
-            ipv4UpstreamMap.forEach((k, v) -> pw.println(ipv4RuleToString(k, v)));
+            map.forEach((k, v) -> pw.println(ipv4RuleToString(k, v)));
         } catch (ErrnoException e) {
             pw.println("Error dumping IPv4 map: " + e);
         }
