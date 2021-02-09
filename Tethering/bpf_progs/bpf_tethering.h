@@ -34,6 +34,7 @@
     ERR(BELOW_IPV6_MTU)      \
     ERR(LIMIT_REACHED)       \
     ERR(CHANGE_HEAD_FAILED)  \
+    ERR(TOO_SHORT)           \
     ERR(_MAX)
 
 #define ERR(x) BPF_TETHER_ERR_ ##x,
