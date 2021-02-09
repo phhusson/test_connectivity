@@ -218,7 +218,7 @@ public class BpfMap<K extends Struct, V extends Struct> implements AutoCloseable
     }
 
     @Override
-    public void close() throws Exception {
+    public void close() throws ErrnoException {
         closeMap(mMapFd);
     }
 
