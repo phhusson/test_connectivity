@@ -69,6 +69,7 @@ java_defaults {
         // For mockito extended
         "libdexmakerjvmtiagent",
         "libstaticjvmtiagent",
+        "libtetherutilsjni",
     ],
 }
 
