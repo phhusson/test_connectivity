@@ -31,10 +31,18 @@
     ERR(LOCAL_SRC_DST)       \
     ERR(NO_STATS_ENTRY)      \
     ERR(NO_LIMIT_ENTRY)      \
+    ERR(BELOW_IPV4_MTU)      \
     ERR(BELOW_IPV6_MTU)      \
     ERR(LIMIT_REACHED)       \
     ERR(CHANGE_HEAD_FAILED)  \
     ERR(TOO_SHORT)           \
+    ERR(HAS_IP_OPTIONS)      \
+    ERR(IS_IP_FRAG)          \
+    ERR(CHECKSUM)            \
+    ERR(NON_TCP_UDP)         \
+    ERR(SHORT_TCP_HEADER)    \
+    ERR(SHORT_UDP_HEADER)    \
+    ERR(TRUNCATED_IPV4)      \
     ERR(_MAX)
 
 #define ERR(x) BPF_TETHER_ERR_ ##x,
