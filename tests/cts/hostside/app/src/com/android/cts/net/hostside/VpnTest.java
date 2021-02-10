@@ -17,6 +17,7 @@
 package com.android.cts.net.hostside;
 
 import static android.Manifest.permission.NETWORK_SETTINGS;
+import static android.net.NetworkCapabilities.TRANSPORT_VPN;
 import static android.os.Process.INVALID_UID;
 import static android.system.OsConstants.AF_INET;
 import static android.system.OsConstants.AF_INET6;
@@ -49,8 +50,11 @@ import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.net.Proxy;
 import android.net.ProxyInfo;
+import android.net.TransportInfo;
 import android.net.Uri;
+import android.net.VpnManager;
 import android.net.VpnService;
+import android.net.VpnTransportInfo;
 import android.net.wifi.WifiManager;
 import android.os.Handler;
 import android.os.Looper;
@@ -747,6 +751,8 @@ public class VpnTest extends InstrumentationTestCase {
 
         checkTrafficOnVpn();
 
+        expectVpnTransportInfo(mCM.getActiveNetwork());
+
         // Check that system default network callback has not seen any network changes, but the app
         // default network callback has. This needs to be done before testing private DNS because
         // checkStrictModePrivateDns will set the private DNS server to a nonexistent name, which
@@ -778,6 +784,8 @@ public class VpnTest extends InstrumentationTestCase {
 
         checkTrafficOnVpn();
 
+        expectVpnTransportInfo(mCM.getActiveNetwork());
+
         checkStrictModePrivateDns();
     }
 
@@ -803,6 +811,10 @@ public class VpnTest extends InstrumentationTestCase {
         assertSocketStillOpen(remoteFd, TEST_HOST);
 
         checkNoTrafficOnVpn();
+
+        final Network network = mCM.getActiveNetwork();
+        final NetworkCapabilities nc = mCM.getNetworkCapabilities(network);
+        assertFalse(nc.hasTransport(TRANSPORT_VPN));
     }
 
     public void testGetConnectionOwnerUidSecurity() throws Exception {
@@ -957,6 +969,8 @@ public class VpnTest extends InstrumentationTestCase {
         // VPN with no underlying networks should be metered by default.
         assertTrue(isNetworkMetered(mNetwork));
         assertTrue(mCM.isActiveNetworkMetered());
+
+        expectVpnTransportInfo(mCM.getActiveNetwork());
     }
 
     public void testVpnMeterednessWithNullUnderlyingNetwork() throws Exception {
@@ -983,6 +997,8 @@ public class VpnTest extends InstrumentationTestCase {
         assertEquals(isNetworkMetered(underlyingNetwork), isNetworkMetered(mNetwork));
         // Meteredness based on VPN capabilities and CM#isActiveNetworkMetered should be in sync.
         assertEquals(isNetworkMetered(mNetwork), mCM.isActiveNetworkMetered());
+
+        expectVpnTransportInfo(mCM.getActiveNetwork());
     }
 
     public void testVpnMeterednessWithNonNullUnderlyingNetwork() throws Exception {
@@ -1010,6 +1026,8 @@ public class VpnTest extends InstrumentationTestCase {
         assertEquals(isNetworkMetered(underlyingNetwork), isNetworkMetered(mNetwork));
         // Meteredness based on VPN capabilities and CM#isActiveNetworkMetered should be in sync.
         assertEquals(isNetworkMetered(mNetwork), mCM.isActiveNetworkMetered());
+
+        expectVpnTransportInfo(mCM.getActiveNetwork());
     }
 
     public void testAlwaysMeteredVpnWithNullUnderlyingNetwork() throws Exception {
@@ -1034,6 +1052,8 @@ public class VpnTest extends InstrumentationTestCase {
         // VPN's meteredness does not depend on underlying network since it is always metered.
         assertTrue(isNetworkMetered(mNetwork));
         assertTrue(mCM.isActiveNetworkMetered());
+
+        expectVpnTransportInfo(mCM.getActiveNetwork());
     }
 
     public void testAlwaysMeteredVpnWithNonNullUnderlyingNetwork() throws Exception {
@@ -1059,6 +1079,8 @@ public class VpnTest extends InstrumentationTestCase {
         // VPN's meteredness does not depend on underlying network since it is always metered.
         assertTrue(isNetworkMetered(mNetwork));
         assertTrue(mCM.isActiveNetworkMetered());
+
+        expectVpnTransportInfo(mCM.getActiveNetwork());
     }
 
     public void testB141603906() throws Exception {
@@ -1106,6 +1128,14 @@ public class VpnTest extends InstrumentationTestCase {
         for (int transport : transports) {
             assertTrue(vpnCaps.hasTransport(transport));
         }
+    }
+
+    private void expectVpnTransportInfo(Network network) {
+        final NetworkCapabilities vpnNc = mCM.getNetworkCapabilities(network);
+        assertTrue(vpnNc.hasTransport(TRANSPORT_VPN));
+        final TransportInfo ti = vpnNc.getTransportInfo();
+        assertTrue(ti instanceof VpnTransportInfo);
+        assertEquals(VpnManager.TYPE_VPN_SERVICE, ((VpnTransportInfo) ti).type);
     }
 
     private void assertDefaultProxy(ProxyInfo expected) {
