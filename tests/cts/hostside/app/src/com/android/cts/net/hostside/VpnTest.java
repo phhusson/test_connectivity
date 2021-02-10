@@ -829,8 +829,11 @@ public class VpnTest extends InstrumentationTestCase {
         InetSocketAddress rem = new InetSocketAddress(s.getInetAddress(), s.getPort());
         try {
             int uid = mCM.getConnectionOwnerUid(OsConstants.IPPROTO_TCP, loc, rem);
-            fail("Only an active VPN app may call this API.");
-        } catch (SecurityException expected) {
+            assertEquals("Only an active VPN app should see connection information",
+                    INVALID_UID, uid);
+        } catch (SecurityException acceptable) {
+            // R and below throw SecurityException if a non-active VPN calls this method.
+            // As long as we can't actually get socket information, either behaviour is fine.
             return;
         }
     }
