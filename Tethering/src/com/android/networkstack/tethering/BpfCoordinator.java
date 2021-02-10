@@ -59,6 +59,7 @@ import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.util.IndentingPrintWriter;
 import com.android.modules.utils.build.SdkLevel;
 import com.android.net.module.util.NetworkStackConstants;
+import com.android.net.module.util.Struct;
 import com.android.networkstack.tethering.apishim.common.BpfCoordinatorShim;
 
 import java.net.Inet4Address;
@@ -84,6 +85,13 @@ import java.util.Set;
  * @hide
  */
 public class BpfCoordinator {
+    // Ensure the JNI code is loaded. In production this will already have been loaded by
+    // TetherService, but for tests it needs to be either loaded here or loaded by every test.
+    // TODO: is there a better way?
+    static {
+        System.loadLibrary("tetherutilsjni");
+    }
+
     static final boolean DOWNSTREAM = true;
     static final boolean UPSTREAM = false;
 
@@ -97,6 +105,10 @@ public class BpfCoordinator {
     private static final String TETHER_UPSTREAM6_FS_PATH = makeMapPath(UPSTREAM, 6);
     private static final String TETHER_STATS_MAP_PATH = makeMapPath("stats");
     private static final String TETHER_LIMIT_MAP_PATH = makeMapPath("limit");
+    private static final String TETHER_ERROR_MAP_PATH = makeMapPath("error");
+
+    /** The names of all the BPF counters defined in bpf_tethering.h. */
+    public static final String[] sBpfCounterNames = getBpfCounterNames();
 
     private static String makeMapPath(String which) {
         return "/sys/fs/bpf/tethering/map_offload_tether_" + which + "_map";
@@ -717,6 +729,12 @@ public class BpfCoordinator {
             dumpIpv4ForwardingRules(pw);
             pw.decreaseIndent();
 
+            pw.println();
+            pw.println("Forwarding counters:");
+            pw.increaseIndent();
+            dumpCounters(pw);
+            pw.decreaseIndent();
+
             dumpDone.open();
         });
         if (!dumpDone.block(DUMP_TIMEOUT_MS)) {
@@ -812,6 +830,36 @@ public class BpfCoordinator {
             pw.println("Error dumping IPv4 map: " + e);
         }
         pw.decreaseIndent();
+    }
+
+    /**
+     * Simple struct that only contains a u32. Must be public because Struct needs access to it.
+     * TODO: make this a public inner class of Struct so anyone can use it as, e.g., Struct.U32?
+     */
+    public static class U32Struct extends Struct {
+        @Struct.Field(order = 0, type = Struct.Type.U32)
+        public long val;
+    }
+
+    private void dumpCounters(@NonNull IndentingPrintWriter pw) {
+        try (BpfMap<U32Struct, U32Struct> map = new BpfMap<>(TETHER_ERROR_MAP_PATH,
+                BpfMap.BPF_F_RDONLY, U32Struct.class, U32Struct.class)) {
+
+            map.forEach((k, v) -> {
+                String counterName;
+                try {
+                    counterName = sBpfCounterNames[(int) k.val];
+                } catch (IndexOutOfBoundsException e) {
+                    // Should never happen because this code gets the counter name from the same
+                    // include file as the BPF program that increments the counter.
+                    Log.wtf(TAG, "Unknown tethering counter type " + k.val);
+                    counterName = Long.toString(k.val);
+                }
+                if (v.val > 0) pw.println(String.format("%s: %d", counterName, v.val));
+            });
+        } catch (ErrnoException e) {
+            pw.println("Error dumping counter map: " + e);
+        }
     }
 
     /** IPv6 forwarding rule class. */
@@ -1296,4 +1344,6 @@ public class BpfCoordinator {
     final SparseArray<String> getInterfaceNamesForTesting() {
         return mInterfaceNames;
     }
+
+    private static native String[] getBpfCounterNames();
 }
