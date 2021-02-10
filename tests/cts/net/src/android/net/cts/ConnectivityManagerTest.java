@@ -533,11 +533,14 @@ public class ConnectivityManagerTest {
             // network even if it was already connected as a state-based action when the callback
             // is registered.
             wifiNetwork = callback.waitForAvailable();
-            assertNotNull("Did not receive NetworkCallback.onAvailable for TRANSPORT_WIFI",
+            assertNotNull("Did not receive onAvailable for TRANSPORT_WIFI request",
                     wifiNetwork);
 
-            assertNotNull("Did not receive NetworkCallback.onAvailable for any default network",
+            assertNotNull("Did not receive onAvailable on default network callback",
                     defaultTrackingCallback.waitForAvailable());
+
+            assertNotNull("Did not receive onAvailable on system default network callback",
+                    systemDefaultTrackingCallback.waitForAvailable());
         } catch (InterruptedException e) {
             fail("Broadcast receiver or NetworkCallback wait was interrupted.");
         } finally {
