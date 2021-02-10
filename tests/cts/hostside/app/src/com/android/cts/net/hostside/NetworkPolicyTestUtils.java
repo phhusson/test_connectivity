@@ -25,7 +25,6 @@ import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
 
 import static com.android.compatibility.common.util.SystemUtil.runShellCommand;
 import static com.android.cts.net.hostside.AbstractRestrictBackgroundNetworkTestCase.TAG;
-import static com.android.cts.net.hostside.AbstractRestrictBackgroundNetworkTestCase.TEST_PKG;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -43,9 +42,11 @@ import android.net.ConnectivityManager.NetworkCallback;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.wifi.WifiManager;
+import android.os.PersistableBundle;
 import android.os.Process;
+import android.telephony.CarrierConfigManager;
 import android.telephony.SubscriptionManager;
-import android.telephony.SubscriptionPlan;
+import android.telephony.data.ApnSetting;
 import android.text.TextUtils;
 import android.util.Log;
 
@@ -53,21 +54,24 @@ import androidx.test.platform.app.InstrumentationRegistry;
 
 import com.android.compatibility.common.util.AppStandbyUtils;
 import com.android.compatibility.common.util.BatteryUtils;
+import com.android.compatibility.common.util.ShellIdentityUtils;
 import com.android.compatibility.common.util.ThrowingRunnable;
 
-import java.time.Period;
-import java.time.ZonedDateTime;
-import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 public class NetworkPolicyTestUtils {
 
+    // android.telephony.CarrierConfigManager.KEY_CARRIER_METERED_APN_TYPES_STRINGS
+    // TODO: Expose it as a @TestApi instead of copying the constant
+    private static final String KEY_CARRIER_METERED_APN_TYPES_STRINGS =
+            "carrier_metered_apn_types_strings";
+
     private static final int TIMEOUT_CHANGE_METEREDNESS_MS = 10_000;
 
     private static ConnectivityManager mCm;
     private static WifiManager mWm;
-    private static SubscriptionManager mSm;
+    private static CarrierConfigManager mCarrierConfigManager;
 
     private static Boolean mBatterySaverSupported;
     private static Boolean mDataSaverSupported;
@@ -216,17 +220,12 @@ public class NetworkPolicyTestUtils {
     }
 
     private static void setCellularMeteredStatus(int subId, boolean metered) throws Exception {
-        setSubPlanOwner(subId, TEST_PKG);
-        try {
-            getSubscriptionManager().setSubscriptionPlans(subId,
-                    Arrays.asList(buildValidSubscriptionPlan(System.currentTimeMillis())));
-            final boolean unmeteredOverride = !metered;
-            getSubscriptionManager().setSubscriptionOverrideUnmetered(subId, unmeteredOverride,
-                    /*timeoutMillis=*/ 0);
-            assertActiveNetworkMetered(metered);
-        } finally {
-            setSubPlanOwner(subId, null);
-        }
+        final PersistableBundle bundle = new PersistableBundle();
+        bundle.putStringArray(KEY_CARRIER_METERED_APN_TYPES_STRINGS,
+                new String[] {ApnSetting.TYPE_MMS_STRING});
+        ShellIdentityUtils.invokeMethodWithShellPermissionsNoReturn(getCarrierConfigManager(),
+                (cm) -> cm.overrideConfig(subId, metered ? null : bundle));
+        assertActiveNetworkMetered(metered);
     }
 
     // Copied from cts/tests/tests/net/src/android/net/cts/ConnectivityManagerTest.java
@@ -254,20 +253,6 @@ public class NetworkPolicyTestUtils {
         } finally {
             getConnectivityManager().unregisterNetworkCallback(networkCallback);
         }
-    }
-
-    private static void setSubPlanOwner(int subId, String packageName) {
-        executeShellCommand("cmd netpolicy set sub-plan-owner " + subId + " " + packageName);
-    }
-
-    private static SubscriptionPlan buildValidSubscriptionPlan(long dataUsageTime) {
-        return SubscriptionPlan.Builder
-                .createRecurring(ZonedDateTime.parse("2007-03-14T00:00:00.000Z"),
-                        Period.ofMonths(1))
-                .setTitle("CTS")
-                .setDataLimit(1_000_000_000, SubscriptionPlan.LIMIT_BEHAVIOR_DISABLED)
-                .setDataUsage(500_000_000, dataUsageTime)
-                .build();
     }
 
     public static void setRestrictBackground(boolean enabled) {
@@ -339,12 +324,12 @@ public class NetworkPolicyTestUtils {
         return mWm;
     }
 
-    public static SubscriptionManager getSubscriptionManager() {
-        if (mSm == null) {
-            mSm = (SubscriptionManager) getContext().getSystemService(
-                    Context.TELEPHONY_SUBSCRIPTION_SERVICE);
+    public static CarrierConfigManager getCarrierConfigManager() {
+        if (mCarrierConfigManager == null) {
+            mCarrierConfigManager = (CarrierConfigManager) getContext().getSystemService(
+                    Context.CARRIER_CONFIG_SERVICE);
         }
-        return mSm;
+        return mCarrierConfigManager;
     }
 
     public static Context getContext() {
