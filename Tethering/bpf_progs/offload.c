@@ -361,10 +361,10 @@ static inline __always_inline int do_forward4(struct __sk_buff* skb, const bool 
     if (is_ethernet && (eth->h_proto != htons(ETH_P_IP))) return TC_ACT_OK;
 
     // IP version must be 4
-    if (ip->version != 4) return TC_ACT_OK;
+    if (ip->version != 4) PUNT(INVALID_IP_VERSION);
 
     // We cannot handle IP options, just standard 20 byte == 5 dword minimal IPv4 header
-    if (ip->ihl != 5) return TC_ACT_OK;
+    if (ip->ihl != 5) PUNT(HAS_IP_OPTIONS);
 
     // Calculate the IPv4 one's complement checksum of the IPv4 header.
     __wsum sum4 = 0;
@@ -375,36 +375,36 @@ static inline __always_inline int do_forward4(struct __sk_buff* skb, const bool 
     sum4 = (sum4 & 0xFFFF) + (sum4 >> 16);  // collapse u32 into range 1 .. 0x1FFFE
     sum4 = (sum4 & 0xFFFF) + (sum4 >> 16);  // collapse any potential carry into u16
     // for a correct checksum we should get *a* zero, but sum4 must be positive, ie 0xFFFF
-    if (sum4 != 0xFFFF) return TC_ACT_OK;
+    if (sum4 != 0xFFFF) PUNT(CHECKSUM);
 
     // Minimum IPv4 total length is the size of the header
-    if (ntohs(ip->tot_len) < sizeof(*ip)) return TC_ACT_OK;
+    if (ntohs(ip->tot_len) < sizeof(*ip)) PUNT(TRUNCATED_IPV4);
 
     // We are incapable of dealing with IPv4 fragments
-    if (ip->frag_off & ~htons(IP_DF)) return TC_ACT_OK;
+    if (ip->frag_off & ~htons(IP_DF)) PUNT(IS_IP_FRAG);
 
     // Cannot decrement during forward if already zero or would be zero,
     // Let the kernel's stack handle these cases and generate appropriate ICMP errors.
-    if (ip->ttl <= 1) return TC_ACT_OK;
+    if (ip->ttl <= 1) PUNT(LOW_TTL);
 
     const bool is_tcp = (ip->protocol == IPPROTO_TCP);
 
     // We do not support anything besides TCP and UDP
-    if (!is_tcp && (ip->protocol != IPPROTO_UDP)) return TC_ACT_OK;
+    if (!is_tcp && (ip->protocol != IPPROTO_UDP)) PUNT(NON_TCP_UDP);
 
     struct tcphdr* tcph = is_tcp ? (void*)(ip + 1) : NULL;
     struct udphdr* udph = is_tcp ? NULL : (void*)(ip + 1);
 
     if (is_tcp) {
         // Make sure we can get at the tcp header
-        if (data + l2_header_size + sizeof(*ip) + sizeof(*tcph) > data_end) return TC_ACT_OK;
+        if (data + l2_header_size + sizeof(*ip) + sizeof(*tcph) > data_end) PUNT(SHORT_TCP_HEADER);
 
         // If hardware offload is running and programming flows based on conntrack entries, try not
         // to interfere with it, so do not offload TCP packets with any one of the SYN/FIN/RST flags
-        if (tcph->syn || tcph->fin || tcph->rst) return TC_ACT_OK;
+        if (tcph->syn || tcph->fin || tcph->rst) PUNT(TCP_CONTROL_PACKET);
     } else { // UDP
         // Make sure we can get at the udp header
-        if (data + l2_header_size + sizeof(*ip) + sizeof(*udph) > data_end) return TC_ACT_OK;
+        if (data + l2_header_size + sizeof(*ip) + sizeof(*udph) > data_end) PUNT(SHORT_UDP_HEADER);
     }
 
     Tether4Key k = {
@@ -428,15 +428,15 @@ static inline __always_inline int do_forward4(struct __sk_buff* skb, const bool 
     TetherStatsValue* stat_v = bpf_tether_stats_map_lookup_elem(&stat_and_limit_k);
 
     // If we don't have anywhere to put stats, then abort...
-    if (!stat_v) return TC_ACT_OK;
+    if (!stat_v) PUNT(NO_STATS_ENTRY);
 
     uint64_t* limit_v = bpf_tether_limit_map_lookup_elem(&stat_and_limit_k);
 
     // If we don't have a limit, then abort...
-    if (!limit_v) return TC_ACT_OK;
+    if (!limit_v) PUNT(NO_LIMIT_ENTRY);
 
     // Required IPv4 minimum mtu is 68, below that not clear what we should do, abort...
-    if (v->pmtu < 68) return TC_ACT_OK;
+    if (v->pmtu < 68) PUNT(BELOW_IPV4_MTU);
 
     // Approximate handling of TCP/IPv4 overhead for incoming LRO/GRO packets: default
     // outbound path mtu of 1500 is not necessarily correct, but worst case we simply
@@ -461,7 +461,7 @@ static inline __always_inline int do_forward4(struct __sk_buff* skb, const bool 
     // a packet we let the core stack deal with things.
     // (The core stack needs to handle limits correctly anyway,
     // since we don't offload all traffic in both directions)
-    if (stat_v->rxBytes + stat_v->txBytes + bytes > *limit_v) return TC_ACT_OK;
+    if (stat_v->rxBytes + stat_v->txBytes + bytes > *limit_v) PUNT(LIMIT_REACHED);
 
 
 if (!is_tcp) return TC_ACT_OK; // HACK
@@ -472,7 +472,7 @@ if (!is_tcp) return TC_ACT_OK; // HACK
         // because this is easier and the kernel will strip extraneous ethernet header.
         if (bpf_skb_change_head(skb, sizeof(struct ethhdr), /*flags*/ 0)) {
             __sync_fetch_and_add(downstream ? &stat_v->rxErrors : &stat_v->txErrors, 1);
-            return TC_ACT_OK;
+            PUNT(CHANGE_HEAD_FAILED);
         }
 
         // bpf_skb_change_head() invalidates all pointers - reload them
@@ -486,7 +486,7 @@ if (!is_tcp) return TC_ACT_OK; // HACK
         // I do not believe this can ever happen, but keep the verifier happy...
         if (data + sizeof(struct ethhdr) + sizeof(*ip) + (is_tcp ? sizeof(*tcph) : sizeof(*udph)) > data_end) {
             __sync_fetch_and_add(downstream ? &stat_v->rxErrors : &stat_v->txErrors, 1);
-            return TC_ACT_SHOT;
+            DROP(TOO_SHORT);
         }
     };
 
