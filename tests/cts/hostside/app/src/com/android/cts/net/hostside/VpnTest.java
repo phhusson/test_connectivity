@@ -698,16 +698,30 @@ public class VpnTest extends InstrumentationTestCase {
     }
 
     private class NeverChangeNetworkCallback extends NetworkCallback {
-        private volatile Network mLastNetwork;
+        private CountDownLatch mLatch = new CountDownLatch(1);
+        private volatile Network mFirstNetwork;
+        private volatile Network mOtherNetwork;
 
         public void onAvailable(Network n) {
-            assertNull("Callback got onAvailable more than once: " + mLastNetwork + ", " + n,
-                    mLastNetwork);
-            mLastNetwork = n;
+            // Don't assert here, as it crashes the test with a hard to debug message.
+            if (mFirstNetwork == null) {
+                mFirstNetwork = n;
+                mLatch.countDown();
+            } else if (mOtherNetwork == null) {
+                mOtherNetwork = n;
+            }
         }
 
-        public Network getLastNetwork() {
-            return mLastNetwork;
+        public Network getFirstNetwork() throws Exception {
+            assertTrue(
+                    "System default callback got no network after " + TIMEOUT_MS + "ms. "
+                    + "Please ensure the device has a working Internet connection.",
+                    mLatch.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
+            return mFirstNetwork;
+        }
+
+        public void assertNeverChanged() {
+            assertNull(mOtherNetwork);
         }
     }
 
@@ -753,13 +767,14 @@ public class VpnTest extends InstrumentationTestCase {
 
         expectVpnTransportInfo(mCM.getActiveNetwork());
 
-        // Check that system default network callback has not seen any network changes, but the app
-        // default network callback has. This needs to be done before testing private DNS because
-        // checkStrictModePrivateDns will set the private DNS server to a nonexistent name, which
-        // will cause validation to fail could cause the default network to switch (e.g., from wifi
-        // to cellular).
-        assertEquals(defaultNetwork, neverChangeCallback.getLastNetwork());
+        // Check that system default network callback has not seen any network changes, even though
+        // the app's default network changed. This needs to be done before testing private
+        // DNS because checkStrictModePrivateDns will set the private DNS server to a nonexistent
+        // name, which will cause validation to fail and cause the default network to switch (e.g.,
+        // from wifi to cellular).
+        assertEquals(defaultNetwork, neverChangeCallback.getFirstNetwork());
         assertNotEqual(defaultNetwork, mCM.getActiveNetwork());
+        neverChangeCallback.assertNeverChanged();
         runWithShellPermissionIdentity(
                 () ->  mCM.unregisterNetworkCallback(neverChangeCallback),
                 NETWORK_SETTINGS);
