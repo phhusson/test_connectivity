@@ -15,6 +15,10 @@
 //
 
 // Tests in this folder are included both in unit tests and CTS.
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
 java_library {
     name: "TetheringCommonTests",
     srcs: [
