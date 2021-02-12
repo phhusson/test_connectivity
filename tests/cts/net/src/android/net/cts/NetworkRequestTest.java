@@ -34,7 +34,6 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-import android.annotation.NonNull;
 import android.net.MacAddress;
 import android.net.MatchAllNetworkSpecifier;
 import android.net.NetworkCapabilities;
@@ -49,7 +48,6 @@ import android.util.ArraySet;
 
 import androidx.test.runner.AndroidJUnit4;
 
-import com.android.modules.utils.build.SdkLevel;
 import com.android.testutils.DevSdkIgnoreRule;
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
 
@@ -159,12 +157,6 @@ public class NetworkRequestTest {
                 .getRequestorPackageName());
     }
 
-    private void addNotVcnManagedCapability(@NonNull NetworkCapabilities nc) {
-        if (SdkLevel.isAtLeastS()) {
-            nc.addCapability(NET_CAPABILITY_NOT_VCN_MANAGED);
-        }
-    }
-
     @Test
     @IgnoreUpTo(Build.VERSION_CODES.Q)
     public void testCanBeSatisfiedBy() {
@@ -176,27 +168,27 @@ public class NetworkRequestTest {
         final NetworkCapabilities capCellularMmsInternet = new NetworkCapabilities()
                 .addTransportType(TRANSPORT_CELLULAR)
                 .addCapability(NET_CAPABILITY_MMS)
+                .addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
                 .addCapability(NET_CAPABILITY_INTERNET);
-        addNotVcnManagedCapability(capCellularMmsInternet);
         final NetworkCapabilities capCellularVpnMmsInternet =
-                new NetworkCapabilities(capCellularMmsInternet).addTransportType(TRANSPORT_VPN);
-        addNotVcnManagedCapability(capCellularVpnMmsInternet);
+                new NetworkCapabilities(capCellularMmsInternet).addTransportType(TRANSPORT_VPN)
+                        .addCapability(NET_CAPABILITY_NOT_VCN_MANAGED);
         final NetworkCapabilities capCellularMmsInternetSpecifier1 =
-                new NetworkCapabilities(capCellularMmsInternet).setNetworkSpecifier(specifier1);
-        addNotVcnManagedCapability(capCellularMmsInternetSpecifier1);
+                new NetworkCapabilities(capCellularMmsInternet).setNetworkSpecifier(specifier1)
+                        .addCapability(NET_CAPABILITY_NOT_VCN_MANAGED);
         final NetworkCapabilities capVpnInternetSpecifier1 = new NetworkCapabilities()
                 .addCapability(NET_CAPABILITY_INTERNET)
+                .addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
                 .addTransportType(TRANSPORT_VPN)
                 .setNetworkSpecifier(specifier1);
-        addNotVcnManagedCapability(capVpnInternetSpecifier1);
         final NetworkCapabilities capCellularMmsInternetMatchallspecifier =
                 new NetworkCapabilities(capCellularMmsInternet)
+                        .addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
                         .setNetworkSpecifier(new MatchAllNetworkSpecifier());
-        addNotVcnManagedCapability(capCellularMmsInternetMatchallspecifier);
         final NetworkCapabilities capCellularMmsInternetSpecifier2 =
                 new NetworkCapabilities(capCellularMmsInternet)
+                        .addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
                         .setNetworkSpecifier(specifier2);
-        addNotVcnManagedCapability(capCellularMmsInternetSpecifier2);
 
         final NetworkRequest requestCellularInternetSpecifier1 = new NetworkRequest.Builder()
                 .addTransportType(TRANSPORT_CELLULAR)
@@ -261,8 +253,8 @@ public class NetworkRequestTest {
 
         final NetworkCapabilities capCellInternetBWSpecifier1Signal =
                 new NetworkCapabilities.Builder(capCellInternetBWSpecifier1)
+                        .addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
                         .setSignalStrength(-123).build();
-        addNotVcnManagedCapability(capCellInternetBWSpecifier1Signal);
         assertCorrectlySatisfies(true, requestCombination,
                 capCellInternetBWSpecifier1Signal);
 
@@ -297,8 +289,6 @@ public class NetworkRequestTest {
                 .clearCapabilities().build().getRequestorUid());
     }
 
-    // TODO: 1. Refactor test cases with helper method.
-    //       2. Test capability that does not yet exist.
     @Test @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testBypassingVcnForNonInternetRequest() {
         // Make an empty request. Verify the NOT_VCN_MANAGED is added.
