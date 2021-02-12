@@ -36,6 +36,10 @@ import java.util.Objects;
  * {@hide}
  */
 public class TetheringUtils {
+    static {
+        System.loadLibrary("tetherutilsjni");
+    }
+
     public static final byte[] ALL_NODES = new byte[] {
         (byte) 0xff, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
     };
