@@ -82,6 +82,7 @@ android_test {
         "libstaticjvmtiagent",
         // For NetworkStackUtils included in NetworkStackBase
         "libnetworkstackutilsjni",
+        "libtetherutilsjni",
     ],
     jarjar_rules: ":TetheringTestsJarJarRules",
     compile_multilib: "both",
