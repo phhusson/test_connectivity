@@ -341,7 +341,7 @@ DEFINE_BPF_MAP_GRW(tether_downstream4_map, HASH, Tether4Key, Tether4Value, 64, A
 DEFINE_BPF_MAP_GRW(tether_upstream4_map, HASH, Tether4Key, Tether4Value, 64, AID_NETWORK_STACK)
 
 static inline __always_inline int do_forward4(struct __sk_buff* skb, const bool is_ethernet,
-        const bool downstream) {
+        const bool downstream, const bool updatetime) {
     const int l2_header_size = is_ethernet ? sizeof(struct ethhdr) : 0;
     void* data = (void*)(long)skb->data;
     const void* data_end = (void*)(long)skb->data_end;
@@ -521,7 +521,7 @@ if (!is_tcp) return TC_ACT_OK; // HACK
 
 // TTL dec
 
-// v->last_used = bpf_ktime_get_boot_ns();
+    if (updatetime) v->last_used = bpf_ktime_get_boot_ns();
 
     __sync_fetch_and_add(downstream ? &stat_v->rxPackets : &stat_v->txPackets, packets);
     __sync_fetch_and_add(downstream ? &stat_v->rxBytes : &stat_v->txBytes, bytes);
@@ -540,25 +540,25 @@ if (!is_tcp) return TC_ACT_OK; // HACK
 DEFINE_BPF_PROG_KVER("schedcls/tether_downstream4_ether$5_8", AID_ROOT, AID_NETWORK_STACK,
                      sched_cls_tether_downstream4_ether_5_8, KVER(5, 8, 0))
 (struct __sk_buff* skb) {
-    return do_forward4(skb, /* is_ethernet */ true, /* downstream */ true);
+    return do_forward4(skb, /* is_ethernet */ true, /* downstream */ true, /* updatetime */ true);
 }
 
 DEFINE_BPF_PROG_KVER("schedcls/tether_downstream4_rawip$5_8", AID_ROOT, AID_NETWORK_STACK,
                      sched_cls_tether_downstream4_rawip_5_8, KVER(5, 8, 0))
 (struct __sk_buff* skb) {
-    return do_forward4(skb, /* is_ethernet */ false, /* downstream */ true);
+    return do_forward4(skb, /* is_ethernet */ false, /* downstream */ true, /* updatetime */ true);
 }
 
 DEFINE_BPF_PROG_KVER("schedcls/tether_upstream4_ether$5_8", AID_ROOT, AID_NETWORK_STACK,
                      sched_cls_tether_upstream4_ether_5_8, KVER(5, 8, 0))
 (struct __sk_buff* skb) {
-    return do_forward4(skb, /* is_ethernet */ true, /* downstream */ false);
+    return do_forward4(skb, /* is_ethernet */ true, /* downstream */ false, /* updatetime */ true);
 }
 
 DEFINE_BPF_PROG_KVER("schedcls/tether_upstream4_rawip$5_8", AID_ROOT, AID_NETWORK_STACK,
                      sched_cls_tether_upstream4_rawip_5_8, KVER(5, 8, 0))
 (struct __sk_buff* skb) {
-    return do_forward4(skb, /* is_ethernet */ false, /* downstream */ false);
+    return do_forward4(skb, /* is_ethernet */ false, /* downstream */ false, /* updatetime */ true);
 }
 
 // Placeholder implementations for older pre-5.8 kernels
