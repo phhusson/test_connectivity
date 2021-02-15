@@ -16,13 +16,8 @@
 
 package android.net.cts;
 
-import static android.net.NetworkCapabilities.NET_CAPABILITY_DUN;
-import static android.net.NetworkCapabilities.NET_CAPABILITY_FOTA;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_MMS;
-import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING;
-import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_VCN_MANAGED;
-import static android.net.NetworkCapabilities.NET_CAPABILITY_SUPL;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED;
 import static android.net.NetworkCapabilities.TRANSPORT_BLUETOOTH;
 import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
@@ -34,7 +29,6 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-import android.annotation.NonNull;
 import android.net.MacAddress;
 import android.net.MatchAllNetworkSpecifier;
 import android.net.NetworkCapabilities;
@@ -49,7 +43,6 @@ import android.util.ArraySet;
 
 import androidx.test.runner.AndroidJUnit4;
 
-import com.android.modules.utils.build.SdkLevel;
 import com.android.testutils.DevSdkIgnoreRule;
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
 
@@ -159,44 +152,29 @@ public class NetworkRequestTest {
                 .getRequestorPackageName());
     }
 
-    private void addNotVcnManagedCapability(@NonNull NetworkCapabilities nc) {
-        if (SdkLevel.isAtLeastS()) {
-            nc.addCapability(NET_CAPABILITY_NOT_VCN_MANAGED);
-        }
-    }
-
     @Test
     @IgnoreUpTo(Build.VERSION_CODES.Q)
     public void testCanBeSatisfiedBy() {
         final LocalNetworkSpecifier specifier1 = new LocalNetworkSpecifier(1234 /* id */);
         final LocalNetworkSpecifier specifier2 = new LocalNetworkSpecifier(5678 /* id */);
 
-        // Some requests are adding NOT_VCN_MANAGED capability automatically. Add it to the
-        // capabilities below for bypassing the check.
         final NetworkCapabilities capCellularMmsInternet = new NetworkCapabilities()
                 .addTransportType(TRANSPORT_CELLULAR)
                 .addCapability(NET_CAPABILITY_MMS)
                 .addCapability(NET_CAPABILITY_INTERNET);
-        addNotVcnManagedCapability(capCellularMmsInternet);
         final NetworkCapabilities capCellularVpnMmsInternet =
                 new NetworkCapabilities(capCellularMmsInternet).addTransportType(TRANSPORT_VPN);
-        addNotVcnManagedCapability(capCellularVpnMmsInternet);
         final NetworkCapabilities capCellularMmsInternetSpecifier1 =
                 new NetworkCapabilities(capCellularMmsInternet).setNetworkSpecifier(specifier1);
-        addNotVcnManagedCapability(capCellularMmsInternetSpecifier1);
         final NetworkCapabilities capVpnInternetSpecifier1 = new NetworkCapabilities()
                 .addCapability(NET_CAPABILITY_INTERNET)
                 .addTransportType(TRANSPORT_VPN)
                 .setNetworkSpecifier(specifier1);
-        addNotVcnManagedCapability(capVpnInternetSpecifier1);
         final NetworkCapabilities capCellularMmsInternetMatchallspecifier =
                 new NetworkCapabilities(capCellularMmsInternet)
-                        .setNetworkSpecifier(new MatchAllNetworkSpecifier());
-        addNotVcnManagedCapability(capCellularMmsInternetMatchallspecifier);
+                    .setNetworkSpecifier(new MatchAllNetworkSpecifier());
         final NetworkCapabilities capCellularMmsInternetSpecifier2 =
-                new NetworkCapabilities(capCellularMmsInternet)
-                        .setNetworkSpecifier(specifier2);
-        addNotVcnManagedCapability(capCellularMmsInternetSpecifier2);
+                new NetworkCapabilities(capCellularMmsInternet).setNetworkSpecifier(specifier2);
 
         final NetworkRequest requestCellularInternetSpecifier1 = new NetworkRequest.Builder()
                 .addTransportType(TRANSPORT_CELLULAR)
@@ -261,8 +239,7 @@ public class NetworkRequestTest {
 
         final NetworkCapabilities capCellInternetBWSpecifier1Signal =
                 new NetworkCapabilities.Builder(capCellInternetBWSpecifier1)
-                        .setSignalStrength(-123).build();
-        addNotVcnManagedCapability(capCellInternetBWSpecifier1Signal);
+                    .setSignalStrength(-123).build();
         assertCorrectlySatisfies(true, requestCombination,
                 capCellInternetBWSpecifier1Signal);
 
@@ -295,76 +272,5 @@ public class NetworkRequestTest {
 
         assertEquals(Process.INVALID_UID, new NetworkRequest.Builder()
                 .clearCapabilities().build().getRequestorUid());
-    }
-
-    // TODO: 1. Refactor test cases with helper method.
-    //       2. Test capability that does not yet exist.
-    @Test @IgnoreUpTo(Build.VERSION_CODES.R)
-    public void testBypassingVcnForNonInternetRequest() {
-        // Make an empty request. Verify the NOT_VCN_MANAGED is added.
-        final NetworkRequest emptyRequest = new NetworkRequest.Builder().build();
-        assertTrue(emptyRequest.hasCapability(NET_CAPABILITY_NOT_VCN_MANAGED));
-
-        // Make a request explicitly add NOT_VCN_MANAGED. Verify the NOT_VCN_MANAGED is preserved.
-        final NetworkRequest mmsAddNotVcnRequest = new NetworkRequest.Builder()
-                .addCapability(NET_CAPABILITY_MMS)
-                .addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
-                .build();
-        assertTrue(mmsAddNotVcnRequest.hasCapability(NET_CAPABILITY_NOT_VCN_MANAGED));
-
-        // Similar to above, but the opposite order.
-        final NetworkRequest mmsAddNotVcnRequest2 = new NetworkRequest.Builder()
-                .addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
-                .addCapability(NET_CAPABILITY_MMS)
-                .build();
-        assertTrue(mmsAddNotVcnRequest2.hasCapability(NET_CAPABILITY_NOT_VCN_MANAGED));
-
-        // Make a request explicitly remove NOT_VCN_MANAGED. Verify the NOT_VCN_MANAGED is removed.
-        final NetworkRequest removeNotVcnRequest = new NetworkRequest.Builder()
-                .removeCapability(NET_CAPABILITY_NOT_VCN_MANAGED).build();
-        assertFalse(removeNotVcnRequest.hasCapability(NET_CAPABILITY_NOT_VCN_MANAGED));
-
-        // Make a request add some capability inside VCN supported capabilities.
-        // Verify the NOT_VCN_MANAGED is added.
-        final NetworkRequest notRoamRequest = new NetworkRequest.Builder()
-                .addCapability(NET_CAPABILITY_NOT_ROAMING).build();
-        assertTrue(notRoamRequest.hasCapability(NET_CAPABILITY_NOT_VCN_MANAGED));
-
-        // Make a internet request. Verify the NOT_VCN_MANAGED is added.
-        final NetworkRequest internetRequest = new NetworkRequest.Builder()
-                .addCapability(NET_CAPABILITY_INTERNET).build();
-        assertTrue(internetRequest.hasCapability(NET_CAPABILITY_NOT_VCN_MANAGED));
-
-        // Make a internet request which explicitly removed NOT_VCN_MANAGED.
-        // Verify the NOT_VCN_MANAGED is removed.
-        final NetworkRequest internetRemoveNotVcnRequest = new NetworkRequest.Builder()
-                .addCapability(NET_CAPABILITY_INTERNET)
-                .removeCapability(NET_CAPABILITY_NOT_VCN_MANAGED).build();
-        assertFalse(internetRemoveNotVcnRequest.hasCapability(NET_CAPABILITY_NOT_VCN_MANAGED));
-
-        // Make a normal MMS request. Verify the request could bypass VCN.
-        final NetworkRequest mmsRequest =
-                new NetworkRequest.Builder().addCapability(NET_CAPABILITY_MMS).build();
-        assertFalse(mmsRequest.hasCapability(NET_CAPABILITY_NOT_VCN_MANAGED));
-
-        // Make a SUPL request along with internet. Verify NOT_VCN_MANAGED is not added since
-        // SUPL is not in the supported list.
-        final NetworkRequest suplWithInternetRequest = new NetworkRequest.Builder()
-                        .addCapability(NET_CAPABILITY_SUPL)
-                        .addCapability(NET_CAPABILITY_INTERNET).build();
-        assertFalse(suplWithInternetRequest.hasCapability(NET_CAPABILITY_NOT_VCN_MANAGED));
-
-        // Make a FOTA request with explicitly add NOT_VCN_MANAGED capability. Verify
-        // NOT_VCN_MANAGED is preserved.
-        final NetworkRequest fotaRequest = new NetworkRequest.Builder()
-                        .addCapability(NET_CAPABILITY_FOTA)
-                        .addCapability(NET_CAPABILITY_NOT_VCN_MANAGED).build();
-        assertTrue(fotaRequest.hasCapability(NET_CAPABILITY_NOT_VCN_MANAGED));
-
-        // Make a DUN request, which is in {@code VCN_SUPPORTED_CAPABILITIES}.
-        // Verify NOT_VCN_MANAGED is preserved.
-        final NetworkRequest dunRequest = new NetworkRequest.Builder()
-                .addCapability(NET_CAPABILITY_DUN).build();
-        assertTrue(dunRequest.hasCapability(NET_CAPABILITY_NOT_VCN_MANAGED));
     }
 }
