@@ -40,6 +40,7 @@
     ERR(IS_IP_FRAG)          \
     ERR(CHECKSUM)            \
     ERR(NON_TCP_UDP)         \
+    ERR(NON_TCP)             \
     ERR(SHORT_TCP_HEADER)    \
     ERR(SHORT_UDP_HEADER)    \
     ERR(TRUNCATED_IPV4)      \
