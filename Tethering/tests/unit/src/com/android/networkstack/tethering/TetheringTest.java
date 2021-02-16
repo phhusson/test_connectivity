@@ -64,6 +64,7 @@ import static com.android.testutils.TestPermissionUtil.runAsShell;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -72,6 +73,7 @@ import static org.mockito.Matchers.anyInt;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -95,6 +97,7 @@ import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.hardware.usb.UsbManager;
 import android.net.ConnectivityManager;
+import android.net.ConnectivityManager.NetworkCallback;
 import android.net.EthernetManager;
 import android.net.EthernetManager.TetheredInterfaceCallback;
 import android.net.EthernetManager.TetheredInterfaceRequest;
@@ -212,7 +215,6 @@ public class TetheringTest {
     @Mock private UsbManager mUsbManager;
     @Mock private WifiManager mWifiManager;
     @Mock private CarrierConfigManager mCarrierConfigManager;
-    @Mock private UpstreamNetworkMonitor mUpstreamNetworkMonitor;
     @Mock private IPv6TetheringCoordinator mIPv6TetheringCoordinator;
     @Mock private DadProxy mDadProxy;
     @Mock private RouterAdvertisementDaemon mRouterAdvertisementDaemon;
@@ -249,6 +251,8 @@ public class TetheringTest {
     private OffloadController mOffloadCtrl;
     private PrivateAddressCoordinator mPrivateAddressCoordinator;
     private SoftApCallback mSoftApCallback;
+    private UpstreamNetworkMonitor mUpstreamNetworkMonitor;
+    private NetworkCallback mDefaultNetworkCallback;
 
     private class TestContext extends BroadcastInterceptingContext {
         TestContext(Context base) {
@@ -400,7 +404,10 @@ public class TetheringTest {
         @Override
         public UpstreamNetworkMonitor getUpstreamNetworkMonitor(Context ctx,
                 StateMachine target, SharedLog log, int what) {
+            // Use a real object instead of a mock so that some tests can use a real UNM and some
+            // can use a mock.
             mUpstreamNetworkMonitorSM = target;
+            mUpstreamNetworkMonitor = spy(super.getUpstreamNetworkMonitor(ctx, target, log, what));
             return mUpstreamNetworkMonitor;
         }
 
@@ -581,6 +588,8 @@ public class TetheringTest {
         mTethering = makeTethering();
         verify(mStatsManager, times(1)).registerNetworkStatsProvider(anyString(), any());
         verify(mNetd).registerUnsolicitedEventListener(any());
+        verifyDefaultNetworkRequestFiled();
+
         final ArgumentCaptor<PhoneStateListener> phoneListenerCaptor =
                 ArgumentCaptor.forClass(PhoneStateListener.class);
         verify(mTelephonyManager).listen(phoneListenerCaptor.capture(),
@@ -617,8 +626,8 @@ public class TetheringTest {
     }
 
     private void initTetheringUpstream(UpstreamNetworkState upstreamState) {
-        when(mUpstreamNetworkMonitor.getCurrentPreferredUpstream()).thenReturn(upstreamState);
-        when(mUpstreamNetworkMonitor.selectPreferredUpstreamType(any())).thenReturn(upstreamState);
+        doReturn(upstreamState).when(mUpstreamNetworkMonitor).getCurrentPreferredUpstream();
+        doReturn(upstreamState).when(mUpstreamNetworkMonitor).selectPreferredUpstreamType(any());
     }
 
     private Tethering makeTethering() {
@@ -703,6 +712,19 @@ public class TetheringTest {
     private void sendConfigurationChanged() {
         final Intent intent = new Intent(Intent.ACTION_CONFIGURATION_CHANGED);
         mServiceContext.sendStickyBroadcastAsUser(intent, UserHandle.ALL);
+    }
+
+    private void verifyDefaultNetworkRequestFiled() {
+        ArgumentCaptor<NetworkCallback> captor = ArgumentCaptor.forClass(NetworkCallback.class);
+        verify(mCm, times(1)).requestNetwork(eq(mNetworkRequest),
+                captor.capture(), any(Handler.class));
+        mDefaultNetworkCallback = captor.getValue();
+        assertNotNull(mDefaultNetworkCallback);
+
+        // The default network request is only ever filed once.
+        verifyNoMoreInteractions(mCm);
+        mUpstreamNetworkMonitor.startTrackDefaultNetwork(mNetworkRequest, mEntitleMgr);
+        verifyNoMoreInteractions(mCm);
     }
 
     private void verifyInterfaceServingModeStarted(String ifname) throws Exception {
