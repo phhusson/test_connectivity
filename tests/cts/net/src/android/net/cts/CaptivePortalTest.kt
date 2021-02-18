@@ -26,6 +26,9 @@ import android.net.ConnectivityManager.NetworkCallback
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL
+import android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET
+import android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED
+import android.net.NetworkCapabilities.TRANSPORT_CELLULAR
 import android.net.NetworkCapabilities.TRANSPORT_WIFI
 import android.net.NetworkRequest
 import android.net.Uri
@@ -44,8 +47,10 @@ import android.provider.DeviceConfig.NAMESPACE_CONNECTIVITY
 import android.text.TextUtils
 import androidx.test.platform.app.InstrumentationRegistry.getInstrumentation
 import androidx.test.runner.AndroidJUnit4
+import com.android.testutils.RecorderCallback
 import com.android.testutils.TestHttpServer
 import com.android.testutils.TestHttpServer.Request
+import com.android.testutils.TestableNetworkCallback
 import com.android.testutils.isDevSdkInRange
 import com.android.testutils.runAsShell
 import fi.iki.elonen.NanoHTTPD.Response.Status
@@ -124,7 +129,20 @@ class CaptivePortalTest {
         assumeTrue(pm.hasSystemFeature(FEATURE_TELEPHONY))
         assumeTrue(pm.hasSystemFeature(FEATURE_WIFI))
         utils.ensureWifiConnected()
-        utils.connectToCell()
+        val cellNetwork = utils.connectToCell()
+
+        // Verify cell network is validated
+        val cellReq = NetworkRequest.Builder()
+                .addTransportType(TRANSPORT_CELLULAR)
+                .addCapability(NET_CAPABILITY_INTERNET)
+                .build()
+        val cellCb = TestableNetworkCallback(timeoutMs = TEST_TIMEOUT_MS)
+        cm.registerNetworkCallback(cellReq, cellCb)
+        val cb = cellCb.eventuallyExpectOrNull<RecorderCallback.CallbackEntry.CapabilitiesChanged> {
+            it.network == cellNetwork && it.caps.hasCapability(NET_CAPABILITY_VALIDATED)
+        }
+        assertNotNull(cb, "Mobile network $cellNetwork has no access to the internet. " +
+                "Check the mobile data connection.")
 
         // Have network validation use a local server that serves a HTTPS error / HTTP redirect
         server.addResponse(Request(TEST_PORTAL_URL_PATH), Status.OK,
@@ -135,7 +153,8 @@ class CaptivePortalTest {
         setHttpsUrlDeviceConfig(makeUrl(TEST_HTTPS_URL_PATH))
         setHttpUrlDeviceConfig(makeUrl(TEST_HTTP_URL_PATH))
         // URL expiration needs to be in the next 10 minutes
-        setUrlExpirationDeviceConfig(System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(9))
+        assertTrue(WIFI_CONNECT_TIMEOUT_MS < TimeUnit.MINUTES.toMillis(10))
+        setUrlExpirationDeviceConfig(System.currentTimeMillis() + WIFI_CONNECT_TIMEOUT_MS)
 
         // Wait for a captive portal to be detected on the network
         val wifiNetworkFuture = CompletableFuture<Network>()
