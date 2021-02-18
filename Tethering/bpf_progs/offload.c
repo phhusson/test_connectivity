@@ -68,7 +68,25 @@
 #define ETH_IP6_TCP_OFFSET(field) (ETH_HLEN + IP6_TCP_OFFSET(field))
 #define ETH_IP6_UDP_OFFSET(field) (ETH_HLEN + IP6_UDP_OFFSET(field))
 
-// ----- Tethering stats and data limits -----
+// ----- Tethering Error Counters -----
+
+DEFINE_BPF_MAP_GRW(tether_error_map, ARRAY, uint32_t, uint32_t, BPF_TETHER_ERR__MAX,
+                   AID_NETWORK_STACK)
+
+#define COUNT_AND_RETURN(counter, ret) do {                  \
+    uint32_t code = BPF_TETHER_ERR_ ## counter;                 \
+    uint32_t *count = bpf_tether_error_map_lookup_elem(&code);  \
+    if (count) __sync_fetch_and_add(count, 1);               \
+    return ret;                                              \
+} while(0)
+
+#define TC_DROP(counter) COUNT_AND_RETURN(counter, TC_ACT_SHOT)
+#define TC_PUNT(counter) COUNT_AND_RETURN(counter, TC_ACT_OK)
+
+#define XDP_DROP(counter) COUNT_AND_RETURN(counter, XDP_DROP)
+#define XDP_PUNT(counter) COUNT_AND_RETURN(counter, XDP_PASS)
+
+// ----- Tethering Data Stats and Limits -----
 
 // Tethering stats, indexed by upstream interface.
 DEFINE_BPF_MAP_GRW(tether_stats_map, HASH, TetherStatsKey, TetherStatsValue, 16, AID_NETWORK_STACK)
@@ -87,19 +105,6 @@ DEFINE_BPF_MAP_GRW(tether_downstream64_map, HASH, TetherDownstream64Key, TetherD
 
 DEFINE_BPF_MAP_GRW(tether_upstream6_map, HASH, TetherUpstream6Key, Tether6Value, 64,
                    AID_NETWORK_STACK)
-
-DEFINE_BPF_MAP_GRW(tether_error_map, ARRAY, __u32, __u32, BPF_TETHER_ERR__MAX,
-                   AID_NETWORK_STACK)
-
-#define COUNT_AND_RETURN(counter, ret) do {                    \
-    __u32 code = BPF_TETHER_ERR_ ## counter;                 \
-    __u32 *count = bpf_tether_error_map_lookup_elem(&code);  \
-    if (count) __sync_fetch_and_add(count, 1);               \
-    return ret;                                              \
-} while(0)
-
-#define DROP(counter) COUNT_AND_RETURN(counter, TC_ACT_SHOT)
-#define PUNT(counter) COUNT_AND_RETURN(counter, TC_ACT_OK)
 
 static inline __always_inline int do_forward6(struct __sk_buff* skb, const bool is_ethernet,
         const bool downstream) {
@@ -122,11 +127,11 @@ static inline __always_inline int do_forward6(struct __sk_buff* skb, const bool 
     if (is_ethernet && (eth->h_proto != htons(ETH_P_IPV6))) return TC_ACT_OK;
 
     // IP version must be 6
-    if (ip6->version != 6) PUNT(INVALID_IP_VERSION);
+    if (ip6->version != 6) TC_PUNT(INVALID_IP_VERSION);
 
     // Cannot decrement during forward if already zero or would be zero,
     // Let the kernel's stack handle these cases and generate appropriate ICMP errors.
-    if (ip6->hop_limit <= 1) PUNT(LOW_TTL);
+    if (ip6->hop_limit <= 1) TC_PUNT(LOW_TTL);
 
     // If hardware offload is running and programming flows based on conntrack entries,
     // try not to interfere with it.
@@ -135,27 +140,27 @@ static inline __always_inline int do_forward6(struct __sk_buff* skb, const bool 
 
         // Make sure we can get at the tcp header
         if (data + l2_header_size + sizeof(*ip6) + sizeof(*tcph) > data_end)
-            PUNT(INVALID_TCP_HEADER);
+            TC_PUNT(INVALID_TCP_HEADER);
 
         // Do not offload TCP packets with any one of the SYN/FIN/RST flags
-        if (tcph->syn || tcph->fin || tcph->rst) PUNT(TCP_CONTROL_PACKET);
+        if (tcph->syn || tcph->fin || tcph->rst) TC_PUNT(TCP_CONTROL_PACKET);
     }
 
     // Protect against forwarding packets sourced from ::1 or fe80::/64 or other weirdness.
     __be32 src32 = ip6->saddr.s6_addr32[0];
     if (src32 != htonl(0x0064ff9b) &&                        // 64:ff9b:/32 incl. XLAT464 WKP
         (src32 & htonl(0xe0000000)) != htonl(0x20000000))    // 2000::/3 Global Unicast
-        PUNT(NON_GLOBAL_SRC);
+        TC_PUNT(NON_GLOBAL_SRC);
 
     // Protect against forwarding packets destined to ::1 or fe80::/64 or other weirdness.
     __be32 dst32 = ip6->daddr.s6_addr32[0];
     if (dst32 != htonl(0x0064ff9b) &&                        // 64:ff9b:/32 incl. XLAT464 WKP
         (dst32 & htonl(0xe0000000)) != htonl(0x20000000))    // 2000::/3 Global Unicast
-        PUNT(NON_GLOBAL_DST);
+        TC_PUNT(NON_GLOBAL_DST);
 
     // In the upstream direction do not forward traffic within the same /64 subnet.
     if (!downstream && (src32 == dst32) && (ip6->saddr.s6_addr32[1] == ip6->daddr.s6_addr32[1]))
-        PUNT(LOCAL_SRC_DST);
+        TC_PUNT(LOCAL_SRC_DST);
 
     TetherDownstream6Key kd = {
             .iif = skb->ifindex,
@@ -177,15 +182,15 @@ static inline __always_inline int do_forward6(struct __sk_buff* skb, const bool 
     TetherStatsValue* stat_v = bpf_tether_stats_map_lookup_elem(&stat_and_limit_k);
 
     // If we don't have anywhere to put stats, then abort...
-    if (!stat_v) PUNT(NO_STATS_ENTRY);
+    if (!stat_v) TC_PUNT(NO_STATS_ENTRY);
 
     uint64_t* limit_v = bpf_tether_limit_map_lookup_elem(&stat_and_limit_k);
 
     // If we don't have a limit, then abort...
-    if (!limit_v) PUNT(NO_LIMIT_ENTRY);
+    if (!limit_v) TC_PUNT(NO_LIMIT_ENTRY);
 
     // Required IPv6 minimum mtu is 1280, below that not clear what we should do, abort...
-    if (v->pmtu < IPV6_MIN_MTU) PUNT(BELOW_IPV6_MTU);
+    if (v->pmtu < IPV6_MIN_MTU) TC_PUNT(BELOW_IPV6_MTU);
 
     // Approximate handling of TCP/IPv6 overhead for incoming LRO/GRO packets: default
     // outbound path mtu of 1500 is not necessarily correct, but worst case we simply
@@ -210,7 +215,7 @@ static inline __always_inline int do_forward6(struct __sk_buff* skb, const bool 
     // a packet we let the core stack deal with things.
     // (The core stack needs to handle limits correctly anyway,
     // since we don't offload all traffic in both directions)
-    if (stat_v->rxBytes + stat_v->txBytes + bytes > *limit_v) PUNT(LIMIT_REACHED);
+    if (stat_v->rxBytes + stat_v->txBytes + bytes > *limit_v) TC_PUNT(LIMIT_REACHED);
 
     if (!is_ethernet) {
         // Try to inject an ethernet header, and simply return if we fail.
@@ -218,7 +223,7 @@ static inline __always_inline int do_forward6(struct __sk_buff* skb, const bool 
         // because this is easier and the kernel will strip extraneous ethernet header.
         if (bpf_skb_change_head(skb, sizeof(struct ethhdr), /*flags*/ 0)) {
             __sync_fetch_and_add(downstream ? &stat_v->rxErrors : &stat_v->txErrors, 1);
-            PUNT(CHANGE_HEAD_FAILED);
+            TC_PUNT(CHANGE_HEAD_FAILED);
         }
 
         // bpf_skb_change_head() invalidates all pointers - reload them
@@ -230,7 +235,7 @@ static inline __always_inline int do_forward6(struct __sk_buff* skb, const bool 
         // I do not believe this can ever happen, but keep the verifier happy...
         if (data + sizeof(struct ethhdr) + sizeof(*ip6) > data_end) {
             __sync_fetch_and_add(downstream ? &stat_v->rxErrors : &stat_v->txErrors, 1);
-            DROP(TOO_SHORT);
+            TC_DROP(TOO_SHORT);
         }
     };
 
@@ -361,10 +366,10 @@ static inline __always_inline int do_forward4(struct __sk_buff* skb, const bool 
     if (is_ethernet && (eth->h_proto != htons(ETH_P_IP))) return TC_ACT_OK;
 
     // IP version must be 4
-    if (ip->version != 4) PUNT(INVALID_IP_VERSION);
+    if (ip->version != 4) TC_PUNT(INVALID_IP_VERSION);
 
     // We cannot handle IP options, just standard 20 byte == 5 dword minimal IPv4 header
-    if (ip->ihl != 5) PUNT(HAS_IP_OPTIONS);
+    if (ip->ihl != 5) TC_PUNT(HAS_IP_OPTIONS);
 
     // Calculate the IPv4 one's complement checksum of the IPv4 header.
     __wsum sum4 = 0;
@@ -375,29 +380,29 @@ static inline __always_inline int do_forward4(struct __sk_buff* skb, const bool 
     sum4 = (sum4 & 0xFFFF) + (sum4 >> 16);  // collapse u32 into range 1 .. 0x1FFFE
     sum4 = (sum4 & 0xFFFF) + (sum4 >> 16);  // collapse any potential carry into u16
     // for a correct checksum we should get *a* zero, but sum4 must be positive, ie 0xFFFF
-    if (sum4 != 0xFFFF) PUNT(CHECKSUM);
+    if (sum4 != 0xFFFF) TC_PUNT(CHECKSUM);
 
     // Minimum IPv4 total length is the size of the header
-    if (ntohs(ip->tot_len) < sizeof(*ip)) PUNT(TRUNCATED_IPV4);
+    if (ntohs(ip->tot_len) < sizeof(*ip)) TC_PUNT(TRUNCATED_IPV4);
 
     // We are incapable of dealing with IPv4 fragments
-    if (ip->frag_off & ~htons(IP_DF)) PUNT(IS_IP_FRAG);
+    if (ip->frag_off & ~htons(IP_DF)) TC_PUNT(IS_IP_FRAG);
 
     // Cannot decrement during forward if already zero or would be zero,
     // Let the kernel's stack handle these cases and generate appropriate ICMP errors.
-    if (ip->ttl <= 1) PUNT(LOW_TTL);
+    if (ip->ttl <= 1) TC_PUNT(LOW_TTL);
 
     // If we cannot update the 'last_used' field due to lack of bpf_ktime_get_boot_ns() helper,
     // then it is not safe to offload UDP due to the small conntrack timeouts, as such,
     // in such a situation we can only support TCP.  This also has the added nice benefit of
     // using a separate error counter, and thus making it obvious which version of the program
     // is loaded.
-    if (!updatetime && ip->protocol != IPPROTO_TCP) PUNT(NON_TCP);
+    if (!updatetime && ip->protocol != IPPROTO_TCP) TC_PUNT(NON_TCP);
 
     // We do not support offloading anything besides IPv4 TCP and UDP, due to need for NAT,
     // but no need to check this if !updatetime due to check immediately above.
     if (updatetime && (ip->protocol != IPPROTO_TCP) && (ip->protocol != IPPROTO_UDP))
-        PUNT(NON_TCP_UDP);
+        TC_PUNT(NON_TCP_UDP);
 
     // We want to make sure that the compiler will, in the !updatetime case, entirely optimize
     // out all the non-tcp logic.  Also note that at this point is_udp === !is_tcp.
@@ -413,21 +418,23 @@ static inline __always_inline int do_forward4(struct __sk_buff* skb, const bool 
     // to the checksum field which is in bytes 7 and 8.  While for TCP we'll need to read the
     // TCP flags (at offset 13) and access to the checksum field (2 bytes at offset 16).
     // As such we *always* need access to at least 8 bytes.
-    if (data + l2_header_size + sizeof(*ip) + 8 > data_end) PUNT(SHORT_L4_HEADER);
+    if (data + l2_header_size + sizeof(*ip) + 8 > data_end) TC_PUNT(SHORT_L4_HEADER);
 
     struct tcphdr* tcph = is_tcp ? (void*)(ip + 1) : NULL;
     struct udphdr* udph = is_tcp ? NULL : (void*)(ip + 1);
 
     if (is_tcp) {
         // Make sure we can get at the tcp header
-        if (data + l2_header_size + sizeof(*ip) + sizeof(*tcph) > data_end) PUNT(SHORT_TCP_HEADER);
+        if (data + l2_header_size + sizeof(*ip) + sizeof(*tcph) > data_end)
+            TC_PUNT(SHORT_TCP_HEADER);
 
         // If hardware offload is running and programming flows based on conntrack entries, try not
         // to interfere with it, so do not offload TCP packets with any one of the SYN/FIN/RST flags
-        if (tcph->syn || tcph->fin || tcph->rst) PUNT(TCP_CONTROL_PACKET);
+        if (tcph->syn || tcph->fin || tcph->rst) TC_PUNT(TCP_CONTROL_PACKET);
     } else { // UDP
         // Make sure we can get at the udp header
-        if (data + l2_header_size + sizeof(*ip) + sizeof(*udph) > data_end) PUNT(SHORT_UDP_HEADER);
+        if (data + l2_header_size + sizeof(*ip) + sizeof(*udph) > data_end)
+            TC_PUNT(SHORT_UDP_HEADER);
 
         // Skip handling of CHECKSUM_COMPLETE packets with udp checksum zero due to need for
         // additional updating of skb->csum (this could be fixed up manually with more effort).
@@ -457,7 +464,7 @@ static inline __always_inline int do_forward4(struct __sk_buff* skb, const bool 
         //     if (skb->ip_summed == CHECKSUM_COMPLETE) skb->ip_summed = CHECKSUM_NONE;
         //   }
         // here instead.  Perhaps there should be a bpf helper for that?
-        if (!udph->check && (bpf_csum_update(skb, 0) >= 0)) PUNT(UDP_CSUM_ZERO);
+        if (!udph->check && (bpf_csum_update(skb, 0) >= 0)) TC_PUNT(UDP_CSUM_ZERO);
     }
 
     Tether4Key k = {
@@ -481,15 +488,15 @@ static inline __always_inline int do_forward4(struct __sk_buff* skb, const bool 
     TetherStatsValue* stat_v = bpf_tether_stats_map_lookup_elem(&stat_and_limit_k);
 
     // If we don't have anywhere to put stats, then abort...
-    if (!stat_v) PUNT(NO_STATS_ENTRY);
+    if (!stat_v) TC_PUNT(NO_STATS_ENTRY);
 
     uint64_t* limit_v = bpf_tether_limit_map_lookup_elem(&stat_and_limit_k);
 
     // If we don't have a limit, then abort...
-    if (!limit_v) PUNT(NO_LIMIT_ENTRY);
+    if (!limit_v) TC_PUNT(NO_LIMIT_ENTRY);
 
     // Required IPv4 minimum mtu is 68, below that not clear what we should do, abort...
-    if (v->pmtu < 68) PUNT(BELOW_IPV4_MTU);
+    if (v->pmtu < 68) TC_PUNT(BELOW_IPV4_MTU);
 
     // Approximate handling of TCP/IPv4 overhead for incoming LRO/GRO packets: default
     // outbound path mtu of 1500 is not necessarily correct, but worst case we simply
@@ -514,7 +521,7 @@ static inline __always_inline int do_forward4(struct __sk_buff* skb, const bool 
     // a packet we let the core stack deal with things.
     // (The core stack needs to handle limits correctly anyway,
     // since we don't offload all traffic in both directions)
-    if (stat_v->rxBytes + stat_v->txBytes + bytes > *limit_v) PUNT(LIMIT_REACHED);
+    if (stat_v->rxBytes + stat_v->txBytes + bytes > *limit_v) TC_PUNT(LIMIT_REACHED);
 
     if (!is_ethernet) {
         // Try to inject an ethernet header, and simply return if we fail.
@@ -522,7 +529,7 @@ static inline __always_inline int do_forward4(struct __sk_buff* skb, const bool 
         // because this is easier and the kernel will strip extraneous ethernet header.
         if (bpf_skb_change_head(skb, sizeof(struct ethhdr), /*flags*/ 0)) {
             __sync_fetch_and_add(downstream ? &stat_v->rxErrors : &stat_v->txErrors, 1);
-            PUNT(CHANGE_HEAD_FAILED);
+            TC_PUNT(CHANGE_HEAD_FAILED);
         }
 
         // bpf_skb_change_head() invalidates all pointers - reload them
@@ -536,7 +543,7 @@ static inline __always_inline int do_forward4(struct __sk_buff* skb, const bool 
         // I do not believe this can ever happen, but keep the verifier happy...
         if (data + sizeof(struct ethhdr) + sizeof(*ip) + (is_tcp ? sizeof(*tcph) : sizeof(*udph)) > data_end) {
             __sync_fetch_and_add(downstream ? &stat_v->rxErrors : &stat_v->txErrors, 1);
-            DROP(TOO_SHORT);
+            TC_DROP(TOO_SHORT);
         }
     };
 
