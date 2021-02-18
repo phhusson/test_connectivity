@@ -145,3 +145,10 @@ android_app {
     apex_available: ["com.android.tethering"],
     min_sdk_version: "30",
 }
+
+sdk {
+    name: "tethering-module-sdk",
+    java_sdk_libs: [
+        "framework-tethering",
+    ],
+}
