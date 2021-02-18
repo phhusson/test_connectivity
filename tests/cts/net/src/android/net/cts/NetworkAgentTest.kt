@@ -65,19 +65,17 @@ import android.os.Looper
 import android.os.Message
 import android.util.DebugUtils.valueToString
 import androidx.test.InstrumentationRegistry
-import androidx.test.runner.AndroidJUnit4
 import com.android.connectivity.aidl.INetworkAgent
 import com.android.connectivity.aidl.INetworkAgentRegistry
 import com.android.net.module.util.ArrayTrackRecord
-import com.android.testutils.DevSdkIgnoreRule
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo
+import com.android.testutils.DevSdkIgnoreRunner
 import com.android.testutils.RecorderCallback.CallbackEntry.Available
 import com.android.testutils.RecorderCallback.CallbackEntry.Lost
 import com.android.testutils.TestableNetworkCallback
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Before
-import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.ArgumentMatchers.any
@@ -125,11 +123,11 @@ private fun Message(what: Int, arg1: Int, arg2: Int, obj: Any?) = Message.obtain
     it.obj = obj
 }
 
-@RunWith(AndroidJUnit4::class)
+@RunWith(DevSdkIgnoreRunner::class)
+// NetworkAgent is not updatable in R-, so this test does not need to be compatible with older
+// versions. NetworkAgent was also based on AsyncChannel before S so cannot be tested the same way.
+@IgnoreUpTo(Build.VERSION_CODES.R)
 class NetworkAgentTest {
-    @Rule @JvmField
-    val ignoreRule = DevSdkIgnoreRule(ignoreClassUpTo = Build.VERSION_CODES.R)
-
     private val LOCAL_IPV4_ADDRESS = InetAddresses.parseNumericAddress("192.0.2.1")
     private val REMOTE_IPV4_ADDRESS = InetAddresses.parseNumericAddress("192.0.2.2")
 
