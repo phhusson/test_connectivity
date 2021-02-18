@@ -44,6 +44,7 @@
     ERR(SHORT_L4_HEADER)     \
     ERR(SHORT_TCP_HEADER)    \
     ERR(SHORT_UDP_HEADER)    \
+    ERR(UDP_CSUM_ZERO)       \
     ERR(TRUNCATED_IPV4)      \
     ERR(_MAX)
 
