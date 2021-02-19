@@ -358,6 +358,11 @@ public class TetheringTest {
         }
 
         @Override
+        protected boolean isFeatureEnabled(Context ctx, String featureVersionFlag) {
+            return false;
+        }
+
+        @Override
         protected Resources getResourcesForSubIdWrapper(Context ctx, int subId) {
             return mResources;
         }
