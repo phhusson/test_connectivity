@@ -14,6 +14,10 @@
 // limitations under the License.
 //
 
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
 apex {
     name: "com.android.tethering",
     // TODO: make updatable again once this contains only updatable artifacts (in particular, this
