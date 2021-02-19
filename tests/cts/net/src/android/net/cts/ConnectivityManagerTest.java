@@ -567,17 +567,23 @@ public class ConnectivityManagerTest {
 
         // Create a ConnectivityActionReceiver that has an IntentFilter for our locally defined
         // action, NETWORK_CALLBACK_ACTION.
-        IntentFilter filter = new IntentFilter();
+        final IntentFilter filter = new IntentFilter();
         filter.addAction(NETWORK_CALLBACK_ACTION);
 
-        ConnectivityActionReceiver receiver = new ConnectivityActionReceiver(
+        final ConnectivityActionReceiver receiver = new ConnectivityActionReceiver(
                 mCm, ConnectivityManager.TYPE_WIFI, NetworkInfo.State.CONNECTED);
         mContext.registerReceiver(receiver, filter);
 
         // Create a broadcast PendingIntent for NETWORK_CALLBACK_ACTION.
-        Intent intent = new Intent(NETWORK_CALLBACK_ACTION);
-        PendingIntent pendingIntent = PendingIntent.getBroadcast(
-                mContext, 0, intent, PendingIntent.FLAG_CANCEL_CURRENT);
+        final Intent intent = new Intent(NETWORK_CALLBACK_ACTION)
+                .setPackage(mContext.getPackageName());
+        // While ConnectivityService would put extra info such as network or request id before
+        // broadcasting the inner intent. The MUTABLE flag needs to be added accordingly.
+        // TODO: replace with PendingIntent.FLAG_MUTABLE when this code compiles against S+ or
+        //  shims.
+        final int pendingIntentFlagMutable = 1 << 25;
+        final PendingIntent pendingIntent = PendingIntent.getBroadcast(mContext, 0 /*requestCode*/,
+                intent, PendingIntent.FLAG_CANCEL_CURRENT | pendingIntentFlagMutable);
 
         // We will register for a WIFI network being available or lost.
         mCm.registerNetworkCallback(makeWifiNetworkRequest(), pendingIntent);
