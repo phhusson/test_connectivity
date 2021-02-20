@@ -109,6 +109,7 @@ import androidx.test.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.internal.util.ArrayUtils;
+import com.android.modules.utils.build.SdkLevel;
 import com.android.testutils.DevSdkIgnoreRule;
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
 import com.android.testutils.RecorderCallback.CallbackEntry;
@@ -521,11 +522,12 @@ public class ConnectivityManagerTest {
         mCm.registerDefaultNetworkCallback(defaultTrackingCallback);
 
         final TestNetworkCallback systemDefaultTrackingCallback = new TestNetworkCallback();
-        runWithShellPermissionIdentity(() ->
-                mCm.registerSystemDefaultNetworkCallback(systemDefaultTrackingCallback,
-                        new Handler(Looper.getMainLooper())),
-                NETWORK_SETTINGS);
-
+        if (SdkLevel.isAtLeastS()) {
+            runWithShellPermissionIdentity(() ->
+                    mCm.registerSystemDefaultNetworkCallback(systemDefaultTrackingCallback,
+                            new Handler(Looper.getMainLooper())),
+                    NETWORK_SETTINGS);
+        }
 
         Network wifiNetwork = null;
 
@@ -542,16 +544,20 @@ public class ConnectivityManagerTest {
             assertNotNull("Did not receive onAvailable on default network callback",
                     defaultTrackingCallback.waitForAvailable());
 
-            assertNotNull("Did not receive onAvailable on system default network callback",
-                    systemDefaultTrackingCallback.waitForAvailable());
+            if (SdkLevel.isAtLeastS()) {
+                assertNotNull("Did not receive onAvailable on system default network callback",
+                        systemDefaultTrackingCallback.waitForAvailable());
+            }
         } catch (InterruptedException e) {
             fail("Broadcast receiver or NetworkCallback wait was interrupted.");
         } finally {
             mCm.unregisterNetworkCallback(callback);
             mCm.unregisterNetworkCallback(defaultTrackingCallback);
-            runWithShellPermissionIdentity(
-                    () -> mCm.unregisterNetworkCallback(systemDefaultTrackingCallback),
-                    NETWORK_SETTINGS);
+            if (SdkLevel.isAtLeastS()) {
+                runWithShellPermissionIdentity(
+                        () -> mCm.unregisterNetworkCallback(systemDefaultTrackingCallback),
+                        NETWORK_SETTINGS);
+            }
         }
     }
 
