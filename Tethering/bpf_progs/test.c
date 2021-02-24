@@ -20,7 +20,7 @@
 
 #include "bpf_helpers.h"
 #include "bpf_net_helpers.h"
-#include "netdbpf/bpf_shared.h"
+#include "bpf_tethering.h"
 
 // Used only by TetheringPrivilegedTests, not by production code.
 DEFINE_BPF_MAP_GRW(tether_downstream6_map, HASH, TetherDownstream6Key, Tether6Value, 16,
