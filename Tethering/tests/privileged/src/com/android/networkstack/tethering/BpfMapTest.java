@@ -312,6 +312,32 @@ public final class BpfMapTest {
     }
 
     @Test
+    public void testClear() throws Exception {
+        // Clear an empty map.
+        assertTrue(mTestMap.isEmpty());
+        mTestMap.clear();
+
+        // Clear a map with some data in it.
+        final ArrayMap<TetherDownstream6Key, Tether6Value> resultMap =
+                new ArrayMap<>(mTestData);
+        for (int i = 0; i < resultMap.size(); i++) {
+            mTestMap.insertEntry(resultMap.keyAt(i), resultMap.valueAt(i));
+        }
+        assertFalse(mTestMap.isEmpty());
+        mTestMap.clear();
+        assertTrue(mTestMap.isEmpty());
+
+        // Clearing an already-closed map throws.
+        mTestMap.close();
+        try {
+            mTestMap.clear();
+            fail("clearing already-closed map should throw");
+        } catch (ErrnoException expected) {
+            assertEquals(OsConstants.EBADF, expected.errno);
+        }
+    }
+
+    @Test
     public void testInsertOverflow() throws Exception {
         final ArrayMap<TetherDownstream6Key, Tether6Value> testData =
                 new ArrayMap<>();
