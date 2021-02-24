@@ -1578,11 +1578,12 @@ public class ConnectivityManagerTest {
     public void testRequestBackgroundNetwork() throws Exception {
         // Create a tun interface. Use the returned interface name as the specifier to create
         // a test network request.
-        final TestNetworkInterface testNetworkInterface = runWithShellPermissionIdentity(() -> {
-            final TestNetworkManager tnm =
-                    mContext.getSystemService(TestNetworkManager.class);
-            return tnm.createTunInterface(new LinkAddress[]{TEST_LINKADDR});
-        }, android.Manifest.permission.MANAGE_TEST_NETWORKS,
+        final TestNetworkManager tnm = runWithShellPermissionIdentity(() ->
+                mContext.getSystemService(TestNetworkManager.class),
+                android.Manifest.permission.MANAGE_TEST_NETWORKS);
+        final TestNetworkInterface testNetworkInterface = runWithShellPermissionIdentity(() ->
+                    tnm.createTunInterface(new LinkAddress[]{TEST_LINKADDR}),
+                android.Manifest.permission.MANAGE_TEST_NETWORKS,
                 android.Manifest.permission.NETWORK_SETTINGS);
         assertNotNull(testNetworkInterface);
 
@@ -1600,24 +1601,23 @@ public class ConnectivityManagerTest {
         assertThrows(SecurityException.class,
                 () -> mCm.requestBackgroundNetwork(testRequest, null, callback));
 
+        Network testNetwork = null;
         try {
             // Request background test network via Shell identity which has NETWORK_SETTINGS
             // permission granted.
             runWithShellPermissionIdentity(
                     () -> mCm.requestBackgroundNetwork(testRequest, null, callback),
-                    android.Manifest.permission.NETWORK_SETTINGS);
+                    new String[] { android.Manifest.permission.NETWORK_SETTINGS });
 
             // Register the test network agent which has no foreground request associated to it.
             // And verify it can satisfy the background network request just fired.
             final Binder binder = new Binder();
-            runWithShellPermissionIdentity(() -> {
-                final TestNetworkManager tnm =
-                        mContext.getSystemService(TestNetworkManager.class);
-                tnm.setupTestNetwork(testNetworkInterface.getInterfaceName(), binder);
-            }, android.Manifest.permission.MANAGE_TEST_NETWORKS,
-                    android.Manifest.permission.NETWORK_SETTINGS);
+            runWithShellPermissionIdentity(() ->
+                    tnm.setupTestNetwork(testNetworkInterface.getInterfaceName(), binder),
+                    new String[] { android.Manifest.permission.MANAGE_TEST_NETWORKS,
+                            android.Manifest.permission.NETWORK_SETTINGS });
             waitForAvailable(callback);
-            final Network testNetwork = callback.getLastAvailableNetwork();
+            testNetwork = callback.getLastAvailableNetwork();
             assertNotNull(testNetwork);
 
             // The test network that has just connected is a foreground network,
@@ -1633,6 +1633,16 @@ public class ConnectivityManagerTest {
             assertFalse("expected background network, but got " + nc,
                     nc.hasCapability(NET_CAPABILITY_FOREGROUND));
         } finally {
+            final Network n = testNetwork;
+            runWithShellPermissionIdentity(() -> {
+                if (null != n) {
+                    tnm.teardownTestNetwork(n);
+                    callback.eventuallyExpect(CallbackEntry.LOST,
+                            NETWORK_CALLBACK_TIMEOUT_MS,
+                            lost -> n.equals(lost.getNetwork()));
+                }
+                testNetworkInterface.getFileDescriptor().close();
+            }, new String[] { android.Manifest.permission.MANAGE_TEST_NETWORKS });
             mCm.unregisterNetworkCallback(callback);
         }
     }
