@@ -48,6 +48,7 @@ java_defaults {
         "ctstestrunner-axt",
         "junit",
         "junit-params",
+        "modules-utils-build",
         "net-utils-framework-common",
         "truth-prebuilt",
     ],
