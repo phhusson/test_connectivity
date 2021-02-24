@@ -16,6 +16,11 @@
 
 #pragma once
 
+#include <linux/if.h>
+#include <linux/if_ether.h>
+#include <linux/in.h>
+#include <linux/in6.h>
+
 // Common definitions for BPF code in the tethering mainline module.
 // These definitions are available to:
 // - The BPF programs in Tethering/bpf_progs/
@@ -59,3 +64,151 @@ static const char *bpf_tether_errors[] = {
     BPF_TETHER_ERRORS
 };
 #undef ERR
+
+// This header file is shared by eBPF kernel programs (C) and netd (C++) and
+// some of the maps are also accessed directly from Java mainline module code.
+//
+// Hence: explicitly pad all relevant structures and assert that their size
+// is the sum of the sizes of their fields.
+#define STRUCT_SIZE(name, size) _Static_assert(sizeof(name) == (size), "Incorrect struct size.")
+
+
+#define BPF_PATH_TETHER BPF_PATH "tethering/"
+
+#define TETHER_STATS_MAP_PATH BPF_PATH_TETHER "map_offload_tether_stats_map"
+
+typedef uint32_t TetherStatsKey;  // upstream ifindex
+
+typedef struct {
+    uint64_t rxPackets;
+    uint64_t rxBytes;
+    uint64_t rxErrors;
+    uint64_t txPackets;
+    uint64_t txBytes;
+    uint64_t txErrors;
+} TetherStatsValue;
+STRUCT_SIZE(TetherStatsValue, 6 * 8);  // 48
+
+#define TETHER_LIMIT_MAP_PATH BPF_PATH_TETHER "map_offload_tether_limit_map"
+
+typedef uint32_t TetherLimitKey;    // upstream ifindex
+typedef uint64_t TetherLimitValue;  // in bytes
+
+#define TETHER_DOWNSTREAM6_TC_PROG_RAWIP_NAME "prog_offload_schedcls_tether_downstream6_rawip"
+#define TETHER_DOWNSTREAM6_TC_PROG_ETHER_NAME "prog_offload_schedcls_tether_downstream6_ether"
+
+#define TETHER_DOWNSTREAM6_TC_PROG_RAWIP_PATH BPF_PATH_TETHER TETHER_DOWNSTREAM6_TC_PROG_RAWIP_NAME
+#define TETHER_DOWNSTREAM6_TC_PROG_ETHER_PATH BPF_PATH_TETHER TETHER_DOWNSTREAM6_TC_PROG_ETHER_NAME
+
+#define TETHER_DOWNSTREAM6_MAP_PATH BPF_PATH_TETHER "map_offload_tether_downstream6_map"
+
+// For now tethering offload only needs to support downstreams that use 6-byte MAC addresses,
+// because all downstream types that are currently supported (WiFi, USB, Bluetooth and
+// Ethernet) have 6-byte MAC addresses.
+
+typedef struct {
+    uint32_t iif;            // The input interface index
+                             // TODO: extend this to include dstMac
+    struct in6_addr neigh6;  // The destination IPv6 address
+} TetherDownstream6Key;
+STRUCT_SIZE(TetherDownstream6Key, 4 + 16);  // 20
+
+typedef struct {
+    uint32_t oif;             // The output interface to redirect to
+    struct ethhdr macHeader;  // includes dst/src mac and ethertype (zeroed iff rawip egress)
+    uint16_t pmtu;            // The maximum L3 output path/route mtu
+} Tether6Value;
+STRUCT_SIZE(Tether6Value, 4 + 14 + 2);  // 20
+
+#define TETHER_DOWNSTREAM64_MAP_PATH BPF_PATH_TETHER "map_offload_tether_downstream64_map"
+
+typedef struct {
+    uint32_t iif;              // The input interface index
+    uint8_t dstMac[ETH_ALEN];  // destination ethernet mac address (zeroed iff rawip ingress)
+    uint16_t l4Proto;          // IPPROTO_TCP/UDP/...
+    struct in6_addr src6;      // source &
+    struct in6_addr dst6;      // destination IPv6 addresses
+    __be16 srcPort;            // source &
+    __be16 dstPort;            // destination tcp/udp/... ports
+} TetherDownstream64Key;
+STRUCT_SIZE(TetherDownstream64Key, 4 + 6 + 2 + 16 + 16 + 2 + 2);  // 48
+
+typedef struct {
+    uint32_t oif;             // The output interface to redirect to
+    struct ethhdr macHeader;  // includes dst/src mac and ethertype (zeroed iff rawip egress)
+    uint16_t pmtu;            // The maximum L3 output path/route mtu
+    struct in_addr src4;      // source &
+    struct in_addr dst4;      // destination IPv4 addresses
+    __be16 srcPort;           // source &
+    __be16 outPort;           // destination tcp/udp/... ports
+    uint64_t lastUsed;        // Kernel updates on each use with bpf_ktime_get_boot_ns()
+} TetherDownstream64Value;
+STRUCT_SIZE(TetherDownstream64Value, 4 + 14 + 2 + 4 + 4 + 2 + 2 + 8);  // 40
+
+#define TETHER_UPSTREAM6_TC_PROG_RAWIP_NAME "prog_offload_schedcls_tether_upstream6_rawip"
+#define TETHER_UPSTREAM6_TC_PROG_ETHER_NAME "prog_offload_schedcls_tether_upstream6_ether"
+
+#define TETHER_UPSTREAM6_TC_PROG_RAWIP_PATH BPF_PATH_TETHER TETHER_UPSTREAM6_TC_PROG_RAWIP_NAME
+#define TETHER_UPSTREAM6_TC_PROG_ETHER_PATH BPF_PATH_TETHER TETHER_UPSTREAM6_TC_PROG_ETHER_NAME
+
+#define TETHER_UPSTREAM6_MAP_PATH BPF_PATH_TETHER "map_offload_tether_upstream6_map"
+
+typedef struct {
+    uint32_t iif;  // The input interface index
+                   // TODO: extend this to include dstMac and src ip /64 subnet
+} TetherUpstream6Key;
+STRUCT_SIZE(TetherUpstream6Key, 4);
+
+#define TETHER_DOWNSTREAM4_TC_PROG_RAWIP_NAME "prog_offload_schedcls_tether_downstream4_rawip"
+#define TETHER_DOWNSTREAM4_TC_PROG_ETHER_NAME "prog_offload_schedcls_tether_downstream4_ether"
+
+#define TETHER_DOWNSTREAM4_TC_PROG_RAWIP_PATH BPF_PATH_TETHER TETHER_DOWNSTREAM4_TC_PROG_RAWIP_NAME
+#define TETHER_DOWNSTREAM4_TC_PROG_ETHER_PATH BPF_PATH_TETHER TETHER_DOWNSTREAM4_TC_PROG_ETHER_NAME
+
+#define TETHER_DOWNSTREAM4_MAP_PATH BPF_PATH_TETHER "map_offload_tether_downstream4_map"
+
+
+#define TETHER_UPSTREAM4_TC_PROG_RAWIP_NAME "prog_offload_schedcls_tether_upstream4_rawip"
+#define TETHER_UPSTREAM4_TC_PROG_ETHER_NAME "prog_offload_schedcls_tether_upstream4_ether"
+
+#define TETHER_UPSTREAM4_TC_PROG_RAWIP_PATH BPF_PATH_TETHER TETHER_UPSTREAM4_TC_PROG_RAWIP_NAME
+#define TETHER_UPSTREAM4_TC_PROG_ETHER_PATH BPF_PATH_TETHER TETHER_UPSTREAM4_TC_PROG_ETHER_NAME
+
+#define TETHER_UPSTREAM4_MAP_PATH BPF_PATH_TETHER "map_offload_tether_upstream4_map"
+
+typedef struct {
+    uint32_t iif;              // The input interface index
+    uint8_t dstMac[ETH_ALEN];  // destination ethernet mac address (zeroed iff rawip ingress)
+    uint16_t l4Proto;          // IPPROTO_TCP/UDP/...
+    struct in_addr src4;       // source &
+    struct in_addr dst4;       // destination IPv4 addresses
+    __be16 srcPort;            // source &
+    __be16 dstPort;            // destination TCP/UDP/... ports
+} Tether4Key;
+STRUCT_SIZE(Tether4Key, 4 + 6 + 2 + 4 + 4 + 2 + 2);  // 24
+
+typedef struct {
+    uint32_t oif;             // The output interface to redirect to
+    struct ethhdr macHeader;  // includes dst/src mac and ethertype (zeroed iff rawip egress)
+    uint16_t pmtu;            // Maximum L3 output path/route mtu
+    struct in6_addr src46;    // source &                 (always IPv4 mapped for downstream)
+    struct in6_addr dst46;    // destination IP addresses (may be IPv4 mapped or IPv6 for upstream)
+    __be16 srcPort;           // source &
+    __be16 dstPort;           // destination tcp/udp/... ports
+    uint64_t last_used;       // Kernel updates on each use with bpf_ktime_get_boot_ns()
+} Tether4Value;
+STRUCT_SIZE(Tether4Value, 4 + 14 + 2 + 16 + 16 + 2 + 2 + 8);  // 64
+
+#define TETHER_DOWNSTREAM_XDP_PROG_RAWIP_NAME "prog_offload_xdp_tether_downstream_rawip"
+#define TETHER_DOWNSTREAM_XDP_PROG_ETHER_NAME "prog_offload_xdp_tether_downstream_ether"
+
+#define TETHER_DOWNSTREAM_XDP_PROG_RAWIP_PATH BPF_PATH_TETHER TETHER_DOWNSTREAM_XDP_PROG_RAWIP_NAME
+#define TETHER_DOWNSTREAM_XDP_PROG_ETHER_PATH BPF_PATH_TETHER TETHER_DOWNSTREAM_XDP_PROG_ETHER_NAME
+
+#define TETHER_UPSTREAM_XDP_PROG_RAWIP_NAME "prog_offload_xdp_tether_upstream_rawip"
+#define TETHER_UPSTREAM_XDP_PROG_ETHER_NAME "prog_offload_xdp_tether_upstream_ether"
+
+#define TETHER_UPSTREAM_XDP_PROG_RAWIP_PATH BPF_PATH_TETHER TETHER_UPSTREAM_XDP_PROG_RAWIP_NAME
+#define TETHER_UPSTREAM_XDP_PROG_ETHER_PATH BPF_PATH_TETHER TETHER_UPSTREAM_XDP_PROG_ETHER_NAME
+
+#undef STRUCT_SIZE
