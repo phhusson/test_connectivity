@@ -55,10 +55,10 @@ import android.platform.test.annotations.AppModeFull;
 import androidx.test.InstrumentationRegistry;
 
 import com.android.internal.util.HexDump;
-import com.android.internal.org.bouncycastle.x509.X509V1CertificateGenerator;
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
 import com.android.testutils.DevSdkIgnoreRunner;
 
+import org.bouncycastle.x509.X509V1CertificateGenerator;
 import org.junit.After;
 import org.junit.Test;
 import org.junit.runner.RunWith;

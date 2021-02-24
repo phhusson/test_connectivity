@@ -41,6 +41,7 @@ java_defaults {
     ],
     jarjar_rules: "jarjar-rules-shared.txt",
     static_libs: [
+        "bouncycastle-unbundled",
         "FrameworksNetCommonTests",
         "TestNetworkStackLib",
         "core-tests-support",
