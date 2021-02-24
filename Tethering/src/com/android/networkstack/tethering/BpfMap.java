@@ -226,6 +226,20 @@ public class BpfMap<K extends Struct, V extends Struct> implements AutoCloseable
         closeMap(mMapFd);
     }
 
+    /**
+     * Clears the map. The map may already be empty.
+     *
+     * @throws ErrnoException if the map is already closed, if an error occurred during iteration,
+     *                        or if a non-ENOENT error occurred when deleting a key.
+     */
+    public void clear() throws ErrnoException {
+        K key = getFirstKey();
+        while (key != null) {
+            deleteEntry(key);  // ignores ENOENT.
+            key = getFirstKey();
+        }
+    }
+
     private static native int closeMap(int fd) throws ErrnoException;
 
     private native int bpfFdGet(String path, int mode) throws ErrnoException, NullPointerException;
