@@ -35,6 +35,7 @@ import android.net.NetworkCapabilities.NET_CAPABILITY_NOT_CONGESTED
 import android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED
 import android.net.NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING
 import android.net.NetworkCapabilities.NET_CAPABILITY_NOT_SUSPENDED
+import android.net.NetworkCapabilities.NET_CAPABILITY_NOT_VCN_MANAGED
 import android.net.NetworkCapabilities.NET_CAPABILITY_NOT_VPN
 import android.net.NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED
 import android.net.NetworkCapabilities.NET_CAPABILITY_TRUSTED
@@ -67,6 +68,7 @@ import android.util.DebugUtils.valueToString
 import androidx.test.InstrumentationRegistry
 import com.android.connectivity.aidl.INetworkAgent
 import com.android.connectivity.aidl.INetworkAgentRegistry
+import com.android.modules.utils.build.SdkLevel
 import com.android.net.module.util.ArrayTrackRecord
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo
 import com.android.testutils.DevSdkIgnoreRunner
@@ -321,6 +323,9 @@ class NetworkAgentTest {
             addCapability(NET_CAPABILITY_NOT_SUSPENDED)
             addCapability(NET_CAPABILITY_NOT_ROAMING)
             addCapability(NET_CAPABILITY_NOT_VPN)
+            if (SdkLevel.isAtLeastS()) {
+                addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
+            }
             if (null != name) {
                 setNetworkSpecifier(StringNetworkSpecifier(name))
             }
@@ -558,6 +563,9 @@ class NetworkAgentTest {
             addTransportType(TRANSPORT_VPN)
             removeCapability(NET_CAPABILITY_NOT_VPN)
             setTransportInfo(VpnTransportInfo(VpnManager.TYPE_VPN_SERVICE))
+            if (SdkLevel.isAtLeastS()) {
+                addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
+            }
         }
         val defaultNetwork = mCM.activeNetwork
         assertNotNull(defaultNetwork)
