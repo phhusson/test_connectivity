@@ -15,11 +15,50 @@
 //
 
 //
+// struct definitions shared with JNI
+//
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+cc_library_headers {
+    name: "bpf_tethering_headers",
+    vendor_available: false,
+    host_supported: false,
+    export_include_dirs: ["."],
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+    sdk_version: "30",
+    min_sdk_version: "30",
+    apex_available: ["com.android.tethering"],
+    visibility: [
+        "//packages/modules/Connectivity/Tethering",
+    ],
+}
+
+//
 // bpf kernel programs
 //
 bpf {
     name: "offload.o",
     srcs: ["offload.c"],
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+    include_dirs: [
+        // TODO: get rid of system/netd.
+        "system/netd/bpf_progs",             // for bpf_net_helpers.h
+        "system/netd/libnetdbpf/include",    // for bpf_shared.h
+        "system/netd/libnetdutils/include",  // for UidConstants.h
+    ],
+}
+
+bpf {
+    name: "test.o",
+    srcs: ["test.c"],
     cflags: [
         "-Wall",
         "-Werror",

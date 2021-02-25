@@ -17,14 +17,21 @@
 package com.android.networkstack.tethering.apishim.api30;
 
 import android.net.INetd;
+import android.net.MacAddress;
+import android.net.TetherStatsParcel;
 import android.net.util.SharedLog;
 import android.os.RemoteException;
 import android.os.ServiceSpecificException;
+import android.util.SparseArray;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.android.networkstack.tethering.BpfCoordinator.Dependencies;
 import com.android.networkstack.tethering.BpfCoordinator.Ipv6ForwardingRule;
+import com.android.networkstack.tethering.Tether4Key;
+import com.android.networkstack.tethering.Tether4Value;
+import com.android.networkstack.tethering.TetherStatsValue;
 
 /**
  * Bpf coordinator class for API shims.
@@ -59,6 +66,97 @@ public class BpfCoordinatorShimImpl
 
         return true;
     };
+
+    @Override
+    public boolean tetherOffloadRuleRemove(@NonNull final Ipv6ForwardingRule rule) {
+        try {
+            mNetd.tetherOffloadRuleRemove(rule.toTetherOffloadRuleParcel());
+        } catch (RemoteException | ServiceSpecificException e) {
+            mLog.e("Could not remove IPv6 forwarding rule: ", e);
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    public boolean startUpstreamIpv6Forwarding(int downstreamIfindex, int upstreamIfindex,
+            MacAddress srcMac, MacAddress dstMac, int mtu) {
+        return true;
+    }
+
+    @Override
+    public boolean stopUpstreamIpv6Forwarding(int downstreamIfindex, int upstreamIfindex) {
+        return true;
+    }
+
+    @Override
+    @Nullable
+    public SparseArray<TetherStatsValue> tetherOffloadGetStats() {
+        final TetherStatsParcel[] tetherStatsList;
+        try {
+            // The reported tether stats are total data usage for all currently-active upstream
+            // interfaces since tethering start. There will only ever be one entry for a given
+            // interface index.
+            tetherStatsList = mNetd.tetherOffloadGetStats();
+        } catch (RemoteException | ServiceSpecificException e) {
+            mLog.e("Fail to fetch tethering stats from netd: " + e);
+            return null;
+        }
+
+        return toTetherStatsValueSparseArray(tetherStatsList);
+    }
+
+    @Override
+    public boolean tetherOffloadSetInterfaceQuota(int ifIndex, long quotaBytes) {
+        try {
+            mNetd.tetherOffloadSetInterfaceQuota(ifIndex, quotaBytes);
+        } catch (RemoteException | ServiceSpecificException e) {
+            mLog.e("Exception when updating quota " + quotaBytes + ": ", e);
+            return false;
+        }
+        return true;
+    }
+
+    @NonNull
+    private SparseArray<TetherStatsValue> toTetherStatsValueSparseArray(
+            @NonNull final TetherStatsParcel[] parcels) {
+        final SparseArray<TetherStatsValue> tetherStatsList = new SparseArray<TetherStatsValue>();
+
+        for (TetherStatsParcel p : parcels) {
+            tetherStatsList.put(p.ifIndex, new TetherStatsValue(p.rxPackets, p.rxBytes,
+                    0 /* rxErrors */, p.txPackets, p.txBytes, 0 /* txErrors */));
+        }
+
+        return tetherStatsList;
+    }
+
+    @Override
+    @Nullable
+    public TetherStatsValue tetherOffloadGetAndClearStats(int ifIndex) {
+        try {
+            final TetherStatsParcel stats =
+                    mNetd.tetherOffloadGetAndClearStats(ifIndex);
+            return new TetherStatsValue(stats.rxPackets, stats.rxBytes, 0 /* rxErrors */,
+                    stats.txPackets, stats.txBytes, 0 /* txErrors */);
+        } catch (RemoteException | ServiceSpecificException e) {
+            mLog.e("Exception when cleanup tether stats for upstream index "
+                    + ifIndex + ": ", e);
+            return null;
+        }
+    }
+
+    @Override
+    public boolean tetherOffloadRuleAdd(boolean downstream, @NonNull Tether4Key key,
+            @NonNull Tether4Value value) {
+        /* no op */
+        return true;
+    }
+
+    @Override
+    public boolean tetherOffloadRuleRemove(boolean downstream, @NonNull Tether4Key key) {
+        /* no op */
+        return true;
+    }
 
     @Override
     public String toString() {

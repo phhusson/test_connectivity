@@ -82,7 +82,6 @@ public class TetheringService extends Service {
      */
     @VisibleForTesting
     public Tethering makeTethering(TetheringDependencies deps) {
-        System.loadLibrary("tetherutilsjni");
         return new Tethering(deps);
     }
 

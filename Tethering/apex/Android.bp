@@ -14,11 +14,15 @@
 // limitations under the License.
 //
 
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
 apex {
     name: "com.android.tethering",
     // TODO: make updatable again once this contains only updatable artifacts (in particular, this
     // cannot build as updatable unless service-connectivity builds against stable API).
-    // updatable: true,
+    updatable: false,
     // min_sdk_version: "30",
     java_libs: [
         "framework-tethering",
@@ -27,7 +31,10 @@ apex {
     jni_libs: [
         "libservice-connectivity",
     ],
-    bpfs: ["offload.o"],
+    bpfs: [
+        "offload.o",
+        "test.o",
+    ],
     apps: ["Tethering"],
     manifest: "manifest.json",
     key: "com.android.tethering.key",

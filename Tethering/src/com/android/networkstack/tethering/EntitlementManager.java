@@ -418,7 +418,8 @@ public class EntitlementManager {
             if (period <= 0) return;
 
             Intent intent = new Intent(ACTION_PROVISIONING_ALARM);
-            mProvisioningRecheckAlarm = PendingIntent.getBroadcast(mContext, 0, intent, 0);
+            mProvisioningRecheckAlarm = PendingIntent.getBroadcast(mContext, 0, intent,
+                    PendingIntent.FLAG_IMMUTABLE);
             AlarmManager alarmManager = (AlarmManager) mContext.getSystemService(
                     Context.ALARM_SERVICE);
             long periodMs = period * MS_PER_HOUR;

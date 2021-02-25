@@ -212,7 +212,7 @@ public final class CtsNetUtils {
         mContext.registerReceiver(receiver, filter);
 
         boolean connected = false;
-        final String err = "Wifi must be configured to connect to an access point for this test.";
+        final String err = "Wifi must be configured to connect to an access point for this test";
         try {
             clearWifiBlacklist();
             SystemUtil.runShellCommand("svc wifi enable");
@@ -235,7 +235,7 @@ public final class CtsNetUtils {
             }
             // Ensure we get an onAvailable callback and possibly a CONNECTIVITY_ACTION.
             wifiNetwork = callback.waitForAvailable();
-            assertNotNull(err, wifiNetwork);
+            assertNotNull(err + ": onAvailable callback not received", wifiNetwork);
             connected = !expectLegacyBroadcast || receiver.waitForState();
         } catch (InterruptedException ex) {
             fail("connectToWifi was interrupted");
@@ -244,7 +244,7 @@ public final class CtsNetUtils {
             mContext.unregisterReceiver(receiver);
         }
 
-        assertTrue(err, connected);
+        assertTrue(err + ": CONNECTIVITY_ACTION not received", connected);
         return wifiNetwork;
     }
 

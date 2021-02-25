@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
 java_defaults {
     name: "CtsNetTestCasesDefaults",
     defaults: ["cts_defaults"],
@@ -44,6 +48,7 @@ java_defaults {
         "ctstestrunner-axt",
         "junit",
         "junit-params",
+        "modules-utils-build",
         "net-utils-framework-common",
         "truth-prebuilt",
     ],

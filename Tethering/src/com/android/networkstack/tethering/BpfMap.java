@@ -23,6 +23,7 @@ import android.system.ErrnoException;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.android.internal.annotations.VisibleForTesting;
 import com.android.net.module.util.Struct;
 
 import java.nio.ByteBuffer;
@@ -40,6 +41,10 @@ import java.util.function.BiConsumer;
  * @param <V> the value of the map.
  */
 public class BpfMap<K extends Struct, V extends Struct> implements AutoCloseable {
+    static {
+        System.loadLibrary("tetherutilsjni");
+    }
+
     // Following definitions from kernel include/uapi/linux/bpf.h
     public static final int BPF_F_RDWR = 0;
     public static final int BPF_F_RDONLY = 1 << 3;
@@ -70,6 +75,21 @@ public class BpfMap<K extends Struct, V extends Struct> implements AutoCloseable
             final Class<V> value) throws ErrnoException, NullPointerException {
         mMapFd = bpfFdGet(path, flag);
 
+        mKeyClass = key;
+        mValueClass = value;
+        mKeySize = Struct.getSize(key);
+        mValueSize = Struct.getSize(value);
+    }
+
+     /**
+     * Constructor for testing only.
+     * The derived class implements an internal mocked map. It need to implement all functions
+     * which are related with the native BPF map because the BPF map handler is not initialized.
+     * See BpfCoordinatorTest#TestBpfMap.
+     */
+    @VisibleForTesting
+    protected BpfMap(final Class<K> key, final Class<V> value) {
+        mMapFd = -1;
         mKeyClass = key;
         mValueClass = value;
         mKeySize = Struct.getSize(key);
@@ -116,6 +136,11 @@ public class BpfMap<K extends Struct, V extends Struct> implements AutoCloseable
     /** Remove existing key from eBpf map. Return false if map was not modified. */
     public boolean deleteEntry(K key) throws ErrnoException {
         return deleteMapEntry(mMapFd, key.writeToBytes());
+    }
+
+    /** Returns {@code true} if this map contains no elements. */
+    public boolean isEmpty() throws ErrnoException {
+        return getFirstKey() == null;
     }
 
     private K getNextKeyInternal(@Nullable K key) throws ErrnoException {
@@ -197,8 +222,22 @@ public class BpfMap<K extends Struct, V extends Struct> implements AutoCloseable
     }
 
     @Override
-    public void close() throws Exception {
+    public void close() throws ErrnoException {
         closeMap(mMapFd);
+    }
+
+    /**
+     * Clears the map. The map may already be empty.
+     *
+     * @throws ErrnoException if the map is already closed, if an error occurred during iteration,
+     *                        or if a non-ENOENT error occurred when deleting a key.
+     */
+    public void clear() throws ErrnoException {
+        K key = getFirstKey();
+        while (key != null) {
+            deleteEntry(key);  // ignores ENOENT.
+            key = getFirstKey();
+        }
     }
 
     private static native int closeMap(int fd) throws ErrnoException;

@@ -67,13 +67,12 @@ import com.android.internal.util.MessageUtils;
 import com.android.internal.util.State;
 import com.android.internal.util.StateMachine;
 import com.android.networkstack.tethering.BpfCoordinator;
+import com.android.networkstack.tethering.BpfCoordinator.ClientInfo;
 import com.android.networkstack.tethering.BpfCoordinator.Ipv6ForwardingRule;
 import com.android.networkstack.tethering.PrivateAddressCoordinator;
 
-import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
-import java.net.NetworkInterface;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -184,16 +183,6 @@ public class IpServer extends StateMachine {
         /** Get |ifName|'s interface information.*/
         public InterfaceParams getInterfaceParams(String ifName) {
             return InterfaceParams.getByName(ifName);
-        }
-
-        /** Get |ifName|'s interface index. */
-        public int getIfindex(String ifName) {
-            try {
-                return NetworkInterface.getByName(ifName).getIndex();
-            } catch (IOException | NullPointerException e) {
-                Log.e(TAG, "Can't determine interface index for interface " + ifName);
-                return 0;
-            }
         }
 
         /** Create a DhcpServer instance to be used by IpServer. */
@@ -941,11 +930,38 @@ public class IpServer extends StateMachine {
         }
     }
 
+    // TODO: consider moving into BpfCoordinator.
+    private void updateClientInfoIpv4(NeighborEvent e) {
+        // TODO: Perhaps remove this protection check.
+        // See the related comment in #addIpv6ForwardingRule.
+        if (!mUsingBpfOffload) return;
+
+        if (e == null) return;
+        if (!(e.ip instanceof Inet4Address) || e.ip.isMulticastAddress()
+                || e.ip.isLoopbackAddress() || e.ip.isLinkLocalAddress()) {
+            return;
+        }
+
+        // When deleting clients, IpServer still need to pass a non-null MAC, even though it's
+        // ignored. Do this here instead of in the ClientInfo constructor to ensure that
+        // IpServer never add clients with a null MAC, only delete them.
+        final MacAddress clientMac = e.isValid() ? e.macAddr : NULL_MAC_ADDRESS;
+        final ClientInfo clientInfo = new ClientInfo(mInterfaceParams.index,
+                mInterfaceParams.macAddr, (Inet4Address) e.ip, clientMac);
+        if (e.isValid()) {
+            mBpfCoordinator.tetherOffloadClientAdd(this, clientInfo);
+        } else {
+            // TODO: Delete all related offload rules which are using this client.
+            mBpfCoordinator.tetherOffloadClientRemove(this, clientInfo);
+        }
+    }
+
     private void handleNeighborEvent(NeighborEvent e) {
         if (mInterfaceParams != null
                 && mInterfaceParams.index == e.ifindex
                 && mInterfaceParams.hasMacAddress) {
             updateIpv6ForwardingRules(mLastIPv6UpstreamIfindex, mLastIPv6UpstreamIfindex, e);
+            updateClientInfoIpv4(e);
         }
     }
 
@@ -1111,9 +1127,19 @@ public class IpServer extends StateMachine {
         }
     }
 
+    private void startConntrackMonitoring() {
+        mBpfCoordinator.startMonitoring(this);
+    }
+
+    private void stopConntrackMonitoring() {
+        mBpfCoordinator.stopMonitoring(this);
+    }
+
     class BaseServingState extends State {
         @Override
         public void enter() {
+            startConntrackMonitoring();
+
             if (!startIPv4()) {
                 mLastError = TetheringManager.TETHER_ERROR_IFACE_CFG_ERROR;
                 return;
@@ -1149,6 +1175,7 @@ public class IpServer extends StateMachine {
             }
 
             stopIPv4();
+            stopConntrackMonitoring();
 
             resetLinkProperties();
         }

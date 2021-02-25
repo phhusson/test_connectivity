@@ -13,6 +13,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
 java_defaults {
     name: "TetheringIntegrationTestsDefaults",
     srcs: [
@@ -70,6 +74,7 @@ android_test {
     test_config: "AndroidTest_Coverage.xml",
     defaults: ["libnetworkstackutilsjni_deps"],
     static_libs: [
+        "NetdStaticLibTestsLib",
         "NetworkStaticLibTestsLib",
         "NetworkStackTestsLib",
         "TetheringTestsLib",
@@ -81,6 +86,7 @@ android_test {
         "libstaticjvmtiagent",
         // For NetworkStackUtils included in NetworkStackBase
         "libnetworkstackutilsjni",
+        "libtetherutilsjni",
     ],
     jarjar_rules: ":TetheringTestsJarJarRules",
     compile_multilib: "both",
