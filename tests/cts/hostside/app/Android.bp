@@ -36,6 +36,10 @@ android_test_helper_app {
         "android.test.base",
     ],
     srcs: ["src/**/*.java"],
+    // STOPSHIP: remove this before releasing any networking modules.
+    exclude_srcs: [
+        "src/com/android/cts/net/hostside/VpnTest.java",
+    ],
     // Tag this module as a cts test artifact
     test_suites: [
         "cts",
