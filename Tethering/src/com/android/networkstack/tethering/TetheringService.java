@@ -102,8 +102,9 @@ public class TetheringService extends Service {
         }
 
         @Override
-        public void tether(String iface, String callerPkg, IIntResultListener listener) {
-            if (checkAndNotifyCommonError(callerPkg, listener)) return;
+        public void tether(String iface, String callerPkg, String callingAttributionTag,
+                IIntResultListener listener) {
+            if (checkAndNotifyCommonError(callerPkg, callingAttributionTag, listener)) return;
 
             try {
                 listener.onResult(mTethering.tether(iface));
@@ -111,8 +112,9 @@ public class TetheringService extends Service {
         }
 
         @Override
-        public void untether(String iface, String callerPkg, IIntResultListener listener) {
-            if (checkAndNotifyCommonError(callerPkg, listener)) return;
+        public void untether(String iface, String callerPkg, String callingAttributionTag,
+                IIntResultListener listener) {
+            if (checkAndNotifyCommonError(callerPkg, callingAttributionTag, listener)) return;
 
             try {
                 listener.onResult(mTethering.untether(iface));
@@ -120,8 +122,9 @@ public class TetheringService extends Service {
         }
 
         @Override
-        public void setUsbTethering(boolean enable, String callerPkg, IIntResultListener listener) {
-            if (checkAndNotifyCommonError(callerPkg, listener)) return;
+        public void setUsbTethering(boolean enable, String callerPkg, String callingAttributionTag,
+                IIntResultListener listener) {
+            if (checkAndNotifyCommonError(callerPkg, callingAttributionTag, listener)) return;
 
             try {
                 listener.onResult(mTethering.setUsbTethering(enable));
@@ -130,8 +133,9 @@ public class TetheringService extends Service {
 
         @Override
         public void startTethering(TetheringRequestParcel request, String callerPkg,
-                IIntResultListener listener) {
+                String callingAttributionTag, IIntResultListener listener) {
             if (checkAndNotifyCommonError(callerPkg,
+                    callingAttributionTag,
                     request.exemptFromEntitlementCheck /* onlyAllowPrivileged */,
                     listener)) {
                 return;
@@ -141,8 +145,9 @@ public class TetheringService extends Service {
         }
 
         @Override
-        public void stopTethering(int type, String callerPkg, IIntResultListener listener) {
-            if (checkAndNotifyCommonError(callerPkg, listener)) return;
+        public void stopTethering(int type, String callerPkg, String callingAttributionTag,
+                IIntResultListener listener) {
+            if (checkAndNotifyCommonError(callerPkg, callingAttributionTag, listener)) return;
 
             try {
                 mTethering.stopTethering(type);
@@ -152,8 +157,8 @@ public class TetheringService extends Service {
 
         @Override
         public void requestLatestTetheringEntitlementResult(int type, ResultReceiver receiver,
-                boolean showEntitlementUi, String callerPkg) {
-            if (checkAndNotifyCommonError(callerPkg, receiver)) return;
+                boolean showEntitlementUi, String callerPkg, String callingAttributionTag) {
+            if (checkAndNotifyCommonError(callerPkg, callingAttributionTag, receiver)) return;
 
             mTethering.requestLatestTetheringEntitlementResult(type, receiver, showEntitlementUi);
         }
@@ -183,8 +188,9 @@ public class TetheringService extends Service {
         }
 
         @Override
-        public void stopAllTethering(String callerPkg, IIntResultListener listener) {
-            if (checkAndNotifyCommonError(callerPkg, listener)) return;
+        public void stopAllTethering(String callerPkg, String callingAttributionTag,
+                IIntResultListener listener) {
+            if (checkAndNotifyCommonError(callerPkg, callingAttributionTag, listener)) return;
 
             try {
                 mTethering.untetherAll();
@@ -193,8 +199,9 @@ public class TetheringService extends Service {
         }
 
         @Override
-        public void isTetheringSupported(String callerPkg, IIntResultListener listener) {
-            if (checkAndNotifyCommonError(callerPkg, listener)) return;
+        public void isTetheringSupported(String callerPkg, String callingAttributionTag,
+                IIntResultListener listener) {
+            if (checkAndNotifyCommonError(callerPkg, callingAttributionTag, listener)) return;
 
             try {
                 listener.onResult(TETHER_ERROR_NO_ERROR);
@@ -207,14 +214,18 @@ public class TetheringService extends Service {
             mTethering.dump(fd, writer, args);
         }
 
-        private boolean checkAndNotifyCommonError(String callerPkg, IIntResultListener listener) {
-            return checkAndNotifyCommonError(callerPkg, false /* onlyAllowPrivileged */, listener);
+        private boolean checkAndNotifyCommonError(final String callerPkg,
+                final String callingAttributionTag, final IIntResultListener listener) {
+            return checkAndNotifyCommonError(callerPkg, callingAttributionTag,
+                    false /* onlyAllowPrivileged */, listener);
         }
 
         private boolean checkAndNotifyCommonError(final String callerPkg,
-                final boolean onlyAllowPrivileged, final IIntResultListener listener) {
+                final String callingAttributionTag, final boolean onlyAllowPrivileged,
+                final IIntResultListener listener) {
             try {
-                if (!hasTetherChangePermission(callerPkg, onlyAllowPrivileged)) {
+                if (!hasTetherChangePermission(callerPkg, callingAttributionTag,
+                        onlyAllowPrivileged)) {
                     listener.onResult(TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION);
                     return true;
                 }
@@ -229,8 +240,10 @@ public class TetheringService extends Service {
             return false;
         }
 
-        private boolean checkAndNotifyCommonError(String callerPkg, ResultReceiver receiver) {
-            if (!hasTetherChangePermission(callerPkg, false /* onlyAllowPrivileged */)) {
+        private boolean checkAndNotifyCommonError(final String callerPkg,
+                final String callingAttributionTag, final ResultReceiver receiver) {
+            if (!hasTetherChangePermission(callerPkg, callingAttributionTag,
+                    false /* onlyAllowPrivileged */)) {
                 receiver.send(TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION, null);
                 return true;
             }
@@ -256,7 +269,7 @@ public class TetheringService extends Service {
         }
 
         private boolean hasTetherChangePermission(final String callerPkg,
-                final boolean onlyAllowPrivileged) {
+                final String callingAttributionTag, final boolean onlyAllowPrivileged) {
             if (onlyAllowPrivileged && !hasNetworkStackPermission()) return false;
 
             if (hasTetherPrivilegedPermission()) return true;
@@ -264,11 +277,12 @@ public class TetheringService extends Service {
             if (mTethering.isTetherProvisioningRequired()) return false;
 
             int uid = Binder.getCallingUid();
+
             // If callerPkg's uid is not same as Binder.getCallingUid(),
             // checkAndNoteWriteSettingsOperation will return false and the operation will be
             // denied.
             return mService.checkAndNoteWriteSettingsOperation(mService, uid, callerPkg,
-                    false /* throwException */);
+                    callingAttributionTag, false /* throwException */);
         }
 
         private boolean hasTetherAccessPermission() {
@@ -287,9 +301,10 @@ public class TetheringService extends Service {
      */
     @VisibleForTesting
     boolean checkAndNoteWriteSettingsOperation(@NonNull Context context, int uid,
-            @NonNull String callingPackage, boolean throwException) {
+            @NonNull String callingPackage, @Nullable String callingAttributionTag,
+            boolean throwException) {
         return Settings.checkAndNoteWriteSettingsOperation(context, uid, callingPackage,
-                throwException);
+                callingAttributionTag, throwException);
     }
 
     /**

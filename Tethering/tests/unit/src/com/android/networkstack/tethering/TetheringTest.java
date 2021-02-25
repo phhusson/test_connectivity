@@ -136,6 +136,7 @@ import android.net.wifi.WifiManager.SoftApCallback;
 import android.net.wifi.p2p.WifiP2pGroup;
 import android.net.wifi.p2p.WifiP2pInfo;
 import android.net.wifi.p2p.WifiP2pManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -864,6 +865,14 @@ public class TetheringTest {
         mLooper.dispatchAll();
     }
 
+    private void assertSetIfaceToDadProxy(final int numOfCalls, final String ifaceName) {
+        if (Build.VERSION.SDK_INT > Build.VERSION_CODES.R || "S".equals(Build.VERSION.CODENAME)
+                    || "T".equals(Build.VERSION.CODENAME)) {
+            verify(mDadProxy, times(numOfCalls)).setUpstreamIface(
+                     argThat(ifaceParams  -> ifaceName.equals(ifaceParams.name)));
+        }
+    }
+
     @Test
     public void workingMobileUsbTethering_IPv4() throws Exception {
         UpstreamNetworkState upstreamState = buildMobileIPv4UpstreamState();
@@ -873,7 +882,7 @@ public class TetheringTest {
         verify(mNetd, times(1)).ipfwdAddInterfaceForward(TEST_USB_IFNAME, TEST_MOBILE_IFNAME);
 
         sendIPv6TetherUpdates(upstreamState);
-        verify(mDadProxy, never()).setUpstreamIface(notNull());
+        assertSetIfaceToDadProxy(0 /* numOfCalls */, "" /* ifaceName */);
         verify(mRouterAdvertisementDaemon, never()).buildNewRa(any(), notNull());
         verify(mDhcpServer, timeout(DHCPSERVER_START_TIMEOUT_MS).times(1)).startWithCallbacks(
                 any(), any());
@@ -901,7 +910,7 @@ public class TetheringTest {
 
         sendIPv6TetherUpdates(upstreamState);
         // TODO: add interfaceParams to compare in verify.
-        verify(mDadProxy, times(1)).setUpstreamIface(notNull());
+        assertSetIfaceToDadProxy(1 /* numOfCalls */, TEST_MOBILE_IFNAME /* ifaceName */);
         verify(mRouterAdvertisementDaemon, times(1)).buildNewRa(any(), notNull());
         verify(mNetd, times(1)).tetherApplyDnsInterfaces();
     }
@@ -918,7 +927,7 @@ public class TetheringTest {
                 any(), any());
 
         sendIPv6TetherUpdates(upstreamState);
-        verify(mDadProxy, times(1)).setUpstreamIface(notNull());
+        assertSetIfaceToDadProxy(1 /* numOfCalls */, TEST_MOBILE_IFNAME /* ifaceName */);
         verify(mRouterAdvertisementDaemon, times(1)).buildNewRa(any(), notNull());
         verify(mNetd, times(1)).tetherApplyDnsInterfaces();
     }
@@ -936,7 +945,7 @@ public class TetheringTest {
         verify(mNetd, times(1)).ipfwdAddInterfaceForward(TEST_USB_IFNAME, TEST_MOBILE_IFNAME);
 
         sendIPv6TetherUpdates(upstreamState);
-        verify(mDadProxy, times(1)).setUpstreamIface(notNull());
+        assertSetIfaceToDadProxy(1 /* numOfCalls */, TEST_MOBILE_IFNAME /* ifaceName */);
         verify(mRouterAdvertisementDaemon, times(1)).buildNewRa(any(), notNull());
         verify(mNetd, times(1)).tetherApplyDnsInterfaces();
     }

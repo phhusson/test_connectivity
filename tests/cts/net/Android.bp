@@ -62,7 +62,6 @@ android_test {
     defaults: ["CtsNetTestCasesDefaults"],
     test_suites: [
         "cts",
-        "vts10",
         "general-tests",
     ],
     test_config_template: "AndroidTestTemplate.xml",

@@ -19,6 +19,7 @@ java_defaults {
     sdk_version: "module_current",
     min_sdk_version: "30",
     srcs: [
+        "apishim/**/*.java",
         "src/**/*.java",
         ":framework-tethering-shared-srcs",
         ":tethering-module-utils-srcs",
@@ -26,13 +27,15 @@ java_defaults {
     ],
     static_libs: [
         "androidx.annotation_annotation",
-        "netd_aidl_interface-java",
+        "modules-utils-build",
         "netlink-client",
-        "networkstack-aidl-interfaces-java",
+        // TODO: use networkstack-client instead of just including the AIDL interface
+        "networkstack-aidl-interfaces-unstable-java",
         "android.hardware.tetheroffload.config-V1.0-java",
         "android.hardware.tetheroffload.control-V1.0-java",
         "net-utils-framework-common",
         "net-utils-device-common",
+        "netd-client",
     ],
     libs: [
         "framework-statsd.stubs.module_lib",
@@ -59,8 +62,9 @@ cc_library {
         "com.android.tethering",
     ],
     min_sdk_version: "30",
+    header_libs: ["bpf_syscall_wrappers"],
     srcs: [
-        "jni/android_net_util_TetheringUtils.cpp",
+        "jni/*.cpp",
     ],
     shared_libs: [
         "liblog",

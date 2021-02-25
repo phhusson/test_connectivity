@@ -1,0 +1,33 @@
+{
+  // Run in addition to mainline-presubmit as mainline-presubmit is not
+  // supported in every branch.
+  "presubmit": [
+    {
+      "name": "CtsNetTestCasesLatestSdk",
+      "options": [
+        {
+          "exclude-annotation": "com.android.testutils.SkipPresubmit"
+        }
+      ]
+    }
+  ],
+  "mainline-presubmit": [
+    {
+      // TODO: add back the tethering modules when updatable in this branch
+      "name": "CtsNetTestCasesLatestSdk[CaptivePortalLoginGoogle.apk+NetworkStackGoogle.apk+com.google.android.resolv.apex]",
+      "options": [
+        {
+          "exclude-annotation": "com.android.testutils.SkipPresubmit"
+        }
+      ]
+    }
+  ],
+  // Tests on physical devices with SIM cards: postsubmit only for capacity constraints
+  "mainline-postsubmit": [
+    {
+      // TODO: add back the tethering module when updatable in this branch
+      "name": "CtsNetTestCasesLatestSdk[CaptivePortalLoginGoogle.apk+NetworkStackGoogle.apk+com.google.android.resolv.apex]",
+      "keywords": ["sim"]
+    }
+  ]
+}

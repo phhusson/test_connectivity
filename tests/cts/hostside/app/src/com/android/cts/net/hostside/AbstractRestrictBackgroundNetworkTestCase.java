@@ -25,7 +25,6 @@ import static com.android.cts.net.hostside.NetworkPolicyTestUtils.executeShellCo
 import static com.android.cts.net.hostside.NetworkPolicyTestUtils.getConnectivityManager;
 import static com.android.cts.net.hostside.NetworkPolicyTestUtils.getContext;
 import static com.android.cts.net.hostside.NetworkPolicyTestUtils.getInstrumentation;
-import static com.android.cts.net.hostside.NetworkPolicyTestUtils.getWifiManager;
 import static com.android.cts.net.hostside.NetworkPolicyTestUtils.isDozeModeSupported;
 import static com.android.cts.net.hostside.NetworkPolicyTestUtils.restrictBackgroundValueToString;
 
@@ -46,14 +45,15 @@ import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo.DetailedState;
 import android.net.NetworkInfo.State;
-import android.net.wifi.WifiManager;
 import android.os.BatteryManager;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.SystemClock;
-import android.provider.Settings;
+import android.provider.DeviceConfig;
 import android.service.notification.NotificationListenerService;
 import android.util.Log;
+
+import com.android.compatibility.common.util.DeviceConfigStateHelper;
 
 import org.junit.Rule;
 import org.junit.rules.RuleChain;
@@ -130,24 +130,24 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     protected int mUid;
     private int mMyUid;
     private MyServiceClient mServiceClient;
-    private String mDeviceIdleConstantsSetting;
+    private DeviceConfigStateHelper mDeviceIdleDeviceConfigStateHelper;
 
     @Rule
     public final RuleChain mRuleChain = RuleChain.outerRule(new RequiredPropertiesRule())
             .around(new MeterednessConfigurationRule());
 
     protected void setUp() throws Exception {
-
         PROCESS_STATE_FOREGROUND_SERVICE = (Integer) ActivityManager.class
                 .getDeclaredField("PROCESS_STATE_FOREGROUND_SERVICE").get(null);
         mInstrumentation = getInstrumentation();
         mContext = getContext();
         mCm = getConnectivityManager();
+        mDeviceIdleDeviceConfigStateHelper =
+                new DeviceConfigStateHelper(DeviceConfig.NAMESPACE_DEVICE_IDLE);
         mUid = getUid(TEST_APP2_PKG);
         mMyUid = getUid(mContext.getPackageName());
         mServiceClient = new MyServiceClient(mContext);
         mServiceClient.bind();
-        mDeviceIdleConstantsSetting = "device_idle_constants";
         executeShellCommand("cmd netpolicy start-watching " + mUid);
         setAppIdle(false);
 
@@ -229,21 +229,25 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     }
 
     protected void assertBackgroundNetworkAccess(boolean expectAllowed) throws Exception {
-        assertBackgroundState(); // Sanity check.
+        assertBackgroundState();
         assertNetworkAccess(expectAllowed /* expectAvailable */, false /* needScreenOn */);
     }
 
     protected void assertForegroundNetworkAccess() throws Exception {
-        assertForegroundState(); // Sanity check.
+        assertForegroundNetworkAccess(true);
+    }
+
+    protected void assertForegroundNetworkAccess(boolean expectAllowed) throws Exception {
+        assertForegroundState();
         // We verified that app is in foreground state but if the screen turns-off while
         // verifying for network access, the app will go into background state (in case app's
         // foreground status was due to top activity). So, turn the screen on when verifying
         // network connectivity.
-        assertNetworkAccess(true /* expectAvailable */, true /* needScreenOn */);
+        assertNetworkAccess(expectAllowed /* expectAvailable */, true /* needScreenOn */);
     }
 
     protected void assertForegroundServiceNetworkAccess() throws Exception {
-        assertForegroundServiceState(); // Sanity check.
+        assertForegroundServiceState();
         assertNetworkAccess(true /* expectAvailable */, false /* needScreenOn */);
     }
 
@@ -374,7 +378,7 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         }
         // Network status format is described on MyBroadcastReceiver.checkNetworkStatus()
         final String[] parts = resultData.split(NETWORK_STATUS_SEPARATOR);
-        assertEquals("Wrong network status: " + resultData, 5, parts.length); // Sanity check
+        assertEquals("Wrong network status: " + resultData, 5, parts.length);
         final State state = parts[0].equals("null") ? null : State.valueOf(parts[0]);
         final DetailedState detailedState = parts[1].equals("null")
                 ? null : DetailedState.valueOf(parts[1]);
@@ -547,7 +551,7 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         // TODO: currently the power-save mode is behaving like idle, but once it changes, we'll
         // need to use netpolicy for whitelisting
         executeShellCommand("dumpsys deviceidle whitelist +" + packageName);
-        assertPowerSaveModeWhitelist(packageName, true); // Sanity check
+        assertPowerSaveModeWhitelist(packageName, true);
     }
 
     protected void removePowerSaveModeWhitelist(String packageName) throws Exception {
@@ -555,7 +559,7 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         // TODO: currently the power-save mode is behaving like idle, but once it changes, we'll
         // need to use netpolicy for whitelisting
         executeShellCommand("dumpsys deviceidle whitelist -" + packageName);
-        assertPowerSaveModeWhitelist(packageName, false); // Sanity check
+        assertPowerSaveModeWhitelist(packageName, false);
     }
 
     protected void assertPowerSaveModeExceptIdleWhitelist(String packageName, boolean expected)
@@ -571,7 +575,7 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         // TODO: currently the power-save mode is behaving like idle, but once it changes, we'll
         // need to use netpolicy for whitelisting
         executeShellCommand("dumpsys deviceidle except-idle-whitelist +" + packageName);
-        assertPowerSaveModeExceptIdleWhitelist(packageName, true); // Sanity check
+        assertPowerSaveModeExceptIdleWhitelist(packageName, true);
     }
 
     protected void removePowerSaveModeExceptIdleWhitelist(String packageName) throws Exception {
@@ -580,7 +584,7 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         // TODO: currently the power-save mode is behaving like idle, but once it changes, we'll
         // need to use netpolicy for whitelisting
         executeShellCommand("dumpsys deviceidle except-idle-whitelist reset");
-        assertPowerSaveModeExceptIdleWhitelist(packageName, false); // Sanity check
+        assertPowerSaveModeExceptIdleWhitelist(packageName, false);
     }
 
     protected void turnBatteryOn() throws Exception {
@@ -635,7 +639,7 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     }
 
     protected void setDozeMode(boolean enabled) throws Exception {
-        // Sanity check, since tests should check beforehand....
+        // Check doze mode is supported.
         assertTrue("Device does not support Doze Mode", isDozeModeSupported());
 
         Log.i(TAG, "Setting Doze Mode to " + enabled);
@@ -648,7 +652,6 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
             turnBatteryOff();
             executeShellCommand("dumpsys deviceidle unforce");
         }
-        // Sanity check.
         assertDozeMode(enabled);
     }
 
@@ -659,7 +662,7 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
     protected void setAppIdle(boolean enabled) throws Exception {
         Log.i(TAG, "Setting app idle to " + enabled);
         executeSilentShellCommand("am set-inactive " + TEST_APP2_PKG + " " + enabled );
-        assertAppIdle(enabled); // Sanity check
+        assertAppIdle(enabled);
     }
 
     protected void setAppIdleNoAssert(boolean enabled) throws Exception {
@@ -722,15 +725,13 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
                 nm.isNotificationListenerAccessGranted(listenerComponent));
     }
 
-    protected void setPendingIntentWhitelistDuration(int durationMs) throws Exception {
-        executeSilentShellCommand(String.format(
-                "settings put global %s %s=%d", mDeviceIdleConstantsSetting,
-                "notification_whitelist_duration", durationMs));
+    protected void setPendingIntentAllowlistDuration(long durationMs) {
+        mDeviceIdleDeviceConfigStateHelper.set("notification_allowlist_duration_ms",
+                String.valueOf(durationMs));
     }
 
-    protected void resetDeviceIdleSettings() throws Exception {
-        executeShellCommand(String.format("settings delete global %s",
-                mDeviceIdleConstantsSetting));
+    protected void resetDeviceIdleSettings() {
+        mDeviceIdleDeviceConfigStateHelper.restoreOriginalValues();
     }
 
     protected void launchComponentAndAssertNetworkAccess(int type) throws Exception {

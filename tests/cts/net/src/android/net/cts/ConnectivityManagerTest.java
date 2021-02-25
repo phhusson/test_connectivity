@@ -16,7 +16,9 @@
 
 package android.net.cts;
 
+import static android.Manifest.permission.CONNECTIVITY_INTERNAL;
 import static android.Manifest.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS;
+import static android.Manifest.permission.NETWORK_SETTINGS;
 import static android.content.pm.PackageManager.FEATURE_ETHERNET;
 import static android.content.pm.PackageManager.FEATURE_TELEPHONY;
 import static android.content.pm.PackageManager.FEATURE_USB_HOST;
@@ -41,6 +43,7 @@ import static android.system.OsConstants.AF_UNSPEC;
 
 import static com.android.compatibility.common.util.SystemUtil.runShellCommand;
 import static com.android.compatibility.common.util.SystemUtil.runWithShellPermissionIdentity;
+import static com.android.testutils.TestPermissionUtil.runAsShell;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -55,6 +58,7 @@ import android.annotation.NonNull;
 import android.app.Instrumentation;
 import android.app.PendingIntent;
 import android.app.UiAutomation;
+import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
@@ -96,9 +100,13 @@ import androidx.test.InstrumentationRegistry;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.internal.util.ArrayUtils;
+import com.android.testutils.RecorderCallback.CallbackEntry;
 import com.android.testutils.SkipPresubmit;
+import com.android.testutils.TestableNetworkCallback;
 
 import libcore.io.Streams;
+
+import junit.framework.AssertionFailedError;
 
 import org.junit.After;
 import org.junit.Before;
@@ -115,6 +123,7 @@ import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.MalformedURLException;
 import java.net.Socket;
 import java.net.URL;
 import java.net.UnknownHostException;
@@ -122,6 +131,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -151,6 +161,9 @@ public class ConnectivityManagerTest {
     private static final long INTERVAL_MULTIPATH_PREF_CHECK_MS = 500;
     // device could have only one interface: data, wifi.
     private static final int MIN_NUM_NETWORK_TYPES = 1;
+
+    // Airplane Mode BroadcastReceiver Timeout
+    private static final long AIRPLANE_MODE_CHANGE_TIMEOUT_MS = 10_000L;
 
     // Minimum supported keepalive counts for wifi and cellular.
     public static final int MIN_SUPPORTED_CELLULAR_KEEPALIVE_COUNT = 1;
@@ -199,6 +212,8 @@ public class ConnectivityManagerTest {
             } catch (Exception e) {}
         }
         mUiAutomation = mInstrumentation.getUiAutomation();
+
+        assertNotNull("CTS requires a working Internet connection", mCm.getActiveNetwork());
     }
 
     @After
@@ -357,8 +372,8 @@ public class ConnectivityManagerTest {
                 wifiAddressString, wifiNetwork, cellNetwork),
                 wifiAddressString.equals(cellAddressString));
 
-        // Sanity check that the IP addresses that the requests appeared to come from
-        // are actually on the respective networks.
+        // Verify that the IP addresses that the requests appeared to come from are actually on the
+        // respective networks.
         assertOnNetwork(wifiAddressString, wifiNetwork);
         assertOnNetwork(cellAddressString, cellNetwork);
 
@@ -473,6 +488,12 @@ public class ConnectivityManagerTest {
     private NetworkRequest makeWifiNetworkRequest() {
         return new NetworkRequest.Builder()
                 .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                .build();
+    }
+
+    private NetworkRequest makeCellNetworkRequest() {
+        return new NetworkRequest.Builder()
+                .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
                 .build();
     }
 
@@ -714,7 +735,7 @@ public class ConnectivityManagerTest {
 
     private void assertMultipathPreferenceIsEventually(Network network, int oldValue,
             int expectedValue) {
-        // Sanity check : if oldValue == expectedValue, there is no way to guarantee the test
+        // Quick check : if oldValue == expectedValue, there is no way to guarantee the test
         // is not flaky.
         assertNotSame(oldValue, expectedValue);
 
@@ -1018,7 +1039,7 @@ public class ConnectivityManagerTest {
         // NAT-T keepalive. If keepalive limits from resource overlay is not zero, TCP keepalive
         // needs to be supported except if the kernel doesn't support it.
         if (!isTcpKeepaliveSupportedByKernel()) {
-            // Sanity check to ensure the callback result is expected.
+            // Verify that the callback result is expected.
             runWithShellPermissionIdentity(() -> {
                 assertEquals(0, createConcurrentSocketKeepalives(network, srcAddr, 0, 1));
             });
@@ -1379,6 +1400,135 @@ public class ConnectivityManagerTest {
                     fail("Bind to restricted network " + network + " unexpectedly succeeded");
                 } catch (IOException expected) {}
             }
+        }
+    }
+
+    /**
+     * Verifies that apps are allowed to call setAirplaneMode if they declare
+     * NETWORK_AIRPLANE_MODE permission in their manifests.
+     * See b/145164696.
+     */
+    @AppModeFull(reason = "NETWORK_AIRPLANE_MODE permission can't be granted to instant apps")
+    @Test
+    public void testSetAirplaneMode() throws Exception{
+        final boolean supportWifi = mPackageManager.hasSystemFeature(FEATURE_WIFI);
+        final boolean supportTelephony = mPackageManager.hasSystemFeature(FEATURE_TELEPHONY);
+        // store the current state of airplane mode
+        final boolean isAirplaneModeEnabled = isAirplaneModeEnabled();
+        final TestableNetworkCallback wifiCb = new TestableNetworkCallback();
+        final TestableNetworkCallback telephonyCb = new TestableNetworkCallback();
+        // disable airplane mode to reach a known state
+        runShellCommand("cmd connectivity airplane-mode disable");
+        // Verify that networks are available as expected if wifi or cell is supported. Continue the
+        // test if none of them are supported since test should still able to verify the permission
+        // mechanism.
+        if (supportWifi) requestAndWaitForAvailable(makeWifiNetworkRequest(), wifiCb);
+        if (supportTelephony) requestAndWaitForAvailable(makeCellNetworkRequest(), telephonyCb);
+
+        try {
+            // Verify we cannot set Airplane Mode without correct permission:
+            try {
+                setAndVerifyAirplaneMode(true);
+                fail("SecurityException should have been thrown when setAirplaneMode was called"
+                        + "without holding permission NETWORK_AIRPLANE_MODE.");
+            } catch (SecurityException expected) {}
+
+            // disable airplane mode again to reach a known state
+            runShellCommand("cmd connectivity airplane-mode disable");
+
+            // adopt shell permission which holds NETWORK_AIRPLANE_MODE
+            mUiAutomation.adoptShellPermissionIdentity();
+
+            // Verify we can enable Airplane Mode with correct permission:
+            try {
+                setAndVerifyAirplaneMode(true);
+            } catch (SecurityException e) {
+                fail("SecurityException should not have been thrown when setAirplaneMode(true) was"
+                        + "called whilst holding the NETWORK_AIRPLANE_MODE permission.");
+            }
+            // Verify that the enabling airplane mode takes effect as expected to prevent flakiness
+            // caused by fast airplane mode switches. Ensure network lost before turning off
+            // airplane mode.
+            if (supportWifi) waitForLost(wifiCb);
+            if (supportTelephony) waitForLost(telephonyCb);
+
+            // Verify we can disable Airplane Mode with correct permission:
+            try {
+                setAndVerifyAirplaneMode(false);
+            } catch (SecurityException e) {
+                fail("SecurityException should not have been thrown when setAirplaneMode(false) was"
+                        + "called whilst holding the NETWORK_AIRPLANE_MODE permission.");
+            }
+            // Verify that turning airplane mode off takes effect as expected.
+            if (supportWifi) waitForAvailable(wifiCb);
+            if (supportTelephony) waitForAvailable(telephonyCb);
+        } finally {
+            if (supportWifi) mCm.unregisterNetworkCallback(wifiCb);
+            if (supportTelephony) mCm.unregisterNetworkCallback(telephonyCb);
+            // Restore the previous state of airplane mode and permissions:
+            runShellCommand("cmd connectivity airplane-mode "
+                    + (isAirplaneModeEnabled ? "enable" : "disable"));
+            mUiAutomation.dropShellPermissionIdentity();
+        }
+    }
+
+    private void requestAndWaitForAvailable(@NonNull final NetworkRequest request,
+            @NonNull final TestableNetworkCallback cb) {
+        mCm.registerNetworkCallback(request, cb);
+        waitForAvailable(cb);
+    }
+
+    private void waitForAvailable(@NonNull final TestableNetworkCallback cb) {
+        cb.eventuallyExpect(CallbackEntry.AVAILABLE, AIRPLANE_MODE_CHANGE_TIMEOUT_MS,
+                c -> c instanceof CallbackEntry.Available);
+    }
+
+    private void waitForLost(@NonNull final TestableNetworkCallback cb) {
+        cb.eventuallyExpect(CallbackEntry.LOST, AIRPLANE_MODE_CHANGE_TIMEOUT_MS,
+                c -> c instanceof CallbackEntry.Lost);
+    }
+
+    private void setAndVerifyAirplaneMode(Boolean expectedResult)
+            throws Exception {
+        final CompletableFuture<Boolean> actualResult = new CompletableFuture();
+        BroadcastReceiver receiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                // The defaultValue of getExtraBoolean should be the opposite of what is
+                // expected, thus ensuring a test failure if the extra is absent.
+                actualResult.complete(intent.getBooleanExtra("state", !expectedResult));
+            }
+        };
+        try {
+            mContext.registerReceiver(receiver,
+                    new IntentFilter(Intent.ACTION_AIRPLANE_MODE_CHANGED));
+            mCm.setAirplaneMode(expectedResult);
+            final String msg = "Setting Airplane Mode failed,";
+            assertEquals(msg, expectedResult, actualResult.get(AIRPLANE_MODE_CHANGE_TIMEOUT_MS,
+                    TimeUnit.MILLISECONDS));
+        } finally {
+            mContext.unregisterReceiver(receiver);
+        }
+    }
+
+    private static boolean isAirplaneModeEnabled() {
+        return runShellCommand("cmd connectivity airplane-mode")
+                .trim().equals("enabled");
+    }
+
+    @Test
+    public void testGetCaptivePortalServerUrl() {
+        final String permission = Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q
+                ? CONNECTIVITY_INTERNAL
+                : NETWORK_SETTINGS;
+        final String url = runAsShell(permission, mCm::getCaptivePortalServerUrl);
+        assertNotNull("getCaptivePortalServerUrl must not be null", url);
+        try {
+            final URL parsedUrl = new URL(url);
+            // As per the javadoc, the URL must be HTTP
+            assertEquals("Invalid captive portal URL protocol", "http", parsedUrl.getProtocol());
+        } catch (MalformedURLException e) {
+            throw new AssertionFailedError("Captive portal server URL is invalid: " + e);
         }
     }
 }

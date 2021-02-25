@@ -489,11 +489,18 @@ public class TetheringManager {
 
         return dispatcher.waitForResult((connector, listener) -> {
             try {
-                connector.tether(iface, callerPkg, listener);
+                connector.tether(iface, callerPkg, getAttributionTag(), listener);
             } catch (RemoteException e) {
                 throw new IllegalStateException(e);
             }
         });
+    }
+
+    /**
+     * @return the context's attribution tag
+     */
+    private @Nullable String getAttributionTag() {
+        return mContext.getAttributionTag();
     }
 
     /**
@@ -514,7 +521,7 @@ public class TetheringManager {
 
         return dispatcher.waitForResult((connector, listener) -> {
             try {
-                connector.untether(iface, callerPkg, listener);
+                connector.untether(iface, callerPkg, getAttributionTag(), listener);
             } catch (RemoteException e) {
                 throw new IllegalStateException(e);
             }
@@ -541,7 +548,8 @@ public class TetheringManager {
 
         return dispatcher.waitForResult((connector, listener) -> {
             try {
-                connector.setUsbTethering(enable, callerPkg, listener);
+                connector.setUsbTethering(enable, callerPkg, getAttributionTag(),
+                        listener);
             } catch (RemoteException e) {
                 throw new IllegalStateException(e);
             }
@@ -740,7 +748,8 @@ public class TetheringManager {
                 });
             }
         };
-        getConnector(c -> c.startTethering(request.getParcel(), callerPkg, listener));
+        getConnector(c -> c.startTethering(request.getParcel(), callerPkg,
+                getAttributionTag(), listener));
     }
 
     /**
@@ -780,7 +789,8 @@ public class TetheringManager {
         final String callerPkg = mContext.getOpPackageName();
         Log.i(TAG, "stopTethering caller:" + callerPkg);
 
-        getConnector(c -> c.stopTethering(type, callerPkg, new IIntResultListener.Stub() {
+        getConnector(c -> c.stopTethering(type, callerPkg, getAttributionTag(),
+                new IIntResultListener.Stub() {
             @Override
             public void onResult(int resultCode) {
                 // TODO: provide an API to obtain result
@@ -866,7 +876,7 @@ public class TetheringManager {
         Log.i(TAG, "getLatestTetheringEntitlementResult caller:" + callerPkg);
 
         getConnector(c -> c.requestLatestTetheringEntitlementResult(
-                type, receiver, showEntitlementUi, callerPkg));
+                type, receiver, showEntitlementUi, callerPkg, getAttributionTag()));
     }
 
     /**
@@ -1317,7 +1327,7 @@ public class TetheringManager {
         final RequestDispatcher dispatcher = new RequestDispatcher();
         final int ret = dispatcher.waitForResult((connector, listener) -> {
             try {
-                connector.isTetheringSupported(callerPkg, listener);
+                connector.isTetheringSupported(callerPkg, getAttributionTag(), listener);
             } catch (RemoteException e) {
                 throw new IllegalStateException(e);
             }
@@ -1340,14 +1350,15 @@ public class TetheringManager {
         final String callerPkg = mContext.getOpPackageName();
         Log.i(TAG, "stopAllTethering caller:" + callerPkg);
 
-        getConnector(c -> c.stopAllTethering(callerPkg, new IIntResultListener.Stub() {
-            @Override
-            public void onResult(int resultCode) {
-                // TODO: add an API parameter to send result to caller.
-                // This has never been possible as stopAllTethering has always been void and never
-                // taken a callback object. The only indication that callers have is if the call
-                // results in a TETHER_STATE_CHANGE broadcast.
-            }
-        }));
+        getConnector(c -> c.stopAllTethering(callerPkg, getAttributionTag(),
+                new IIntResultListener.Stub() {
+                    @Override
+                    public void onResult(int resultCode) {
+                        // TODO: add an API parameter to send result to caller.
+                        // This has never been possible as stopAllTethering has always been void
+                        // and never taken a callback object. The only indication that callers have
+                        // is if the call results in a TETHER_STATE_CHANGE broadcast.
+                    }
+                }));
     }
 }

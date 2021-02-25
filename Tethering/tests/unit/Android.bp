@@ -79,6 +79,7 @@ android_library {
     name: "TetheringTestsLib",
     defaults: ["TetheringTestsDefaults"],
     visibility: [
+        "//frameworks/base/packages/Tethering/tests/integration",
         "//packages/modules/Connectivity/Tethering/tests/integration",
     ]
 }
