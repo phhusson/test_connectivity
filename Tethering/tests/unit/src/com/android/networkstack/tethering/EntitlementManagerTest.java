@@ -53,6 +53,8 @@ import static org.mockito.Mockito.when;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.net.util.SharedLog;
 import android.os.Bundle;
@@ -87,11 +89,13 @@ public final class EntitlementManagerTest {
     private static final String[] PROVISIONING_APP_NAME = {"some", "app"};
     private static final String PROVISIONING_NO_UI_APP_NAME = "no_ui_app";
     private static final String PROVISIONING_APP_RESPONSE = "app_response";
+    private static final String TEST_PACKAGE_NAME = "com.android.tethering.test";
 
     @Mock private CarrierConfigManager mCarrierConfigManager;
     @Mock private Context mContext;
     @Mock private Resources mResources;
     @Mock private SharedLog mLog;
+    @Mock private PackageManager mPm;
     @Mock private EntitlementManager.OnUiEntitlementFailedListener mEntitlementFailedListener;
 
     // Like so many Android system APIs, these cannot be mocked because it is marked final.
@@ -182,7 +186,7 @@ public final class EntitlementManagerTest {
     }
 
     @Before
-    public void setUp() {
+    public void setUp() throws Exception {
         MockitoAnnotations.initMocks(this);
         mMockingSession = mockitoSession()
                 .initMocks(this)
@@ -196,6 +200,9 @@ public final class EntitlementManagerTest {
                 eq(EntitlementManager.DISABLE_PROVISIONING_SYSPROP_KEY), anyBoolean()));
         doReturn(null).when(
                 () -> DeviceConfig.getProperty(eq(NAMESPACE_CONNECTIVITY), anyString()));
+        doReturn(mPm).when(mContext).getPackageManager();
+        doReturn(TEST_PACKAGE_NAME).when(mContext).getPackageName();
+        doReturn(new PackageInfo()).when(mPm).getPackageInfo(anyString(), anyInt());
 
         when(mResources.getStringArray(R.array.config_tether_dhcp_range))
                 .thenReturn(new String[0]);
