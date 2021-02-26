@@ -75,6 +75,7 @@ import android.text.TextUtils;
 import android.util.Log;
 
 import com.android.compatibility.common.util.BlockingBroadcastReceiver;
+import com.android.modules.utils.build.SdkLevel;
 
 import java.io.Closeable;
 import java.io.FileDescriptor;
@@ -740,13 +741,14 @@ public class VpnTest extends InstrumentationTestCase {
                 getInstrumentation().getTargetContext(), MyVpnService.ACTION_ESTABLISHED);
         receiver.register();
 
-
         // Expect the system default network not to change.
         final NeverChangeNetworkCallback neverChangeCallback = new NeverChangeNetworkCallback();
         final Network defaultNetwork = mCM.getActiveNetwork();
-        runWithShellPermissionIdentity(() ->
-                mCM.registerSystemDefaultNetworkCallback(neverChangeCallback,
-                        new Handler(Looper.getMainLooper())), NETWORK_SETTINGS);
+        if (SdkLevel.isAtLeastS()) {
+            runWithShellPermissionIdentity(() ->
+                    mCM.registerSystemDefaultNetworkCallback(neverChangeCallback,
+                            new Handler(Looper.getMainLooper())), NETWORK_SETTINGS);
+        }
 
         FileDescriptor fd = openSocketFdInOtherApp(TEST_HOST, 80, TIMEOUT_MS);
 
@@ -765,19 +767,21 @@ public class VpnTest extends InstrumentationTestCase {
 
         checkTrafficOnVpn();
 
-        expectVpnTransportInfo(mCM.getActiveNetwork());
+        maybeExpectVpnTransportInfo(mCM.getActiveNetwork());
 
-        // Check that system default network callback has not seen any network changes, even though
-        // the app's default network changed. This needs to be done before testing private
-        // DNS because checkStrictModePrivateDns will set the private DNS server to a nonexistent
-        // name, which will cause validation to fail and cause the default network to switch (e.g.,
-        // from wifi to cellular).
-        assertEquals(defaultNetwork, neverChangeCallback.getFirstNetwork());
         assertNotEqual(defaultNetwork, mCM.getActiveNetwork());
-        neverChangeCallback.assertNeverChanged();
-        runWithShellPermissionIdentity(
-                () ->  mCM.unregisterNetworkCallback(neverChangeCallback),
-                NETWORK_SETTINGS);
+        if (SdkLevel.isAtLeastS()) {
+            // Check that system default network callback has not seen any network changes, even
+            // though the app's default network changed. This needs to be done before testing
+            // private DNS because checkStrictModePrivateDns will set the private DNS server to
+            // a nonexistent name, which will cause validation to fail and cause the default
+            // network to switch (e.g., from wifi to cellular).
+            assertEquals(defaultNetwork, neverChangeCallback.getFirstNetwork());
+            neverChangeCallback.assertNeverChanged();
+            runWithShellPermissionIdentity(
+                    () -> mCM.unregisterNetworkCallback(neverChangeCallback),
+                    NETWORK_SETTINGS);
+        }
 
         checkStrictModePrivateDns();
 
@@ -799,7 +803,7 @@ public class VpnTest extends InstrumentationTestCase {
 
         checkTrafficOnVpn();
 
-        expectVpnTransportInfo(mCM.getActiveNetwork());
+        maybeExpectVpnTransportInfo(mCM.getActiveNetwork());
 
         checkStrictModePrivateDns();
     }
@@ -988,7 +992,7 @@ public class VpnTest extends InstrumentationTestCase {
         assertTrue(isNetworkMetered(mNetwork));
         assertTrue(mCM.isActiveNetworkMetered());
 
-        expectVpnTransportInfo(mCM.getActiveNetwork());
+        maybeExpectVpnTransportInfo(mCM.getActiveNetwork());
     }
 
     public void testVpnMeterednessWithNullUnderlyingNetwork() throws Exception {
@@ -1016,7 +1020,7 @@ public class VpnTest extends InstrumentationTestCase {
         // Meteredness based on VPN capabilities and CM#isActiveNetworkMetered should be in sync.
         assertEquals(isNetworkMetered(mNetwork), mCM.isActiveNetworkMetered());
 
-        expectVpnTransportInfo(mCM.getActiveNetwork());
+        maybeExpectVpnTransportInfo(mCM.getActiveNetwork());
     }
 
     public void testVpnMeterednessWithNonNullUnderlyingNetwork() throws Exception {
@@ -1045,7 +1049,7 @@ public class VpnTest extends InstrumentationTestCase {
         // Meteredness based on VPN capabilities and CM#isActiveNetworkMetered should be in sync.
         assertEquals(isNetworkMetered(mNetwork), mCM.isActiveNetworkMetered());
 
-        expectVpnTransportInfo(mCM.getActiveNetwork());
+        maybeExpectVpnTransportInfo(mCM.getActiveNetwork());
     }
 
     public void testAlwaysMeteredVpnWithNullUnderlyingNetwork() throws Exception {
@@ -1071,7 +1075,7 @@ public class VpnTest extends InstrumentationTestCase {
         assertTrue(isNetworkMetered(mNetwork));
         assertTrue(mCM.isActiveNetworkMetered());
 
-        expectVpnTransportInfo(mCM.getActiveNetwork());
+        maybeExpectVpnTransportInfo(mCM.getActiveNetwork());
     }
 
     public void testAlwaysMeteredVpnWithNonNullUnderlyingNetwork() throws Exception {
@@ -1098,7 +1102,7 @@ public class VpnTest extends InstrumentationTestCase {
         assertTrue(isNetworkMetered(mNetwork));
         assertTrue(mCM.isActiveNetworkMetered());
 
-        expectVpnTransportInfo(mCM.getActiveNetwork());
+        maybeExpectVpnTransportInfo(mCM.getActiveNetwork());
     }
 
     public void testB141603906() throws Exception {
@@ -1148,7 +1152,8 @@ public class VpnTest extends InstrumentationTestCase {
         }
     }
 
-    private void expectVpnTransportInfo(Network network) {
+    private void maybeExpectVpnTransportInfo(Network network) {
+        if (!SdkLevel.isAtLeastS()) return;
         final NetworkCapabilities vpnNc = mCM.getNetworkCapabilities(network);
         assertTrue(vpnNc.hasTransport(TRANSPORT_VPN));
         final TransportInfo ti = vpnNc.getTransportInfo();

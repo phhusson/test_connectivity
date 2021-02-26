@@ -30,6 +30,7 @@ android_test_helper_app {
         "ctstestrunner-axt",
         "ub-uiautomator",
         "CtsHostsideNetworkTestsAidl",
+        "modules-utils-build",
     ],
     libs: [
         "android.test.runner",
