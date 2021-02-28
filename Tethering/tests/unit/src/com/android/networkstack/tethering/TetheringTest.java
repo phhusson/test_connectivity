@@ -25,7 +25,9 @@ import static android.hardware.usb.UsbManager.USB_FUNCTION_RNDIS;
 import static android.net.ConnectivityManager.ACTION_RESTRICT_BACKGROUND_CHANGED;
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_DISABLED;
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED;
+import static android.net.ConnectivityManager.TYPE_NONE;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_DUN;
+import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
 import static android.net.NetworkCapabilities.TRANSPORT_BLUETOOTH;
 import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
@@ -97,11 +99,11 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.hardware.usb.UsbManager;
-import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.NetworkCallback;
 import android.net.EthernetManager;
 import android.net.EthernetManager.TetheredInterfaceCallback;
 import android.net.EthernetManager.TetheredInterfaceRequest;
+import android.net.IConnectivityManager;
 import android.net.IIntResultListener;
 import android.net.INetd;
 import android.net.ITetheringEventCallback;
@@ -227,8 +229,6 @@ public class TetheringTest {
     @Mock private IDhcpServer mDhcpServer;
     @Mock private INetd mNetd;
     @Mock private UserManager mUserManager;
-    @Mock private NetworkRequest mNetworkRequest;
-    @Mock private ConnectivityManager mCm;
     @Mock private EthernetManager mEm;
     @Mock private TetheringNotificationUpdater mNotificationUpdater;
     @Mock private BpfCoordinator mBpfCoordinator;
@@ -257,6 +257,9 @@ public class TetheringTest {
     private PrivateAddressCoordinator mPrivateAddressCoordinator;
     private SoftApCallback mSoftApCallback;
     private UpstreamNetworkMonitor mUpstreamNetworkMonitor;
+
+    private TestConnectivityManager mCm;
+    private NetworkRequest mNetworkRequest;
     private NetworkCallback mDefaultNetworkCallback;
 
     private class TestContext extends BroadcastInterceptingContext {
@@ -623,6 +626,17 @@ public class TetheringTest {
         };
         mServiceContext.registerReceiver(mBroadcastReceiver,
                 new IntentFilter(ACTION_TETHER_STATE_CHANGED));
+
+        // TODO: add NOT_VCN_MANAGED here, but more importantly in the production code.
+        // TODO: even better, change TetheringDependencies.getDefaultNetworkRequest() to use
+        // registerSystemDefaultNetworkCallback() on S and above.
+        NetworkCapabilities defaultCaps = new NetworkCapabilities()
+                .addCapability(NET_CAPABILITY_INTERNET);
+        mNetworkRequest = new NetworkRequest(defaultCaps, TYPE_NONE, 1 /* requestId */,
+                NetworkRequest.Type.REQUEST);
+        mCm = spy(new TestConnectivityManager(mServiceContext, mock(IConnectivityManager.class),
+                mNetworkRequest));
+
         mTethering = makeTethering();
         verify(mStatsManager, times(1)).registerNetworkStatsProvider(anyString(), any());
         verify(mNetd).registerUnsolicitedEventListener(any());
@@ -1783,12 +1797,12 @@ public class TetheringTest {
     }
 
     private void setDataSaverEnabled(boolean enabled) {
-        final Intent intent = new Intent(ACTION_RESTRICT_BACKGROUND_CHANGED);
-        mServiceContext.sendBroadcastAsUser(intent, UserHandle.ALL);
-
         final int status = enabled ? RESTRICT_BACKGROUND_STATUS_ENABLED
                 : RESTRICT_BACKGROUND_STATUS_DISABLED;
-        when(mCm.getRestrictBackgroundStatus()).thenReturn(status);
+        doReturn(status).when(mCm).getRestrictBackgroundStatus();
+
+        final Intent intent = new Intent(ACTION_RESTRICT_BACKGROUND_CHANGED);
+        mServiceContext.sendBroadcastAsUser(intent, UserHandle.ALL);
         mLooper.dispatchAll();
     }
 
@@ -2053,7 +2067,7 @@ public class TetheringTest {
     public void testHandleIpConflict() throws Exception {
         final Network wifiNetwork = new Network(200);
         final Network[] allNetworks = { wifiNetwork };
-        when(mCm.getAllNetworks()).thenReturn(allNetworks);
+        doReturn(allNetworks).when(mCm).getAllNetworks();
         runUsbTethering(null);
         final ArgumentCaptor<InterfaceConfigurationParcel> ifaceConfigCaptor =
                 ArgumentCaptor.forClass(InterfaceConfigurationParcel.class);
@@ -2080,7 +2094,7 @@ public class TetheringTest {
         final Network btNetwork = new Network(201);
         final Network mobileNetwork = new Network(202);
         final Network[] allNetworks = { wifiNetwork, btNetwork, mobileNetwork };
-        when(mCm.getAllNetworks()).thenReturn(allNetworks);
+        doReturn(allNetworks).when(mCm).getAllNetworks();
         runUsbTethering(null);
         verify(mDhcpServer, timeout(DHCPSERVER_START_TIMEOUT_MS).times(1)).startWithCallbacks(
                 any(), any());
