@@ -25,6 +25,7 @@ import static android.hardware.usb.UsbManager.USB_FUNCTION_RNDIS;
 import static android.net.ConnectivityManager.ACTION_RESTRICT_BACKGROUND_CHANGED;
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_DISABLED;
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED;
+import static android.net.NetworkCapabilities.NET_CAPABILITY_DUN;
 import static android.net.NetworkCapabilities.TRANSPORT_BLUETOOTH;
 import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
@@ -202,6 +203,10 @@ public class TetheringTest {
     private static final String TETHERING_NAME = "Tethering";
     private static final String[] PROVISIONING_APP_NAME = {"some", "app"};
     private static final String PROVISIONING_NO_UI_APP_NAME = "no_ui_app";
+
+    private static final int CELLULAR_NETID = 100;
+    private static final int WIFI_NETID = 101;
+    private static final int DUN_NETID = 102;
 
     private static final int DHCPSERVER_START_TIMEOUT_MS = 1000;
 
@@ -487,15 +492,15 @@ public class TetheringTest {
         }
     }
 
-    private static UpstreamNetworkState buildMobileUpstreamState(boolean withIPv4,
-            boolean withIPv6, boolean with464xlat) {
+    private static LinkProperties buildUpstreamLinkProperties(String interfaceName,
+            boolean withIPv4, boolean withIPv6, boolean with464xlat) {
         final LinkProperties prop = new LinkProperties();
-        prop.setInterfaceName(TEST_MOBILE_IFNAME);
+        prop.setInterfaceName(interfaceName);
 
         if (withIPv4) {
             prop.addRoute(new RouteInfo(new IpPrefix(Inet4Address.ANY, 0),
                     InetAddresses.parseNumericAddress("10.0.0.1"),
-                    TEST_MOBILE_IFNAME, RTN_UNICAST));
+                    interfaceName, RTN_UNICAST));
         }
 
         if (withIPv6) {
@@ -505,23 +510,40 @@ public class TetheringTest {
                             NetworkConstants.RFC7421_PREFIX_LENGTH));
             prop.addRoute(new RouteInfo(new IpPrefix(Inet6Address.ANY, 0),
                     InetAddresses.parseNumericAddress("2001:db8::1"),
-                    TEST_MOBILE_IFNAME, RTN_UNICAST));
+                    interfaceName, RTN_UNICAST));
         }
 
         if (with464xlat) {
+            final String clatInterface = "v4-" + interfaceName;
             final LinkProperties stackedLink = new LinkProperties();
-            stackedLink.setInterfaceName(TEST_XLAT_MOBILE_IFNAME);
+            stackedLink.setInterfaceName(clatInterface);
             stackedLink.addRoute(new RouteInfo(new IpPrefix(Inet4Address.ANY, 0),
                     InetAddresses.parseNumericAddress("192.0.0.1"),
-                    TEST_XLAT_MOBILE_IFNAME, RTN_UNICAST));
+                    clatInterface, RTN_UNICAST));
 
             prop.addStackedLink(stackedLink);
         }
 
+        return prop;
+    }
 
-        final NetworkCapabilities capabilities = new NetworkCapabilities()
-                .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR);
-        return new UpstreamNetworkState(prop, capabilities, new Network(100));
+    private static NetworkCapabilities buildUpstreamCapabilities(int transport, int... otherCaps) {
+        // TODO: add NOT_VCN_MANAGED.
+        final NetworkCapabilities nc = new NetworkCapabilities()
+                .addTransportType(transport)
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
+        for (int cap : otherCaps) {
+            nc.addCapability(cap);
+        }
+        return nc;
+    }
+
+    private static UpstreamNetworkState buildMobileUpstreamState(boolean withIPv4,
+            boolean withIPv6, boolean with464xlat) {
+        return new UpstreamNetworkState(
+                buildUpstreamLinkProperties(TEST_MOBILE_IFNAME, withIPv4, withIPv6, with464xlat),
+                buildUpstreamCapabilities(TRANSPORT_CELLULAR),
+                new Network(CELLULAR_NETID));
     }
 
     private static UpstreamNetworkState buildMobileIPv4UpstreamState() {
@@ -538,6 +560,22 @@ public class TetheringTest {
 
     private static UpstreamNetworkState buildMobile464xlatUpstreamState() {
         return buildMobileUpstreamState(false, true, true);
+    }
+
+    private static UpstreamNetworkState buildWifiUpstreamState() {
+        return new UpstreamNetworkState(
+                buildUpstreamLinkProperties(TEST_WIFI_IFNAME, true /* IPv4 */, true /* IPv6 */,
+                        false /* 464xlat */),
+                buildUpstreamCapabilities(TRANSPORT_WIFI),
+                new Network(WIFI_NETID));
+    }
+
+    private static UpstreamNetworkState buildDunUpstreamState() {
+        return new UpstreamNetworkState(
+                buildUpstreamLinkProperties(TEST_MOBILE_IFNAME, true /* IPv4 */, true /* IPv6 */,
+                        false /* 464xlat */),
+                buildUpstreamCapabilities(TRANSPORT_CELLULAR, NET_CAPABILITY_DUN),
+                new Network(DUN_NETID));
     }
 
     // See FakeSettingsProvider#clearSettingsProvider() that this needs to be called before and
@@ -1904,7 +1942,8 @@ public class TetheringTest {
         // Verify that onUpstreamCapabilitiesChanged won't be called if not current upstream network
         // capabilities changed.
         final UpstreamNetworkState upstreamState2 = new UpstreamNetworkState(
-                upstreamState.linkProperties, upstreamState.networkCapabilities, new Network(101));
+                upstreamState.linkProperties, upstreamState.networkCapabilities,
+                new Network(WIFI_NETID));
         stateMachine.handleUpstreamNetworkMonitorCallback(EVENT_ON_CAPABILITIES, upstreamState2);
         verify(mNotificationUpdater, never()).onUpstreamCapabilitiesChanged(any());
     }
