@@ -71,6 +71,7 @@ java_defaults {
 // devices.
 android_test {
     name: "CtsNetTestCases",
+    enabled: false, // Disabled in mainline-prod
     defaults: ["CtsNetTestCasesDefaults"],
     test_suites: [
         "cts",
