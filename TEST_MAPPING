@@ -1,9 +1,11 @@
 {
-  // Run in addition to mainline-presubmit as mainline-presubmit is not
-  // supported in every branch.
   "presubmit": [
+    // Run in addition to mainline-presubmit as mainline-presubmit is not
+    // supported in every branch.
+    // CtsNetTestCasesLatestSdk uses stable API shims, so does not exercise
+    // some latest APIs. Run CtsNetTestCases to get coverage of newer APIs.
     {
-      "name": "CtsNetTestCasesLatestSdk",
+      "name": "CtsNetTestCases",
       "options": [
         {
           "exclude-annotation": "com.android.testutils.SkipPresubmit"
