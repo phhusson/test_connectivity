@@ -110,6 +110,9 @@ import androidx.test.runner.AndroidJUnit4;
 
 import com.android.internal.util.ArrayUtils;
 import com.android.modules.utils.build.SdkLevel;
+import com.android.networkstack.apishim.ConnectivityManagerShimImpl;
+import com.android.networkstack.apishim.ConstantsShim;
+import com.android.networkstack.apishim.common.ConnectivityManagerShim;
 import com.android.testutils.DevSdkIgnoreRule;
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
 import com.android.testutils.RecorderCallback.CallbackEntry;
@@ -195,6 +198,7 @@ public class ConnectivityManagerTest {
     private Context mContext;
     private Instrumentation mInstrumentation;
     private ConnectivityManager mCm;
+    private ConnectivityManagerShim mCmShim;
     private WifiManager mWifiManager;
     private PackageManager mPackageManager;
     private final HashMap<Integer, NetworkConfig> mNetworks =
@@ -207,6 +211,7 @@ public class ConnectivityManagerTest {
         mInstrumentation = InstrumentationRegistry.getInstrumentation();
         mContext = mInstrumentation.getContext();
         mCm = (ConnectivityManager) mContext.getSystemService(Context.CONNECTIVITY_SERVICE);
+        mCmShim = ConnectivityManagerShimImpl.newInstance(mContext);
         mWifiManager = (WifiManager) mContext.getSystemService(Context.WIFI_SERVICE);
         mPackageManager = mContext.getPackageManager();
         mCtsNetUtils = new CtsNetUtils(mContext);
@@ -522,9 +527,9 @@ public class ConnectivityManagerTest {
         mCm.registerDefaultNetworkCallback(defaultTrackingCallback);
 
         final TestNetworkCallback systemDefaultTrackingCallback = new TestNetworkCallback();
-        if (SdkLevel.isAtLeastS()) {
+        if (shouldTestSApis()) {
             runWithShellPermissionIdentity(() ->
-                    mCm.registerSystemDefaultNetworkCallback(systemDefaultTrackingCallback,
+                    mCmShim.registerSystemDefaultNetworkCallback(systemDefaultTrackingCallback,
                             new Handler(Looper.getMainLooper())),
                     NETWORK_SETTINGS);
         }
@@ -544,7 +549,7 @@ public class ConnectivityManagerTest {
             assertNotNull("Did not receive onAvailable on default network callback",
                     defaultTrackingCallback.waitForAvailable());
 
-            if (SdkLevel.isAtLeastS()) {
+            if (shouldTestSApis()) {
                 assertNotNull("Did not receive onAvailable on system default network callback",
                         systemDefaultTrackingCallback.waitForAvailable());
             }
@@ -553,7 +558,7 @@ public class ConnectivityManagerTest {
         } finally {
             mCm.unregisterNetworkCallback(callback);
             mCm.unregisterNetworkCallback(defaultTrackingCallback);
-            if (SdkLevel.isAtLeastS()) {
+            if (shouldTestSApis()) {
                 runWithShellPermissionIdentity(
                         () -> mCm.unregisterNetworkCallback(systemDefaultTrackingCallback),
                         NETWORK_SETTINGS);
@@ -1599,14 +1604,14 @@ public class ConnectivityManagerTest {
         // Verify background network cannot be requested without NETWORK_SETTINGS permission.
         final TestableNetworkCallback callback = new TestableNetworkCallback();
         assertThrows(SecurityException.class,
-                () -> mCm.requestBackgroundNetwork(testRequest, null, callback));
+                () -> mCmShim.requestBackgroundNetwork(testRequest, null, callback));
 
         Network testNetwork = null;
         try {
             // Request background test network via Shell identity which has NETWORK_SETTINGS
             // permission granted.
             runWithShellPermissionIdentity(
-                    () -> mCm.requestBackgroundNetwork(testRequest, null, callback),
+                    () -> mCmShim.requestBackgroundNetwork(testRequest, null, callback),
                     new String[] { android.Manifest.permission.NETWORK_SETTINGS });
 
             // Register the test network agent which has no foreground request associated to it.
@@ -1645,5 +1650,13 @@ public class ConnectivityManagerTest {
             }, new String[] { android.Manifest.permission.MANAGE_TEST_NETWORKS });
             mCm.unregisterNetworkCallback(callback);
         }
+    }
+
+    /**
+     * Whether to test S+ APIs. This requires a) that the test be running on an S+ device, and
+     * b) that the code be compiled against shims new enough to access these APIs.
+     */
+    private boolean shouldTestSApis() {
+        return SdkLevel.isAtLeastS() && ConstantsShim.VERSION > Build.VERSION_CODES.R;
     }
 }
