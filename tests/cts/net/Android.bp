@@ -40,8 +40,6 @@ java_defaults {
         "src/**/*.kt",
     ],
     exclude_srcs: [
-        // STOPSHIP: delete this before releasing any networking modules.
-        "src/android/net/cts/ConnectivityManagerTest.java",
         // TODO: delete this after mainline-prod snaps to sc-dev.
         "src/android/net/cts/NetworkAgentTest.kt",
     ],
