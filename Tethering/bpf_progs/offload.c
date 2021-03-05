@@ -723,6 +723,9 @@ DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_upstream4_rawip$stub", AID_ROOT, AID
 
 // ----- XDP Support -----
 
+DEFINE_BPF_MAP_GRW(tether_xdp_devmap, DEVMAP_HASH, uint32_t, uint32_t, 64,
+                   AID_NETWORK_STACK)
+
 #define DEFINE_XDP_PROG(str, func) \
     DEFINE_BPF_PROG_KVER(str, AID_ROOT, AID_NETWORK_STACK, func, KVER(5, 9, 0))(struct xdp_md *ctx)
 
