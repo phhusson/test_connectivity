@@ -25,6 +25,9 @@ import static android.hardware.usb.UsbManager.USB_FUNCTION_RNDIS;
 import static android.net.ConnectivityManager.ACTION_RESTRICT_BACKGROUND_CHANGED;
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_DISABLED;
 import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED;
+import static android.net.ConnectivityManager.TYPE_NONE;
+import static android.net.NetworkCapabilities.NET_CAPABILITY_DUN;
+import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
 import static android.net.NetworkCapabilities.TRANSPORT_BLUETOOTH;
 import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
@@ -64,6 +67,7 @@ import static com.android.testutils.TestPermissionUtil.runAsShell;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -72,6 +76,7 @@ import static org.mockito.Matchers.anyInt;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -94,10 +99,11 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.hardware.usb.UsbManager;
-import android.net.ConnectivityManager;
+import android.net.ConnectivityManager.NetworkCallback;
 import android.net.EthernetManager;
 import android.net.EthernetManager.TetheredInterfaceCallback;
 import android.net.EthernetManager.TetheredInterfaceRequest;
+import android.net.IConnectivityManager;
 import android.net.IIntResultListener;
 import android.net.INetd;
 import android.net.ITetheringEventCallback;
@@ -200,6 +206,10 @@ public class TetheringTest {
     private static final String[] PROVISIONING_APP_NAME = {"some", "app"};
     private static final String PROVISIONING_NO_UI_APP_NAME = "no_ui_app";
 
+    private static final int CELLULAR_NETID = 100;
+    private static final int WIFI_NETID = 101;
+    private static final int DUN_NETID = 102;
+
     private static final int DHCPSERVER_START_TIMEOUT_MS = 1000;
 
     @Mock private ApplicationInfo mApplicationInfo;
@@ -212,7 +222,6 @@ public class TetheringTest {
     @Mock private UsbManager mUsbManager;
     @Mock private WifiManager mWifiManager;
     @Mock private CarrierConfigManager mCarrierConfigManager;
-    @Mock private UpstreamNetworkMonitor mUpstreamNetworkMonitor;
     @Mock private IPv6TetheringCoordinator mIPv6TetheringCoordinator;
     @Mock private DadProxy mDadProxy;
     @Mock private RouterAdvertisementDaemon mRouterAdvertisementDaemon;
@@ -220,8 +229,6 @@ public class TetheringTest {
     @Mock private IDhcpServer mDhcpServer;
     @Mock private INetd mNetd;
     @Mock private UserManager mUserManager;
-    @Mock private NetworkRequest mNetworkRequest;
-    @Mock private ConnectivityManager mCm;
     @Mock private EthernetManager mEm;
     @Mock private TetheringNotificationUpdater mNotificationUpdater;
     @Mock private BpfCoordinator mBpfCoordinator;
@@ -249,6 +256,11 @@ public class TetheringTest {
     private OffloadController mOffloadCtrl;
     private PrivateAddressCoordinator mPrivateAddressCoordinator;
     private SoftApCallback mSoftApCallback;
+    private UpstreamNetworkMonitor mUpstreamNetworkMonitor;
+
+    private TestConnectivityManager mCm;
+    private NetworkRequest mNetworkRequest;
+    private NetworkCallback mDefaultNetworkCallback;
 
     private class TestContext extends BroadcastInterceptingContext {
         TestContext(Context base) {
@@ -400,7 +412,10 @@ public class TetheringTest {
         @Override
         public UpstreamNetworkMonitor getUpstreamNetworkMonitor(Context ctx,
                 StateMachine target, SharedLog log, int what) {
+            // Use a real object instead of a mock so that some tests can use a real UNM and some
+            // can use a mock.
             mUpstreamNetworkMonitorSM = target;
+            mUpstreamNetworkMonitor = spy(super.getUpstreamNetworkMonitor(ctx, target, log, what));
             return mUpstreamNetworkMonitor;
         }
 
@@ -480,15 +495,15 @@ public class TetheringTest {
         }
     }
 
-    private static UpstreamNetworkState buildMobileUpstreamState(boolean withIPv4,
-            boolean withIPv6, boolean with464xlat) {
+    private static LinkProperties buildUpstreamLinkProperties(String interfaceName,
+            boolean withIPv4, boolean withIPv6, boolean with464xlat) {
         final LinkProperties prop = new LinkProperties();
-        prop.setInterfaceName(TEST_MOBILE_IFNAME);
+        prop.setInterfaceName(interfaceName);
 
         if (withIPv4) {
             prop.addRoute(new RouteInfo(new IpPrefix(Inet4Address.ANY, 0),
                     InetAddresses.parseNumericAddress("10.0.0.1"),
-                    TEST_MOBILE_IFNAME, RTN_UNICAST));
+                    interfaceName, RTN_UNICAST));
         }
 
         if (withIPv6) {
@@ -498,23 +513,40 @@ public class TetheringTest {
                             NetworkConstants.RFC7421_PREFIX_LENGTH));
             prop.addRoute(new RouteInfo(new IpPrefix(Inet6Address.ANY, 0),
                     InetAddresses.parseNumericAddress("2001:db8::1"),
-                    TEST_MOBILE_IFNAME, RTN_UNICAST));
+                    interfaceName, RTN_UNICAST));
         }
 
         if (with464xlat) {
+            final String clatInterface = "v4-" + interfaceName;
             final LinkProperties stackedLink = new LinkProperties();
-            stackedLink.setInterfaceName(TEST_XLAT_MOBILE_IFNAME);
+            stackedLink.setInterfaceName(clatInterface);
             stackedLink.addRoute(new RouteInfo(new IpPrefix(Inet4Address.ANY, 0),
                     InetAddresses.parseNumericAddress("192.0.0.1"),
-                    TEST_XLAT_MOBILE_IFNAME, RTN_UNICAST));
+                    clatInterface, RTN_UNICAST));
 
             prop.addStackedLink(stackedLink);
         }
 
+        return prop;
+    }
 
-        final NetworkCapabilities capabilities = new NetworkCapabilities()
-                .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR);
-        return new UpstreamNetworkState(prop, capabilities, new Network(100));
+    private static NetworkCapabilities buildUpstreamCapabilities(int transport, int... otherCaps) {
+        // TODO: add NOT_VCN_MANAGED.
+        final NetworkCapabilities nc = new NetworkCapabilities()
+                .addTransportType(transport)
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
+        for (int cap : otherCaps) {
+            nc.addCapability(cap);
+        }
+        return nc;
+    }
+
+    private static UpstreamNetworkState buildMobileUpstreamState(boolean withIPv4,
+            boolean withIPv6, boolean with464xlat) {
+        return new UpstreamNetworkState(
+                buildUpstreamLinkProperties(TEST_MOBILE_IFNAME, withIPv4, withIPv6, with464xlat),
+                buildUpstreamCapabilities(TRANSPORT_CELLULAR),
+                new Network(CELLULAR_NETID));
     }
 
     private static UpstreamNetworkState buildMobileIPv4UpstreamState() {
@@ -531,6 +563,22 @@ public class TetheringTest {
 
     private static UpstreamNetworkState buildMobile464xlatUpstreamState() {
         return buildMobileUpstreamState(false, true, true);
+    }
+
+    private static UpstreamNetworkState buildWifiUpstreamState() {
+        return new UpstreamNetworkState(
+                buildUpstreamLinkProperties(TEST_WIFI_IFNAME, true /* IPv4 */, true /* IPv6 */,
+                        false /* 464xlat */),
+                buildUpstreamCapabilities(TRANSPORT_WIFI),
+                new Network(WIFI_NETID));
+    }
+
+    private static UpstreamNetworkState buildDunUpstreamState() {
+        return new UpstreamNetworkState(
+                buildUpstreamLinkProperties(TEST_MOBILE_IFNAME, true /* IPv4 */, true /* IPv6 */,
+                        false /* 464xlat */),
+                buildUpstreamCapabilities(TRANSPORT_CELLULAR, NET_CAPABILITY_DUN),
+                new Network(DUN_NETID));
     }
 
     // See FakeSettingsProvider#clearSettingsProvider() that this needs to be called before and
@@ -578,9 +626,22 @@ public class TetheringTest {
         };
         mServiceContext.registerReceiver(mBroadcastReceiver,
                 new IntentFilter(ACTION_TETHER_STATE_CHANGED));
+
+        // TODO: add NOT_VCN_MANAGED here, but more importantly in the production code.
+        // TODO: even better, change TetheringDependencies.getDefaultNetworkRequest() to use
+        // registerSystemDefaultNetworkCallback() on S and above.
+        NetworkCapabilities defaultCaps = new NetworkCapabilities()
+                .addCapability(NET_CAPABILITY_INTERNET);
+        mNetworkRequest = new NetworkRequest(defaultCaps, TYPE_NONE, 1 /* requestId */,
+                NetworkRequest.Type.REQUEST);
+        mCm = spy(new TestConnectivityManager(mServiceContext, mock(IConnectivityManager.class),
+                mNetworkRequest));
+
         mTethering = makeTethering();
         verify(mStatsManager, times(1)).registerNetworkStatsProvider(anyString(), any());
         verify(mNetd).registerUnsolicitedEventListener(any());
+        verifyDefaultNetworkRequestFiled();
+
         final ArgumentCaptor<PhoneStateListener> phoneListenerCaptor =
                 ArgumentCaptor.forClass(PhoneStateListener.class);
         verify(mTelephonyManager).listen(phoneListenerCaptor.capture(),
@@ -617,8 +678,8 @@ public class TetheringTest {
     }
 
     private void initTetheringUpstream(UpstreamNetworkState upstreamState) {
-        when(mUpstreamNetworkMonitor.getCurrentPreferredUpstream()).thenReturn(upstreamState);
-        when(mUpstreamNetworkMonitor.selectPreferredUpstreamType(any())).thenReturn(upstreamState);
+        doReturn(upstreamState).when(mUpstreamNetworkMonitor).getCurrentPreferredUpstream();
+        doReturn(upstreamState).when(mUpstreamNetworkMonitor).selectPreferredUpstreamType(any());
     }
 
     private Tethering makeTethering() {
@@ -703,6 +764,19 @@ public class TetheringTest {
     private void sendConfigurationChanged() {
         final Intent intent = new Intent(Intent.ACTION_CONFIGURATION_CHANGED);
         mServiceContext.sendStickyBroadcastAsUser(intent, UserHandle.ALL);
+    }
+
+    private void verifyDefaultNetworkRequestFiled() {
+        ArgumentCaptor<NetworkCallback> captor = ArgumentCaptor.forClass(NetworkCallback.class);
+        verify(mCm, times(1)).requestNetwork(eq(mNetworkRequest),
+                captor.capture(), any(Handler.class));
+        mDefaultNetworkCallback = captor.getValue();
+        assertNotNull(mDefaultNetworkCallback);
+
+        // The default network request is only ever filed once.
+        verifyNoMoreInteractions(mCm);
+        mUpstreamNetworkMonitor.startTrackDefaultNetwork(mNetworkRequest, mEntitleMgr);
+        verifyNoMoreInteractions(mCm);
     }
 
     private void verifyInterfaceServingModeStarted(String ifname) throws Exception {
@@ -1723,12 +1797,12 @@ public class TetheringTest {
     }
 
     private void setDataSaverEnabled(boolean enabled) {
-        final Intent intent = new Intent(ACTION_RESTRICT_BACKGROUND_CHANGED);
-        mServiceContext.sendBroadcastAsUser(intent, UserHandle.ALL);
-
         final int status = enabled ? RESTRICT_BACKGROUND_STATUS_ENABLED
                 : RESTRICT_BACKGROUND_STATUS_DISABLED;
-        when(mCm.getRestrictBackgroundStatus()).thenReturn(status);
+        doReturn(status).when(mCm).getRestrictBackgroundStatus();
+
+        final Intent intent = new Intent(ACTION_RESTRICT_BACKGROUND_CHANGED);
+        mServiceContext.sendBroadcastAsUser(intent, UserHandle.ALL);
         mLooper.dispatchAll();
     }
 
@@ -1882,7 +1956,8 @@ public class TetheringTest {
         // Verify that onUpstreamCapabilitiesChanged won't be called if not current upstream network
         // capabilities changed.
         final UpstreamNetworkState upstreamState2 = new UpstreamNetworkState(
-                upstreamState.linkProperties, upstreamState.networkCapabilities, new Network(101));
+                upstreamState.linkProperties, upstreamState.networkCapabilities,
+                new Network(WIFI_NETID));
         stateMachine.handleUpstreamNetworkMonitorCallback(EVENT_ON_CAPABILITIES, upstreamState2);
         verify(mNotificationUpdater, never()).onUpstreamCapabilitiesChanged(any());
     }
@@ -1992,7 +2067,7 @@ public class TetheringTest {
     public void testHandleIpConflict() throws Exception {
         final Network wifiNetwork = new Network(200);
         final Network[] allNetworks = { wifiNetwork };
-        when(mCm.getAllNetworks()).thenReturn(allNetworks);
+        doReturn(allNetworks).when(mCm).getAllNetworks();
         runUsbTethering(null);
         final ArgumentCaptor<InterfaceConfigurationParcel> ifaceConfigCaptor =
                 ArgumentCaptor.forClass(InterfaceConfigurationParcel.class);
@@ -2019,7 +2094,7 @@ public class TetheringTest {
         final Network btNetwork = new Network(201);
         final Network mobileNetwork = new Network(202);
         final Network[] allNetworks = { wifiNetwork, btNetwork, mobileNetwork };
-        when(mCm.getAllNetworks()).thenReturn(allNetworks);
+        doReturn(allNetworks).when(mCm).getAllNetworks();
         runUsbTethering(null);
         verify(mDhcpServer, timeout(DHCPSERVER_START_TIMEOUT_MS).times(1)).startWithCallbacks(
                 any(), any());
