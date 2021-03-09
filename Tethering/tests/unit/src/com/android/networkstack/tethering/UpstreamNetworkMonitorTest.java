@@ -85,6 +85,13 @@ public class UpstreamNetworkMonitorTest {
     // any specific TRANSPORT_* is sufficient to identify this request.
     private static final NetworkRequest sDefaultRequest = new NetworkRequest.Builder().build();
 
+    private static final NetworkCapabilities CELL_CAPABILITIES = new NetworkCapabilities.Builder()
+            .addTransportType(TRANSPORT_CELLULAR).addCapability(NET_CAPABILITY_INTERNET).build();
+    private static final NetworkCapabilities DUN_CAPABILITIES = new NetworkCapabilities.Builder()
+            .addTransportType(TRANSPORT_CELLULAR).addCapability(NET_CAPABILITY_DUN).build();
+    private static final NetworkCapabilities WIFI_CAPABILITIES = new NetworkCapabilities.Builder()
+            .addTransportType(TRANSPORT_WIFI).addCapability(NET_CAPABILITY_INTERNET).build();
+
     @Mock private Context mContext;
     @Mock private EntitlementManager mEntitleMgr;
     @Mock private IConnectivityManager mCS;
@@ -288,7 +295,7 @@ public class UpstreamNetworkMonitorTest {
         // There are no networks, so there is nothing to select.
         assertSatisfiesLegacyType(TYPE_NONE, mUNM.selectPreferredUpstreamType(preferredTypes));
 
-        final TestNetworkAgent wifiAgent = new TestNetworkAgent(mCM, TRANSPORT_WIFI);
+        final TestNetworkAgent wifiAgent = new TestNetworkAgent(mCM, WIFI_CAPABILITIES);
         wifiAgent.fakeConnect();
         // WiFi is up, we should prefer it.
         assertSatisfiesLegacyType(TYPE_WIFI, mUNM.selectPreferredUpstreamType(preferredTypes));
@@ -296,7 +303,7 @@ public class UpstreamNetworkMonitorTest {
         // There are no networks, so there is nothing to select.
         assertSatisfiesLegacyType(TYPE_NONE, mUNM.selectPreferredUpstreamType(preferredTypes));
 
-        final TestNetworkAgent cellAgent = new TestNetworkAgent(mCM, TRANSPORT_CELLULAR);
+        final TestNetworkAgent cellAgent = new TestNetworkAgent(mCM, CELL_CAPABILITIES);
         cellAgent.fakeConnect();
         assertSatisfiesLegacyType(TYPE_NONE, mUNM.selectPreferredUpstreamType(preferredTypes));
 
@@ -337,8 +344,7 @@ public class UpstreamNetworkMonitorTest {
         mUNM.updateMobileRequiresDun(true);
         assertSatisfiesLegacyType(TYPE_WIFI, mUNM.selectPreferredUpstreamType(preferredTypes));
 
-        final TestNetworkAgent dunAgent = new TestNetworkAgent(mCM, TRANSPORT_CELLULAR);
-        dunAgent.networkCapabilities.addCapability(NET_CAPABILITY_DUN);
+        final TestNetworkAgent dunAgent = new TestNetworkAgent(mCM, DUN_CAPABILITIES);
         dunAgent.fakeConnect();
 
         // WiFi is still preferred.
@@ -370,7 +376,7 @@ public class UpstreamNetworkMonitorTest {
         mUNM.updateMobileRequiresDun(false);
 
         // [0] Mobile connects, DUN not required -> mobile selected.
-        final TestNetworkAgent cellAgent = new TestNetworkAgent(mCM, TRANSPORT_CELLULAR);
+        final TestNetworkAgent cellAgent = new TestNetworkAgent(mCM, CELL_CAPABILITIES);
         cellAgent.fakeConnect();
         mCM.makeDefaultNetwork(cellAgent);
         assertEquals(cellAgent.networkId, mUNM.getCurrentPreferredUpstream().network);
@@ -381,7 +387,7 @@ public class UpstreamNetworkMonitorTest {
         when(mEntitleMgr.isCellularUpstreamPermitted()).thenReturn(true);
 
         // [2] WiFi connects but not validated/promoted to default -> mobile selected.
-        final TestNetworkAgent wifiAgent = new TestNetworkAgent(mCM, TRANSPORT_WIFI);
+        final TestNetworkAgent wifiAgent = new TestNetworkAgent(mCM, WIFI_CAPABILITIES);
         wifiAgent.fakeConnect();
         assertEquals(cellAgent.networkId, mUNM.getCurrentPreferredUpstream().network);
 
@@ -401,7 +407,7 @@ public class UpstreamNetworkMonitorTest {
         // into UNM we should test for this here.
 
         // [6] DUN network arrives -> DUN selected
-        final TestNetworkAgent dunAgent = new TestNetworkAgent(mCM, TRANSPORT_CELLULAR);
+        final TestNetworkAgent dunAgent = new TestNetworkAgent(mCM, CELL_CAPABILITIES);
         dunAgent.networkCapabilities.addCapability(NET_CAPABILITY_DUN);
         dunAgent.networkCapabilities.removeCapability(NET_CAPABILITY_INTERNET);
         dunAgent.fakeConnect();
@@ -424,7 +430,7 @@ public class UpstreamNetworkMonitorTest {
         final Set<String> alreadySeen = new HashSet<>();
 
         // [1] Pretend Wi-Fi connects.
-        final TestNetworkAgent wifiAgent = new TestNetworkAgent(mCM, TRANSPORT_WIFI);
+        final TestNetworkAgent wifiAgent = new TestNetworkAgent(mCM, WIFI_CAPABILITIES);
         final LinkProperties wifiLp = wifiAgent.linkProperties;
         wifiLp.setInterfaceName("wlan0");
         final String[] wifi_addrs = {
@@ -451,7 +457,7 @@ public class UpstreamNetworkMonitorTest {
         assertEquals(alreadySeen.size(), local.size());
 
         // [2] Pretend mobile connects.
-        final TestNetworkAgent cellAgent = new TestNetworkAgent(mCM, TRANSPORT_CELLULAR);
+        final TestNetworkAgent cellAgent = new TestNetworkAgent(mCM, CELL_CAPABILITIES);
         final LinkProperties cellLp = cellAgent.linkProperties;
         cellLp.setInterfaceName("rmnet_data0");
         final String[] cell_addrs = {
@@ -472,9 +478,7 @@ public class UpstreamNetworkMonitorTest {
         assertEquals(alreadySeen.size(), local.size());
 
         // [3] Pretend DUN connects.
-        final TestNetworkAgent dunAgent = new TestNetworkAgent(mCM, TRANSPORT_CELLULAR);
-        dunAgent.networkCapabilities.addCapability(NET_CAPABILITY_DUN);
-        dunAgent.networkCapabilities.removeCapability(NET_CAPABILITY_INTERNET);
+        final TestNetworkAgent dunAgent = new TestNetworkAgent(mCM, DUN_CAPABILITIES);
         final LinkProperties dunLp = dunAgent.linkProperties;
         dunLp.setInterfaceName("rmnet_data1");
         final String[] dun_addrs = {
@@ -524,11 +528,11 @@ public class UpstreamNetworkMonitorTest {
         mUNM.startTrackDefaultNetwork(sDefaultRequest, mEntitleMgr);
         mUNM.startObserveAllNetworks();
         // Setup wifi and make wifi as default network.
-        final TestNetworkAgent wifiAgent = new TestNetworkAgent(mCM, TRANSPORT_WIFI);
+        final TestNetworkAgent wifiAgent = new TestNetworkAgent(mCM, WIFI_CAPABILITIES);
         wifiAgent.fakeConnect();
         mCM.makeDefaultNetwork(wifiAgent);
         // Setup mobile network.
-        final TestNetworkAgent cellAgent = new TestNetworkAgent(mCM, TRANSPORT_CELLULAR);
+        final TestNetworkAgent cellAgent = new TestNetworkAgent(mCM, CELL_CAPABILITIES);
         cellAgent.fakeConnect();
 
         assertSatisfiesLegacyType(TYPE_MOBILE_HIPRI,
