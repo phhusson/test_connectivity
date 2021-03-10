@@ -29,7 +29,6 @@ import static com.android.networkstack.tethering.UpstreamNetworkMonitor.TYPE_NON
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyString;
@@ -48,7 +47,6 @@ import android.net.IConnectivityManager;
 import android.net.IpPrefix;
 import android.net.LinkAddress;
 import android.net.LinkProperties;
-import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.net.util.SharedLog;
@@ -60,6 +58,7 @@ import androidx.test.runner.AndroidJUnit4;
 
 import com.android.internal.util.State;
 import com.android.internal.util.StateMachine;
+import com.android.networkstack.tethering.TestConnectivityManager.TestNetworkAgent;
 
 import org.junit.After;
 import org.junit.Before;
@@ -71,10 +70,7 @@ import org.mockito.MockitoAnnotations;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 
 @RunWith(AndroidJUnit4.class)
@@ -88,6 +84,13 @@ public class UpstreamNetworkMonitorTest {
     // Actual contents of the request don't matter for this test. The lack of
     // any specific TRANSPORT_* is sufficient to identify this request.
     private static final NetworkRequest sDefaultRequest = new NetworkRequest.Builder().build();
+
+    private static final NetworkCapabilities CELL_CAPABILITIES = new NetworkCapabilities.Builder()
+            .addTransportType(TRANSPORT_CELLULAR).addCapability(NET_CAPABILITY_INTERNET).build();
+    private static final NetworkCapabilities DUN_CAPABILITIES = new NetworkCapabilities.Builder()
+            .addTransportType(TRANSPORT_CELLULAR).addCapability(NET_CAPABILITY_DUN).build();
+    private static final NetworkCapabilities WIFI_CAPABILITIES = new NetworkCapabilities.Builder()
+            .addTransportType(TRANSPORT_WIFI).addCapability(NET_CAPABILITY_INTERNET).build();
 
     @Mock private Context mContext;
     @Mock private EntitlementManager mEntitleMgr;
@@ -106,7 +109,7 @@ public class UpstreamNetworkMonitorTest {
         when(mLog.forSubComponent(anyString())).thenReturn(mLog);
         when(mEntitleMgr.isCellularUpstreamPermitted()).thenReturn(true);
 
-        mCM = spy(new TestConnectivityManager(mContext, mCS));
+        mCM = spy(new TestConnectivityManager(mContext, mCS, sDefaultRequest));
         mSM = new TestStateMachine();
         mUNM = new UpstreamNetworkMonitor(
                 (ConnectivityManager) mCM, mSM, mLog, EVENT_UNM_UPDATE);
@@ -292,7 +295,7 @@ public class UpstreamNetworkMonitorTest {
         // There are no networks, so there is nothing to select.
         assertSatisfiesLegacyType(TYPE_NONE, mUNM.selectPreferredUpstreamType(preferredTypes));
 
-        final TestNetworkAgent wifiAgent = new TestNetworkAgent(mCM, TRANSPORT_WIFI);
+        final TestNetworkAgent wifiAgent = new TestNetworkAgent(mCM, WIFI_CAPABILITIES);
         wifiAgent.fakeConnect();
         // WiFi is up, we should prefer it.
         assertSatisfiesLegacyType(TYPE_WIFI, mUNM.selectPreferredUpstreamType(preferredTypes));
@@ -300,7 +303,7 @@ public class UpstreamNetworkMonitorTest {
         // There are no networks, so there is nothing to select.
         assertSatisfiesLegacyType(TYPE_NONE, mUNM.selectPreferredUpstreamType(preferredTypes));
 
-        final TestNetworkAgent cellAgent = new TestNetworkAgent(mCM, TRANSPORT_CELLULAR);
+        final TestNetworkAgent cellAgent = new TestNetworkAgent(mCM, CELL_CAPABILITIES);
         cellAgent.fakeConnect();
         assertSatisfiesLegacyType(TYPE_NONE, mUNM.selectPreferredUpstreamType(preferredTypes));
 
@@ -341,8 +344,7 @@ public class UpstreamNetworkMonitorTest {
         mUNM.updateMobileRequiresDun(true);
         assertSatisfiesLegacyType(TYPE_WIFI, mUNM.selectPreferredUpstreamType(preferredTypes));
 
-        final TestNetworkAgent dunAgent = new TestNetworkAgent(mCM, TRANSPORT_CELLULAR);
-        dunAgent.networkCapabilities.addCapability(NET_CAPABILITY_DUN);
+        final TestNetworkAgent dunAgent = new TestNetworkAgent(mCM, DUN_CAPABILITIES);
         dunAgent.fakeConnect();
 
         // WiFi is still preferred.
@@ -374,7 +376,7 @@ public class UpstreamNetworkMonitorTest {
         mUNM.updateMobileRequiresDun(false);
 
         // [0] Mobile connects, DUN not required -> mobile selected.
-        final TestNetworkAgent cellAgent = new TestNetworkAgent(mCM, TRANSPORT_CELLULAR);
+        final TestNetworkAgent cellAgent = new TestNetworkAgent(mCM, CELL_CAPABILITIES);
         cellAgent.fakeConnect();
         mCM.makeDefaultNetwork(cellAgent);
         assertEquals(cellAgent.networkId, mUNM.getCurrentPreferredUpstream().network);
@@ -385,7 +387,7 @@ public class UpstreamNetworkMonitorTest {
         when(mEntitleMgr.isCellularUpstreamPermitted()).thenReturn(true);
 
         // [2] WiFi connects but not validated/promoted to default -> mobile selected.
-        final TestNetworkAgent wifiAgent = new TestNetworkAgent(mCM, TRANSPORT_WIFI);
+        final TestNetworkAgent wifiAgent = new TestNetworkAgent(mCM, WIFI_CAPABILITIES);
         wifiAgent.fakeConnect();
         assertEquals(cellAgent.networkId, mUNM.getCurrentPreferredUpstream().network);
 
@@ -405,7 +407,7 @@ public class UpstreamNetworkMonitorTest {
         // into UNM we should test for this here.
 
         // [6] DUN network arrives -> DUN selected
-        final TestNetworkAgent dunAgent = new TestNetworkAgent(mCM, TRANSPORT_CELLULAR);
+        final TestNetworkAgent dunAgent = new TestNetworkAgent(mCM, CELL_CAPABILITIES);
         dunAgent.networkCapabilities.addCapability(NET_CAPABILITY_DUN);
         dunAgent.networkCapabilities.removeCapability(NET_CAPABILITY_INTERNET);
         dunAgent.fakeConnect();
@@ -428,7 +430,7 @@ public class UpstreamNetworkMonitorTest {
         final Set<String> alreadySeen = new HashSet<>();
 
         // [1] Pretend Wi-Fi connects.
-        final TestNetworkAgent wifiAgent = new TestNetworkAgent(mCM, TRANSPORT_WIFI);
+        final TestNetworkAgent wifiAgent = new TestNetworkAgent(mCM, WIFI_CAPABILITIES);
         final LinkProperties wifiLp = wifiAgent.linkProperties;
         wifiLp.setInterfaceName("wlan0");
         final String[] wifi_addrs = {
@@ -455,7 +457,7 @@ public class UpstreamNetworkMonitorTest {
         assertEquals(alreadySeen.size(), local.size());
 
         // [2] Pretend mobile connects.
-        final TestNetworkAgent cellAgent = new TestNetworkAgent(mCM, TRANSPORT_CELLULAR);
+        final TestNetworkAgent cellAgent = new TestNetworkAgent(mCM, CELL_CAPABILITIES);
         final LinkProperties cellLp = cellAgent.linkProperties;
         cellLp.setInterfaceName("rmnet_data0");
         final String[] cell_addrs = {
@@ -476,9 +478,7 @@ public class UpstreamNetworkMonitorTest {
         assertEquals(alreadySeen.size(), local.size());
 
         // [3] Pretend DUN connects.
-        final TestNetworkAgent dunAgent = new TestNetworkAgent(mCM, TRANSPORT_CELLULAR);
-        dunAgent.networkCapabilities.addCapability(NET_CAPABILITY_DUN);
-        dunAgent.networkCapabilities.removeCapability(NET_CAPABILITY_INTERNET);
+        final TestNetworkAgent dunAgent = new TestNetworkAgent(mCM, DUN_CAPABILITIES);
         final LinkProperties dunLp = dunAgent.linkProperties;
         dunLp.setInterfaceName("rmnet_data1");
         final String[] dun_addrs = {
@@ -528,11 +528,11 @@ public class UpstreamNetworkMonitorTest {
         mUNM.startTrackDefaultNetwork(sDefaultRequest, mEntitleMgr);
         mUNM.startObserveAllNetworks();
         // Setup wifi and make wifi as default network.
-        final TestNetworkAgent wifiAgent = new TestNetworkAgent(mCM, TRANSPORT_WIFI);
+        final TestNetworkAgent wifiAgent = new TestNetworkAgent(mCM, WIFI_CAPABILITIES);
         wifiAgent.fakeConnect();
         mCM.makeDefaultNetwork(wifiAgent);
         // Setup mobile network.
-        final TestNetworkAgent cellAgent = new TestNetworkAgent(mCM, TRANSPORT_CELLULAR);
+        final TestNetworkAgent cellAgent = new TestNetworkAgent(mCM, CELL_CAPABILITIES);
         cellAgent.fakeConnect();
 
         assertSatisfiesLegacyType(TYPE_MOBILE_HIPRI,
@@ -567,187 +567,6 @@ public class UpstreamNetworkMonitorTest {
         return false;
     }
 
-    public static class TestConnectivityManager extends ConnectivityManager {
-        public Map<NetworkCallback, Handler> allCallbacks = new HashMap<>();
-        public Set<NetworkCallback> trackingDefault = new HashSet<>();
-        public TestNetworkAgent defaultNetwork = null;
-        public Map<NetworkCallback, NetworkRequest> listening = new HashMap<>();
-        public Map<NetworkCallback, NetworkRequest> requested = new HashMap<>();
-        public Map<NetworkCallback, Integer> legacyTypeMap = new HashMap<>();
-
-        private int mNetworkId = 100;
-
-        public TestConnectivityManager(Context ctx, IConnectivityManager svc) {
-            super(ctx, svc);
-        }
-
-        boolean hasNoCallbacks() {
-            return allCallbacks.isEmpty()
-                    && trackingDefault.isEmpty()
-                    && listening.isEmpty()
-                    && requested.isEmpty()
-                    && legacyTypeMap.isEmpty();
-        }
-
-        boolean onlyHasDefaultCallbacks() {
-            return (allCallbacks.size() == 1)
-                    && (trackingDefault.size() == 1)
-                    && listening.isEmpty()
-                    && requested.isEmpty()
-                    && legacyTypeMap.isEmpty();
-        }
-
-        boolean isListeningForAll() {
-            final NetworkCapabilities empty = new NetworkCapabilities();
-            empty.clearAll();
-
-            for (NetworkRequest req : listening.values()) {
-                if (req.networkCapabilities.equalRequestableCapabilities(empty)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        int getNetworkId() {
-            return ++mNetworkId;
-        }
-
-        void makeDefaultNetwork(TestNetworkAgent agent) {
-            if (Objects.equals(defaultNetwork, agent)) return;
-
-            final TestNetworkAgent formerDefault = defaultNetwork;
-            defaultNetwork = agent;
-
-            for (NetworkCallback cb : trackingDefault) {
-                if (defaultNetwork != null) {
-                    cb.onAvailable(defaultNetwork.networkId);
-                    cb.onCapabilitiesChanged(
-                            defaultNetwork.networkId, defaultNetwork.networkCapabilities);
-                    cb.onLinkPropertiesChanged(
-                            defaultNetwork.networkId, defaultNetwork.linkProperties);
-                }
-            }
-        }
-
-        @Override
-        public void requestNetwork(NetworkRequest req, NetworkCallback cb, Handler h) {
-            assertFalse(allCallbacks.containsKey(cb));
-            allCallbacks.put(cb, h);
-            if (sDefaultRequest.equals(req)) {
-                assertFalse(trackingDefault.contains(cb));
-                trackingDefault.add(cb);
-            } else {
-                assertFalse(requested.containsKey(cb));
-                requested.put(cb, req);
-            }
-        }
-
-        @Override
-        public void requestNetwork(NetworkRequest req, NetworkCallback cb) {
-            fail("Should never be called.");
-        }
-
-        @Override
-        public void requestNetwork(NetworkRequest req,
-                int timeoutMs, int legacyType, Handler h, NetworkCallback cb) {
-            assertFalse(allCallbacks.containsKey(cb));
-            allCallbacks.put(cb, h);
-            assertFalse(requested.containsKey(cb));
-            requested.put(cb, req);
-            assertFalse(legacyTypeMap.containsKey(cb));
-            if (legacyType != ConnectivityManager.TYPE_NONE) {
-                legacyTypeMap.put(cb, legacyType);
-            }
-        }
-
-        @Override
-        public void registerNetworkCallback(NetworkRequest req, NetworkCallback cb, Handler h) {
-            assertFalse(allCallbacks.containsKey(cb));
-            allCallbacks.put(cb, h);
-            assertFalse(listening.containsKey(cb));
-            listening.put(cb, req);
-        }
-
-        @Override
-        public void registerNetworkCallback(NetworkRequest req, NetworkCallback cb) {
-            fail("Should never be called.");
-        }
-
-        @Override
-        public void registerDefaultNetworkCallback(NetworkCallback cb, Handler h) {
-            fail("Should never be called.");
-        }
-
-        @Override
-        public void registerDefaultNetworkCallback(NetworkCallback cb) {
-            fail("Should never be called.");
-        }
-
-        @Override
-        public void unregisterNetworkCallback(NetworkCallback cb) {
-            if (trackingDefault.contains(cb)) {
-                trackingDefault.remove(cb);
-            } else if (listening.containsKey(cb)) {
-                listening.remove(cb);
-            } else if (requested.containsKey(cb)) {
-                requested.remove(cb);
-                legacyTypeMap.remove(cb);
-            } else {
-                fail("Unexpected callback removed");
-            }
-            allCallbacks.remove(cb);
-
-            assertFalse(allCallbacks.containsKey(cb));
-            assertFalse(trackingDefault.contains(cb));
-            assertFalse(listening.containsKey(cb));
-            assertFalse(requested.containsKey(cb));
-        }
-    }
-
-    public static class TestNetworkAgent {
-        public final TestConnectivityManager cm;
-        public final Network networkId;
-        public final int transportType;
-        public final NetworkCapabilities networkCapabilities;
-        public final LinkProperties linkProperties;
-
-        public TestNetworkAgent(TestConnectivityManager cm, int transportType) {
-            this.cm = cm;
-            this.networkId = new Network(cm.getNetworkId());
-            this.transportType = transportType;
-            networkCapabilities = new NetworkCapabilities();
-            networkCapabilities.addTransportType(transportType);
-            networkCapabilities.addCapability(NET_CAPABILITY_INTERNET);
-            linkProperties = new LinkProperties();
-        }
-
-        public void fakeConnect() {
-            for (NetworkCallback cb : cm.listening.keySet()) {
-                cb.onAvailable(networkId);
-                cb.onCapabilitiesChanged(networkId, copy(networkCapabilities));
-                cb.onLinkPropertiesChanged(networkId, copy(linkProperties));
-            }
-        }
-
-        public void fakeDisconnect() {
-            for (NetworkCallback cb : cm.listening.keySet()) {
-                cb.onLost(networkId);
-            }
-        }
-
-        public void sendLinkProperties() {
-            for (NetworkCallback cb : cm.listening.keySet()) {
-                cb.onLinkPropertiesChanged(networkId, copy(linkProperties));
-            }
-        }
-
-        @Override
-        public String toString() {
-            return String.format("TestNetworkAgent: %s %s", networkId, networkCapabilities);
-        }
-    }
-
     public static class TestStateMachine extends StateMachine {
         public final ArrayList<Message> messages = new ArrayList<>();
         private final State mLoggingState = new LoggingState();
@@ -773,14 +592,6 @@ public class UpstreamNetworkMonitorTest {
             setInitialState(mLoggingState);
             super.start();
         }
-    }
-
-    static NetworkCapabilities copy(NetworkCapabilities nc) {
-        return new NetworkCapabilities(nc);
-    }
-
-    static LinkProperties copy(LinkProperties lp) {
-        return new LinkProperties(lp);
     }
 
     static void assertPrefixSet(Set<IpPrefix> prefixes, boolean expectation, String... expected) {

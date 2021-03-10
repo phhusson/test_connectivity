@@ -16,14 +16,32 @@
 
 package com.android.cts.net.hostside;
 
+import static android.Manifest.permission.NETWORK_SETTINGS;
+import static android.net.NetworkCapabilities.TRANSPORT_VPN;
 import static android.os.Process.INVALID_UID;
-import static android.system.OsConstants.*;
+import static android.system.OsConstants.AF_INET;
+import static android.system.OsConstants.AF_INET6;
+import static android.system.OsConstants.ECONNABORTED;
+import static android.system.OsConstants.IPPROTO_ICMP;
+import static android.system.OsConstants.IPPROTO_ICMPV6;
+import static android.system.OsConstants.IPPROTO_TCP;
+import static android.system.OsConstants.POLLIN;
+import static android.system.OsConstants.SOCK_DGRAM;
+import static android.test.MoreAsserts.assertNotEqual;
+
+import static com.android.compatibility.common.util.SystemUtil.runWithShellPermissionIdentity;
 
 import android.annotation.Nullable;
+import android.app.DownloadManager;
+import android.app.DownloadManager.Query;
+import android.app.DownloadManager.Request;
+import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.NetworkCallback;
 import android.net.LinkProperties;
@@ -32,12 +50,18 @@ import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.net.Proxy;
 import android.net.ProxyInfo;
+import android.net.TransportInfo;
+import android.net.Uri;
+import android.net.VpnManager;
 import android.net.VpnService;
+import android.net.VpnTransportInfo;
 import android.net.wifi.WifiManager;
-import android.provider.Settings;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.ParcelFileDescriptor;
 import android.os.Process;
 import android.os.SystemProperties;
+import android.provider.Settings;
 import android.support.test.uiautomator.UiDevice;
 import android.support.test.uiautomator.UiObject;
 import android.support.test.uiautomator.UiSelector;
@@ -51,6 +75,7 @@ import android.text.TextUtils;
 import android.util.Log;
 
 import com.android.compatibility.common.util.BlockingBroadcastReceiver;
+import com.android.modules.utils.build.SdkLevel;
 
 import java.io.Closeable;
 import java.io.FileDescriptor;
@@ -64,12 +89,12 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Objects;
 import java.util.Random;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -673,6 +698,34 @@ public class VpnTest extends InstrumentationTestCase {
         setAndVerifyPrivateDns(initialMode);
     }
 
+    private class NeverChangeNetworkCallback extends NetworkCallback {
+        private CountDownLatch mLatch = new CountDownLatch(1);
+        private volatile Network mFirstNetwork;
+        private volatile Network mOtherNetwork;
+
+        public void onAvailable(Network n) {
+            // Don't assert here, as it crashes the test with a hard to debug message.
+            if (mFirstNetwork == null) {
+                mFirstNetwork = n;
+                mLatch.countDown();
+            } else if (mOtherNetwork == null) {
+                mOtherNetwork = n;
+            }
+        }
+
+        public Network getFirstNetwork() throws Exception {
+            assertTrue(
+                    "System default callback got no network after " + TIMEOUT_MS + "ms. "
+                    + "Please ensure the device has a working Internet connection.",
+                    mLatch.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
+            return mFirstNetwork;
+        }
+
+        public void assertNeverChanged() {
+            assertNull(mOtherNetwork);
+        }
+    }
+
     public void testDefault() throws Exception {
         if (!supportedHardware()) return;
         // If adb TCP port opened, this test may running by adb over network.
@@ -687,6 +740,15 @@ public class VpnTest extends InstrumentationTestCase {
         final BlockingBroadcastReceiver receiver = new BlockingBroadcastReceiver(
                 getInstrumentation().getTargetContext(), MyVpnService.ACTION_ESTABLISHED);
         receiver.register();
+
+        // Expect the system default network not to change.
+        final NeverChangeNetworkCallback neverChangeCallback = new NeverChangeNetworkCallback();
+        final Network defaultNetwork = mCM.getActiveNetwork();
+        if (SdkLevel.isAtLeastS()) {
+            runWithShellPermissionIdentity(() ->
+                    mCM.registerSystemDefaultNetworkCallback(neverChangeCallback,
+                            new Handler(Looper.getMainLooper())), NETWORK_SETTINGS);
+        }
 
         FileDescriptor fd = openSocketFdInOtherApp(TEST_HOST, 80, TIMEOUT_MS);
 
@@ -704,6 +766,22 @@ public class VpnTest extends InstrumentationTestCase {
         assertSocketClosed(fd, TEST_HOST);
 
         checkTrafficOnVpn();
+
+        maybeExpectVpnTransportInfo(mCM.getActiveNetwork());
+
+        assertNotEqual(defaultNetwork, mCM.getActiveNetwork());
+        if (SdkLevel.isAtLeastS()) {
+            // Check that system default network callback has not seen any network changes, even
+            // though the app's default network changed. This needs to be done before testing
+            // private DNS because checkStrictModePrivateDns will set the private DNS server to
+            // a nonexistent name, which will cause validation to fail and cause the default
+            // network to switch (e.g., from wifi to cellular).
+            assertEquals(defaultNetwork, neverChangeCallback.getFirstNetwork());
+            neverChangeCallback.assertNeverChanged();
+            runWithShellPermissionIdentity(
+                    () -> mCM.unregisterNetworkCallback(neverChangeCallback),
+                    NETWORK_SETTINGS);
+        }
 
         checkStrictModePrivateDns();
 
@@ -724,6 +802,8 @@ public class VpnTest extends InstrumentationTestCase {
         assertSocketClosed(fd, TEST_HOST);
 
         checkTrafficOnVpn();
+
+        maybeExpectVpnTransportInfo(mCM.getActiveNetwork());
 
         checkStrictModePrivateDns();
     }
@@ -750,6 +830,10 @@ public class VpnTest extends InstrumentationTestCase {
         assertSocketStillOpen(remoteFd, TEST_HOST);
 
         checkNoTrafficOnVpn();
+
+        final Network network = mCM.getActiveNetwork();
+        final NetworkCapabilities nc = mCM.getNetworkCapabilities(network);
+        assertFalse(nc.hasTransport(TRANSPORT_VPN));
     }
 
     public void testGetConnectionOwnerUidSecurity() throws Exception {
@@ -764,8 +848,11 @@ public class VpnTest extends InstrumentationTestCase {
         InetSocketAddress rem = new InetSocketAddress(s.getInetAddress(), s.getPort());
         try {
             int uid = mCM.getConnectionOwnerUid(OsConstants.IPPROTO_TCP, loc, rem);
-            fail("Only an active VPN app may call this API.");
-        } catch (SecurityException expected) {
+            assertEquals("Only an active VPN app should see connection information",
+                    INVALID_UID, uid);
+        } catch (SecurityException acceptable) {
+            // R and below throw SecurityException if a non-active VPN calls this method.
+            // As long as we can't actually get socket information, either behaviour is fine.
             return;
         }
     }
@@ -904,6 +991,8 @@ public class VpnTest extends InstrumentationTestCase {
         // VPN with no underlying networks should be metered by default.
         assertTrue(isNetworkMetered(mNetwork));
         assertTrue(mCM.isActiveNetworkMetered());
+
+        maybeExpectVpnTransportInfo(mCM.getActiveNetwork());
     }
 
     public void testVpnMeterednessWithNullUnderlyingNetwork() throws Exception {
@@ -930,6 +1019,8 @@ public class VpnTest extends InstrumentationTestCase {
         assertEquals(isNetworkMetered(underlyingNetwork), isNetworkMetered(mNetwork));
         // Meteredness based on VPN capabilities and CM#isActiveNetworkMetered should be in sync.
         assertEquals(isNetworkMetered(mNetwork), mCM.isActiveNetworkMetered());
+
+        maybeExpectVpnTransportInfo(mCM.getActiveNetwork());
     }
 
     public void testVpnMeterednessWithNonNullUnderlyingNetwork() throws Exception {
@@ -957,6 +1048,8 @@ public class VpnTest extends InstrumentationTestCase {
         assertEquals(isNetworkMetered(underlyingNetwork), isNetworkMetered(mNetwork));
         // Meteredness based on VPN capabilities and CM#isActiveNetworkMetered should be in sync.
         assertEquals(isNetworkMetered(mNetwork), mCM.isActiveNetworkMetered());
+
+        maybeExpectVpnTransportInfo(mCM.getActiveNetwork());
     }
 
     public void testAlwaysMeteredVpnWithNullUnderlyingNetwork() throws Exception {
@@ -981,6 +1074,8 @@ public class VpnTest extends InstrumentationTestCase {
         // VPN's meteredness does not depend on underlying network since it is always metered.
         assertTrue(isNetworkMetered(mNetwork));
         assertTrue(mCM.isActiveNetworkMetered());
+
+        maybeExpectVpnTransportInfo(mCM.getActiveNetwork());
     }
 
     public void testAlwaysMeteredVpnWithNonNullUnderlyingNetwork() throws Exception {
@@ -1006,9 +1101,14 @@ public class VpnTest extends InstrumentationTestCase {
         // VPN's meteredness does not depend on underlying network since it is always metered.
         assertTrue(isNetworkMetered(mNetwork));
         assertTrue(mCM.isActiveNetworkMetered());
+
+        maybeExpectVpnTransportInfo(mCM.getActiveNetwork());
     }
 
     public void testB141603906() throws Exception {
+        if (!supportedHardware()) {
+            return;
+        }
         final InetSocketAddress src = new InetSocketAddress(0);
         final InetSocketAddress dst = new InetSocketAddress(0);
         final int NUM_THREADS = 8;
@@ -1052,6 +1152,15 @@ public class VpnTest extends InstrumentationTestCase {
         }
     }
 
+    private void maybeExpectVpnTransportInfo(Network network) {
+        if (!SdkLevel.isAtLeastS()) return;
+        final NetworkCapabilities vpnNc = mCM.getNetworkCapabilities(network);
+        assertTrue(vpnNc.hasTransport(TRANSPORT_VPN));
+        final TransportInfo ti = vpnNc.getTransportInfo();
+        assertTrue(ti instanceof VpnTransportInfo);
+        assertEquals(VpnManager.TYPE_VPN_SERVICE, ((VpnTransportInfo) ti).type);
+    }
+
     private void assertDefaultProxy(ProxyInfo expected) {
         assertEquals("Incorrect proxy config.", expected, mCM.getDefaultProxy());
         String expectedHost = expected == null ? null : expected.getHost();
@@ -1085,6 +1194,64 @@ public class VpnTest extends InstrumentationTestCase {
                 super.onReceive(context, intent);
             }
             received = true;
+        }
+    }
+
+    /**
+     * Verifies that DownloadManager has CONNECTIVITY_USE_RESTRICTED_NETWORKS permission that can
+     * bind socket to VPN when it is in VPN disallowed list but requested downloading app is in VPN
+     * allowed list.
+     * See b/165774987.
+     */
+    public void testDownloadWithDownloadManagerDisallowed() throws Exception {
+        if (!supportedHardware()) return;
+
+        // Start a VPN with DownloadManager package in disallowed list.
+        startVpn(new String[] {"192.0.2.2/32", "2001:db8:1:2::ffe/128"},
+                new String[] {"192.0.2.0/24", "2001:db8::/32"},
+                "" /* allowedApps */, "com.android.providers.downloads", null /* proxyInfo */,
+                null /* underlyingNetworks */, false /* isAlwaysMetered */);
+
+        final Context context = VpnTest.this.getInstrumentation().getContext();
+        final DownloadManager dm = context.getSystemService(DownloadManager.class);
+        final DownloadCompleteReceiver receiver = new DownloadCompleteReceiver();
+        try {
+            context.registerReceiver(receiver,
+                    new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
+
+            // Enqueue a request and check only one download.
+            final long id = dm.enqueue(new Request(Uri.parse("https://www.google.com")));
+            assertEquals(1, getTotalNumberDownloads(dm, new Query()));
+            assertEquals(1, getTotalNumberDownloads(dm, new Query().setFilterById(id)));
+
+            // Wait for download complete and check status.
+            assertEquals(id, receiver.get(TIMEOUT_MS, TimeUnit.MILLISECONDS));
+            assertEquals(1, getTotalNumberDownloads(dm,
+                    new Query().setFilterByStatus(DownloadManager.STATUS_SUCCESSFUL)));
+
+            // Remove download.
+            assertEquals(1, dm.remove(id));
+            assertEquals(0, getTotalNumberDownloads(dm, new Query()));
+        } finally {
+            context.unregisterReceiver(receiver);
+        }
+    }
+
+    private static int getTotalNumberDownloads(final DownloadManager dm, final Query query) {
+        try (Cursor cursor = dm.query(query)) { return cursor.getCount(); }
+    }
+
+    private static class DownloadCompleteReceiver extends BroadcastReceiver {
+        private final CompletableFuture<Long> future = new CompletableFuture<>();
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            future.complete(intent.getLongExtra(
+                    DownloadManager.EXTRA_DOWNLOAD_ID, -1 /* defaultValue */));
+        }
+
+        public long get(long timeout, TimeUnit unit) throws Exception {
+            return future.get(timeout, unit);
         }
     }
 }

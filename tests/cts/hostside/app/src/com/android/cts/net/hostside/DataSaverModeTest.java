@@ -67,7 +67,7 @@ public class DataSaverModeTest extends AbstractRestrictBackgroundNetworkTestCase
     public void testGetRestrictBackgroundStatus_disabled() throws Exception {
         assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_DISABLED);
 
-        // Sanity check: make sure status is always disabled, never whitelisted
+        // Verify status is always disabled, never whitelisted
         addRestrictBackgroundWhitelist(mUid);
         assertRestrictBackgroundChangedReceived(0);
         assertDataSaverStatusOnBackground(RESTRICT_BACKGROUND_STATUS_DISABLED);

@@ -59,9 +59,11 @@ public class TrafficStatsTest extends AndroidTestCase {
         assertTrue(TrafficStats.getTotalRxBytes() >= 0);
     }
 
-    public void testValidPacketStats() {
+    public void testValidIfaceStats() {
         assertTrue(TrafficStats.getTxPackets("lo") >= 0);
         assertTrue(TrafficStats.getRxPackets("lo") >= 0);
+        assertTrue(TrafficStats.getTxBytes("lo") >= 0);
+        assertTrue(TrafficStats.getRxBytes("lo") >= 0);
     }
 
     public void testThreadStatsTag() throws Exception {
@@ -109,6 +111,8 @@ public class TrafficStatsTest extends AndroidTestCase {
         final long uidRxPacketsBefore = TrafficStats.getUidRxPackets(Process.myUid());
         final long ifaceTxPacketsBefore = TrafficStats.getTxPackets("lo");
         final long ifaceRxPacketsBefore = TrafficStats.getRxPackets("lo");
+        final long ifaceTxBytesBefore = TrafficStats.getTxBytes("lo");
+        final long ifaceRxBytesBefore = TrafficStats.getRxBytes("lo");
 
         // Transfer 1MB of data across an explicitly localhost socket.
         final int byteCount = 1024;
@@ -189,8 +193,12 @@ public class TrafficStatsTest extends AndroidTestCase {
         final long uidRxDeltaPackets = uidRxPacketsAfter - uidRxPacketsBefore;
         final long ifaceTxPacketsAfter = TrafficStats.getTxPackets("lo");
         final long ifaceRxPacketsAfter = TrafficStats.getRxPackets("lo");
+        final long ifaceTxBytesAfter = TrafficStats.getTxBytes("lo");
+        final long ifaceRxBytesAfter = TrafficStats.getRxBytes("lo");
         final long ifaceTxDeltaPackets = ifaceTxPacketsAfter - ifaceTxPacketsBefore;
         final long ifaceRxDeltaPackets = ifaceRxPacketsAfter - ifaceRxPacketsBefore;
+        final long ifaceTxDeltaBytes = ifaceTxBytesAfter - ifaceTxBytesBefore;
+        final long ifaceRxDeltaBytes = ifaceRxBytesAfter - ifaceRxBytesBefore;
 
         // Localhost traffic *does* count against per-UID stats.
         /*
@@ -246,9 +254,13 @@ public class TrafficStatsTest extends AndroidTestCase {
         assertInRange("uidrxb", uidRxDeltaBytes, pktBytes + minExpExtraPktBytes,
                 pktBytes + pktWithNoDataBytes + maxExpExtraPktBytes + deltaRxOtherPktBytes);
         assertInRange("iftxp", ifaceTxDeltaPackets, packetCount + minExpectedExtraPackets,
-                packetCount + packetCount + maxExpectedExtraPackets + deltaTxOtherPackets);
+                packetCount + packetCount + maxExpectedExtraPackets);
         assertInRange("ifrxp", ifaceRxDeltaPackets, packetCount + minExpectedExtraPackets,
-                packetCount + packetCount + maxExpectedExtraPackets + deltaRxOtherPackets);
+                packetCount + packetCount + maxExpectedExtraPackets);
+        assertInRange("iftxb", ifaceTxDeltaBytes, pktBytes + minExpExtraPktBytes,
+                pktBytes + pktWithNoDataBytes + maxExpExtraPktBytes);
+        assertInRange("ifrxb", ifaceRxDeltaBytes, pktBytes + minExpExtraPktBytes,
+                pktBytes + pktWithNoDataBytes + maxExpExtraPktBytes);
 
         // Localhost traffic *does* count against total stats.
         // Check the total stats increased after test data transfer over localhost has been made.
@@ -264,6 +276,10 @@ public class TrafficStatsTest extends AndroidTestCase {
                 totalTxPacketsAfter >= totalTxPacketsBefore + ifaceTxDeltaPackets);
         assertTrue("ifrxp: " + ifaceRxPacketsBefore + " -> " + ifaceRxPacketsAfter,
                 totalRxPacketsAfter >= totalRxPacketsBefore + ifaceRxDeltaPackets);
+        assertTrue("iftxb: " + ifaceTxBytesBefore + " -> " + ifaceTxBytesAfter,
+            totalTxBytesAfter >= totalTxBytesBefore + ifaceTxDeltaBytes);
+        assertTrue("ifrxb: " + ifaceRxBytesBefore + " -> " + ifaceRxBytesAfter,
+            totalRxBytesAfter >= totalRxBytesBefore + ifaceRxDeltaBytes);
 
         // Localhost traffic should *not* count against mobile stats,
         // There might be some other traffic, but nowhere near 1MB.

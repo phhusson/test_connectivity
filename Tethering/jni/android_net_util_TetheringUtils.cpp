@@ -28,9 +28,6 @@
 #include <sys/socket.h>
 #include <stdio.h>
 
-#define LOG_TAG "TetheringUtils"
-#include <android/log.h>
-
 namespace android {
 
 static const uint32_t kIPv6NextHeaderOffset = offsetof(ip6_hdr, ip6_nxt);
@@ -182,20 +179,6 @@ int register_android_net_util_TetheringUtils(JNIEnv* env) {
     return jniRegisterNativeMethods(env,
             "android/net/util/TetheringUtils",
             gMethods, NELEM(gMethods));
-}
-
-extern "C" jint JNI_OnLoad(JavaVM* vm, void*) {
-    JNIEnv *env;
-    if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) {
-        __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, "ERROR: GetEnv failed");
-        return JNI_ERR;
-    }
-
-    if (register_android_net_util_TetheringUtils(env) < 0) {
-        return JNI_ERR;
-    }
-
-    return JNI_VERSION_1_6;
 }
 
 }; // namespace android
