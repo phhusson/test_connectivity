@@ -602,22 +602,10 @@ static inline __always_inline int do_forward4(struct __sk_buff* skb, const bool 
 
 // Full featured (required) implementations for 5.8+ kernels
 
-DEFINE_BPF_PROG_KVER("schedcls/tether_downstream4_ether$5_8", AID_ROOT, AID_NETWORK_STACK,
-                     sched_cls_tether_downstream4_ether_5_8, KVER(5, 8, 0))
-(struct __sk_buff* skb) {
-    return do_forward4(skb, /* is_ethernet */ true, /* downstream */ true, /* updatetime */ true);
-}
-
 DEFINE_BPF_PROG_KVER("schedcls/tether_downstream4_rawip$5_8", AID_ROOT, AID_NETWORK_STACK,
                      sched_cls_tether_downstream4_rawip_5_8, KVER(5, 8, 0))
 (struct __sk_buff* skb) {
     return do_forward4(skb, /* is_ethernet */ false, /* downstream */ true, /* updatetime */ true);
-}
-
-DEFINE_BPF_PROG_KVER("schedcls/tether_upstream4_ether$5_8", AID_ROOT, AID_NETWORK_STACK,
-                     sched_cls_tether_upstream4_ether_5_8, KVER(5, 8, 0))
-(struct __sk_buff* skb) {
-    return do_forward4(skb, /* is_ethernet */ true, /* downstream */ false, /* updatetime */ true);
 }
 
 DEFINE_BPF_PROG_KVER("schedcls/tether_upstream4_rawip$5_8", AID_ROOT, AID_NETWORK_STACK,
@@ -626,15 +614,19 @@ DEFINE_BPF_PROG_KVER("schedcls/tether_upstream4_rawip$5_8", AID_ROOT, AID_NETWOR
     return do_forward4(skb, /* is_ethernet */ false, /* downstream */ false, /* updatetime */ true);
 }
 
-// Full featured (optional) implementations for [4.14..5.8) kernels
-
-DEFINE_OPTIONAL_BPF_PROG_KVER_RANGE("schedcls/tether_downstream4_ether$opt",
-                                    AID_ROOT, AID_NETWORK_STACK,
-                                    sched_cls_tether_downstream4_ether_opt,
-                                    KVER(4, 14, 0), KVER(5, 8, 0))
+DEFINE_BPF_PROG_KVER("schedcls/tether_downstream4_ether$5_8", AID_ROOT, AID_NETWORK_STACK,
+                     sched_cls_tether_downstream4_ether_5_8, KVER(5, 8, 0))
 (struct __sk_buff* skb) {
     return do_forward4(skb, /* is_ethernet */ true, /* downstream */ true, /* updatetime */ true);
 }
+
+DEFINE_BPF_PROG_KVER("schedcls/tether_upstream4_ether$5_8", AID_ROOT, AID_NETWORK_STACK,
+                     sched_cls_tether_upstream4_ether_5_8, KVER(5, 8, 0))
+(struct __sk_buff* skb) {
+    return do_forward4(skb, /* is_ethernet */ true, /* downstream */ false, /* updatetime */ true);
+}
+
+// Full featured (optional) implementations for [4.14..5.8) kernels
 
 DEFINE_OPTIONAL_BPF_PROG_KVER_RANGE("schedcls/tether_downstream4_rawip$opt",
                                     AID_ROOT, AID_NETWORK_STACK,
@@ -644,20 +636,28 @@ DEFINE_OPTIONAL_BPF_PROG_KVER_RANGE("schedcls/tether_downstream4_rawip$opt",
     return do_forward4(skb, /* is_ethernet */ false, /* downstream */ true, /* updatetime */ true);
 }
 
-DEFINE_OPTIONAL_BPF_PROG_KVER_RANGE("schedcls/tether_upstream4_ether$opt",
-                                    AID_ROOT, AID_NETWORK_STACK,
-                                    sched_cls_tether_upstream4_ether_opt,
-                                    KVER(4, 14, 0), KVER(5, 8, 0))
-(struct __sk_buff* skb) {
-    return do_forward4(skb, /* is_ethernet */ true, /* downstream */ false, /* updatetime */ true);
-}
-
 DEFINE_OPTIONAL_BPF_PROG_KVER_RANGE("schedcls/tether_upstream4_rawip$opt",
                                     AID_ROOT, AID_NETWORK_STACK,
                                     sched_cls_tether_upstream4_rawip_opt,
                                     KVER(4, 14, 0), KVER(5, 8, 0))
 (struct __sk_buff* skb) {
     return do_forward4(skb, /* is_ethernet */ false, /* downstream */ false, /* updatetime */ true);
+}
+
+DEFINE_OPTIONAL_BPF_PROG_KVER_RANGE("schedcls/tether_downstream4_ether$opt",
+                                    AID_ROOT, AID_NETWORK_STACK,
+                                    sched_cls_tether_downstream4_ether_opt,
+                                    KVER(4, 14, 0), KVER(5, 8, 0))
+(struct __sk_buff* skb) {
+    return do_forward4(skb, /* is_ethernet */ true, /* downstream */ true, /* updatetime */ true);
+}
+
+DEFINE_OPTIONAL_BPF_PROG_KVER_RANGE("schedcls/tether_upstream4_ether$opt",
+                                    AID_ROOT, AID_NETWORK_STACK,
+                                    sched_cls_tether_upstream4_ether_opt,
+                                    KVER(4, 14, 0), KVER(5, 8, 0))
+(struct __sk_buff* skb) {
+    return do_forward4(skb, /* is_ethernet */ true, /* downstream */ false, /* updatetime */ true);
 }
 
 // Partial (TCP-only: will not update 'last_used' field) implementations for 4.14+ kernels.
@@ -671,22 +671,10 @@ DEFINE_OPTIONAL_BPF_PROG_KVER_RANGE("schedcls/tether_upstream4_rawip$opt",
 // which enforces and documents the required kernel cherrypicks will make it pretty unlikely that
 // many devices upgrading to S will end up relying on these fallback programs.
 
-DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_downstream4_ether$4_14", AID_ROOT, AID_NETWORK_STACK,
-                           sched_cls_tether_downstream4_ether_4_14, KVER(4, 14, 0), KVER(5, 8, 0))
-(struct __sk_buff* skb) {
-    return do_forward4(skb, /* is_ethernet */ true, /* downstream */ true, /* updatetime */ false);
-}
-
 DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_downstream4_rawip$4_14", AID_ROOT, AID_NETWORK_STACK,
                            sched_cls_tether_downstream4_rawip_4_14, KVER(4, 14, 0), KVER(5, 8, 0))
 (struct __sk_buff* skb) {
     return do_forward4(skb, /* is_ethernet */ false, /* downstream */ true, /* updatetime */ false);
-}
-
-DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_upstream4_ether$4_14", AID_ROOT, AID_NETWORK_STACK,
-                           sched_cls_tether_upstream4_ether_4_14, KVER(4, 14, 0), KVER(5, 8, 0))
-(struct __sk_buff* skb) {
-    return do_forward4(skb, /* is_ethernet */ true, /* downstream */ false, /* updatetime */ false);
 }
 
 DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_upstream4_rawip$4_14", AID_ROOT, AID_NETWORK_STACK,
@@ -695,13 +683,19 @@ DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_upstream4_rawip$4_14", AID_ROOT, AID
     return do_forward4(skb, /* is_ethernet */ false, /* downstream */ false, /* updatetime */ false);
 }
 
-// Placeholder (no-op) implementations for older pre-4.14 kernels
-
-DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_downstream4_ether$stub", AID_ROOT, AID_NETWORK_STACK,
-                           sched_cls_tether_downstream4_ether_stub, KVER_NONE, KVER(4, 14, 0))
+DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_downstream4_ether$4_14", AID_ROOT, AID_NETWORK_STACK,
+                           sched_cls_tether_downstream4_ether_4_14, KVER(4, 14, 0), KVER(5, 8, 0))
 (struct __sk_buff* skb) {
-    return TC_ACT_OK;
+    return do_forward4(skb, /* is_ethernet */ true, /* downstream */ true, /* updatetime */ false);
 }
+
+DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_upstream4_ether$4_14", AID_ROOT, AID_NETWORK_STACK,
+                           sched_cls_tether_upstream4_ether_4_14, KVER(4, 14, 0), KVER(5, 8, 0))
+(struct __sk_buff* skb) {
+    return do_forward4(skb, /* is_ethernet */ true, /* downstream */ false, /* updatetime */ false);
+}
+
+// Placeholder (no-op) implementations for older pre-4.14 kernels
 
 DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_downstream4_rawip$stub", AID_ROOT, AID_NETWORK_STACK,
                            sched_cls_tether_downstream4_rawip_stub, KVER_NONE, KVER(4, 14, 0))
@@ -709,14 +703,20 @@ DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_downstream4_rawip$stub", AID_ROOT, A
     return TC_ACT_OK;
 }
 
-DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_upstream4_ether$stub", AID_ROOT, AID_NETWORK_STACK,
-                           sched_cls_tether_upstream4_ether_stub, KVER_NONE, KVER(4, 14, 0))
+DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_upstream4_rawip$stub", AID_ROOT, AID_NETWORK_STACK,
+                           sched_cls_tether_upstream4_rawip_stub, KVER_NONE, KVER(4, 14, 0))
 (struct __sk_buff* skb) {
     return TC_ACT_OK;
 }
 
-DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_upstream4_rawip$stub", AID_ROOT, AID_NETWORK_STACK,
-                           sched_cls_tether_upstream4_rawip_stub, KVER_NONE, KVER(4, 14, 0))
+DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_downstream4_ether$stub", AID_ROOT, AID_NETWORK_STACK,
+                           sched_cls_tether_downstream4_ether_stub, KVER_NONE, KVER(4, 14, 0))
+(struct __sk_buff* skb) {
+    return TC_ACT_OK;
+}
+
+DEFINE_BPF_PROG_KVER_RANGE("schedcls/tether_upstream4_ether$stub", AID_ROOT, AID_NETWORK_STACK,
+                           sched_cls_tether_upstream4_ether_stub, KVER_NONE, KVER(4, 14, 0))
 (struct __sk_buff* skb) {
     return TC_ACT_OK;
 }
