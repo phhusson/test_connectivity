@@ -159,6 +159,18 @@ public class BpfCoordinatorShimImpl
     }
 
     @Override
+    public boolean attachProgram(String iface, boolean downstream) {
+        /* no op */
+        return true;
+    }
+
+    @Override
+    public boolean detachProgram(String iface) {
+        /* no op */
+        return true;
+    }
+
+    @Override
     public String toString() {
         return "Netd used";
     }

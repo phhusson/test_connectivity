@@ -31,6 +31,7 @@ import androidx.annotation.Nullable;
 import com.android.networkstack.tethering.BpfCoordinator.Dependencies;
 import com.android.networkstack.tethering.BpfCoordinator.Ipv6ForwardingRule;
 import com.android.networkstack.tethering.BpfMap;
+import com.android.networkstack.tethering.BpfUtils;
 import com.android.networkstack.tethering.Tether4Key;
 import com.android.networkstack.tethering.Tether4Value;
 import com.android.networkstack.tethering.Tether6Value;
@@ -42,6 +43,7 @@ import com.android.networkstack.tethering.TetherStatsValue;
 import com.android.networkstack.tethering.TetherUpstream6Key;
 
 import java.io.FileDescriptor;
+import java.io.IOException;
 
 /**
  * Bpf coordinator class for API shims.
@@ -84,12 +86,46 @@ public class BpfCoordinatorShimImpl
 
     public BpfCoordinatorShimImpl(@NonNull final Dependencies deps) {
         mLog = deps.getSharedLog().forSubComponent(TAG);
+
         mBpfDownstream4Map = deps.getBpfDownstream4Map();
         mBpfUpstream4Map = deps.getBpfUpstream4Map();
         mBpfDownstream6Map = deps.getBpfDownstream6Map();
         mBpfUpstream6Map = deps.getBpfUpstream6Map();
         mBpfStatsMap = deps.getBpfStatsMap();
         mBpfLimitMap = deps.getBpfLimitMap();
+
+        // Clear the stubs of the maps for handling the system service crash if any.
+        // Doesn't throw the exception and clear the stubs as many as possible.
+        try {
+            if (mBpfDownstream4Map != null) mBpfDownstream4Map.clear();
+        } catch (ErrnoException e) {
+            mLog.e("Could not clear mBpfDownstream4Map: " + e);
+        }
+        try {
+            if (mBpfUpstream4Map != null) mBpfUpstream4Map.clear();
+        } catch (ErrnoException e) {
+            mLog.e("Could not clear mBpfUpstream4Map: " + e);
+        }
+        try {
+            if (mBpfDownstream6Map != null) mBpfDownstream6Map.clear();
+        } catch (ErrnoException e) {
+            mLog.e("Could not clear mBpfDownstream6Map: " + e);
+        }
+        try {
+            if (mBpfUpstream6Map != null) mBpfUpstream6Map.clear();
+        } catch (ErrnoException e) {
+            mLog.e("Could not clear mBpfUpstream6Map: " + e);
+        }
+        try {
+            if (mBpfStatsMap != null) mBpfStatsMap.clear();
+        } catch (ErrnoException e) {
+            mLog.e("Could not clear mBpfStatsMap: " + e);
+        }
+        try {
+            if (mBpfLimitMap != null) mBpfLimitMap.clear();
+        } catch (ErrnoException e) {
+            mLog.e("Could not clear mBpfLimitMap: " + e);
+        }
     }
 
     @Override
@@ -320,6 +356,32 @@ public class BpfCoordinatorShimImpl
                 mLog.e("Could not delete entry: ", e);
                 return false;
             }
+        }
+        return true;
+    }
+
+    @Override
+    public boolean attachProgram(String iface, boolean downstream) {
+        if (!isInitialized()) return false;
+
+        try {
+            BpfUtils.attachProgram(iface, downstream);
+        } catch (IOException e) {
+            mLog.e("Could not attach program: " + e);
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    public boolean detachProgram(String iface) {
+        if (!isInitialized()) return false;
+
+        try {
+            BpfUtils.detachProgram(iface);
+        } catch (IOException e) {
+            mLog.e("Could not detach program: " + e);
+            return false;
         }
         return true;
     }
