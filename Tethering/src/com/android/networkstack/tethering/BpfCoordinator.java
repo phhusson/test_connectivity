@@ -224,6 +224,7 @@ public class BpfCoordinator {
         maybeSchedulePollingStats();
     };
 
+    // TODO: add BpfMap<TetherDownstream64Key, TetherDownstream64Value> retrieving function.
     @VisibleForTesting
     public abstract static class Dependencies {
         /** Get handler. */
