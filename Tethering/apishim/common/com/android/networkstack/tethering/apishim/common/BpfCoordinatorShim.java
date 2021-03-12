@@ -143,5 +143,19 @@ public abstract class BpfCoordinatorShim {
      * Deletes a tethering IPv4 offload rule from the appropriate BPF map.
      */
     public abstract boolean tetherOffloadRuleRemove(boolean downstream, @NonNull Tether4Key key);
+
+    /**
+     * Attach BPF program.
+     *
+     * TODO: consider using InterfaceParams to replace interface name.
+     */
+    public abstract boolean attachProgram(@NonNull String iface, boolean downstream);
+
+    /**
+     * Detach BPF program.
+     *
+     * TODO: consider using InterfaceParams to replace interface name.
+     */
+    public abstract boolean detachProgram(@NonNull String iface);
 }
 

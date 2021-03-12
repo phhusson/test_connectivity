@@ -31,6 +31,7 @@ import androidx.annotation.Nullable;
 import com.android.networkstack.tethering.BpfCoordinator.Dependencies;
 import com.android.networkstack.tethering.BpfCoordinator.Ipv6ForwardingRule;
 import com.android.networkstack.tethering.BpfMap;
+import com.android.networkstack.tethering.BpfUtils;
 import com.android.networkstack.tethering.Tether4Key;
 import com.android.networkstack.tethering.Tether4Value;
 import com.android.networkstack.tethering.Tether6Value;
@@ -42,6 +43,7 @@ import com.android.networkstack.tethering.TetherStatsValue;
 import com.android.networkstack.tethering.TetherUpstream6Key;
 
 import java.io.FileDescriptor;
+import java.io.IOException;
 
 /**
  * Bpf coordinator class for API shims.
@@ -354,6 +356,32 @@ public class BpfCoordinatorShimImpl
                 mLog.e("Could not delete entry: ", e);
                 return false;
             }
+        }
+        return true;
+    }
+
+    @Override
+    public boolean attachProgram(String iface, boolean downstream) {
+        if (!isInitialized()) return false;
+
+        try {
+            BpfUtils.attachProgram(iface, downstream);
+        } catch (IOException e) {
+            mLog.e("Could not attach program: " + e);
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    public boolean detachProgram(String iface) {
+        if (!isInitialized()) return false;
+
+        try {
+            BpfUtils.detachProgram(iface);
+        } catch (IOException e) {
+            mLog.e("Could not detach program: " + e);
+            return false;
         }
         return true;
     }
