@@ -150,6 +150,12 @@ public class BpfCoordinatorTest {
             // BpfMap#getValue treats that the entry is not found as no error.
             return mMap.get(key);
         }
+
+        @Override
+        public void clear() throws ErrnoException {
+            // TODO: consider using mocked #getFirstKey and #deleteEntry to implement.
+            mMap.clear();
+        }
     };
 
     @Mock private NetworkStatsManager mStatsManager;
@@ -988,6 +994,24 @@ public class BpfCoordinatorTest {
 
     @Test
     @IgnoreUpTo(Build.VERSION_CODES.R)
+    public void testBpfDisabledbyNoBpfDownstream4Map() throws Exception {
+        setupFunctioningNetdInterface();
+        doReturn(null).when(mDeps).getBpfDownstream4Map();
+
+        checkBpfDisabled();
+    }
+
+    @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
+    public void testBpfDisabledbyNoBpfUpstream4Map() throws Exception {
+        setupFunctioningNetdInterface();
+        doReturn(null).when(mDeps).getBpfUpstream4Map();
+
+        checkBpfDisabled();
+    }
+
+    @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testBpfDisabledbyNoBpfStatsMap() throws Exception {
         setupFunctioningNetdInterface();
         doReturn(null).when(mDeps).getBpfStatsMap();
@@ -1002,6 +1026,20 @@ public class BpfCoordinatorTest {
         doReturn(null).when(mDeps).getBpfLimitMap();
 
         checkBpfDisabled();
+    }
+
+    @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
+    public void testBpfMapClear() throws Exception {
+        setupFunctioningNetdInterface();
+
+        final BpfCoordinator coordinator = makeBpfCoordinator();
+        verify(mBpfDownstream4Map).clear();
+        verify(mBpfUpstream4Map).clear();
+        verify(mBpfDownstream6Map).clear();
+        verify(mBpfUpstream6Map).clear();
+        verify(mBpfStatsMap).clear();
+        verify(mBpfLimitMap).clear();
     }
 
     @Test

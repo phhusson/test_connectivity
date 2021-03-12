@@ -84,12 +84,46 @@ public class BpfCoordinatorShimImpl
 
     public BpfCoordinatorShimImpl(@NonNull final Dependencies deps) {
         mLog = deps.getSharedLog().forSubComponent(TAG);
+
         mBpfDownstream4Map = deps.getBpfDownstream4Map();
         mBpfUpstream4Map = deps.getBpfUpstream4Map();
         mBpfDownstream6Map = deps.getBpfDownstream6Map();
         mBpfUpstream6Map = deps.getBpfUpstream6Map();
         mBpfStatsMap = deps.getBpfStatsMap();
         mBpfLimitMap = deps.getBpfLimitMap();
+
+        // Clear the stubs of the maps for handling the system service crash if any.
+        // Doesn't throw the exception and clear the stubs as many as possible.
+        try {
+            if (mBpfDownstream4Map != null) mBpfDownstream4Map.clear();
+        } catch (ErrnoException e) {
+            mLog.e("Could not clear mBpfDownstream4Map: " + e);
+        }
+        try {
+            if (mBpfUpstream4Map != null) mBpfUpstream4Map.clear();
+        } catch (ErrnoException e) {
+            mLog.e("Could not clear mBpfUpstream4Map: " + e);
+        }
+        try {
+            if (mBpfDownstream6Map != null) mBpfDownstream6Map.clear();
+        } catch (ErrnoException e) {
+            mLog.e("Could not clear mBpfDownstream6Map: " + e);
+        }
+        try {
+            if (mBpfUpstream6Map != null) mBpfUpstream6Map.clear();
+        } catch (ErrnoException e) {
+            mLog.e("Could not clear mBpfUpstream6Map: " + e);
+        }
+        try {
+            if (mBpfStatsMap != null) mBpfStatsMap.clear();
+        } catch (ErrnoException e) {
+            mLog.e("Could not clear mBpfStatsMap: " + e);
+        }
+        try {
+            if (mBpfLimitMap != null) mBpfLimitMap.clear();
+        } catch (ErrnoException e) {
+            mLog.e("Could not clear mBpfLimitMap: " + e);
+        }
     }
 
     @Override
