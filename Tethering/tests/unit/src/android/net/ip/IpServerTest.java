@@ -247,7 +247,7 @@ public class IpServerTest {
             lp.setInterfaceName(upstreamIface);
             dispatchTetherConnectionChanged(upstreamIface, lp, 0);
         }
-        reset(mNetd, mCallback, mAddressCoordinator);
+        reset(mNetd, mCallback, mAddressCoordinator, mBpfCoordinator);
         when(mAddressCoordinator.requestDownstreamAddress(any(), anyBoolean())).thenReturn(
                 mTestAddress);
     }
@@ -471,10 +471,14 @@ public class IpServerTest {
         // Telling the state machine about its upstream interface triggers
         // a little more configuration.
         dispatchTetherConnectionChanged(UPSTREAM_IFACE);
-        InOrder inOrder = inOrder(mNetd);
+        InOrder inOrder = inOrder(mNetd, mBpfCoordinator);
+
+        // Add the forwarding pair <IFACE_NAME, UPSTREAM_IFACE>.
+        inOrder.verify(mBpfCoordinator).maybeAttachProgram(IFACE_NAME, UPSTREAM_IFACE);
         inOrder.verify(mNetd).tetherAddForward(IFACE_NAME, UPSTREAM_IFACE);
         inOrder.verify(mNetd).ipfwdAddInterfaceForward(IFACE_NAME, UPSTREAM_IFACE);
-        verifyNoMoreInteractions(mNetd, mCallback);
+
+        verifyNoMoreInteractions(mNetd, mCallback, mBpfCoordinator);
     }
 
     @Test
@@ -482,12 +486,19 @@ public class IpServerTest {
         initTetheredStateMachine(TETHERING_BLUETOOTH, UPSTREAM_IFACE);
 
         dispatchTetherConnectionChanged(UPSTREAM_IFACE2);
-        InOrder inOrder = inOrder(mNetd);
+        InOrder inOrder = inOrder(mNetd, mBpfCoordinator);
+
+        // Remove the forwarding pair <IFACE_NAME, UPSTREAM_IFACE>.
+        inOrder.verify(mBpfCoordinator).maybeDetachProgram(IFACE_NAME, UPSTREAM_IFACE);
         inOrder.verify(mNetd).ipfwdRemoveInterfaceForward(IFACE_NAME, UPSTREAM_IFACE);
         inOrder.verify(mNetd).tetherRemoveForward(IFACE_NAME, UPSTREAM_IFACE);
+
+        // Add the forwarding pair <IFACE_NAME, UPSTREAM_IFACE2>.
+        inOrder.verify(mBpfCoordinator).maybeAttachProgram(IFACE_NAME, UPSTREAM_IFACE2);
         inOrder.verify(mNetd).tetherAddForward(IFACE_NAME, UPSTREAM_IFACE2);
         inOrder.verify(mNetd).ipfwdAddInterfaceForward(IFACE_NAME, UPSTREAM_IFACE2);
-        verifyNoMoreInteractions(mNetd, mCallback);
+
+        verifyNoMoreInteractions(mNetd, mCallback, mBpfCoordinator);
     }
 
     @Test
@@ -497,10 +508,20 @@ public class IpServerTest {
         doThrow(RemoteException.class).when(mNetd).tetherAddForward(IFACE_NAME, UPSTREAM_IFACE2);
 
         dispatchTetherConnectionChanged(UPSTREAM_IFACE2);
-        InOrder inOrder = inOrder(mNetd);
+        InOrder inOrder = inOrder(mNetd, mBpfCoordinator);
+
+        // Remove the forwarding pair <IFACE_NAME, UPSTREAM_IFACE>.
+        inOrder.verify(mBpfCoordinator).maybeDetachProgram(IFACE_NAME, UPSTREAM_IFACE);
         inOrder.verify(mNetd).ipfwdRemoveInterfaceForward(IFACE_NAME, UPSTREAM_IFACE);
         inOrder.verify(mNetd).tetherRemoveForward(IFACE_NAME, UPSTREAM_IFACE);
+
+        // Add the forwarding pair <IFACE_NAME, UPSTREAM_IFACE2> and expect that failed on
+        // tetherAddForward.
+        inOrder.verify(mBpfCoordinator).maybeAttachProgram(IFACE_NAME, UPSTREAM_IFACE2);
         inOrder.verify(mNetd).tetherAddForward(IFACE_NAME, UPSTREAM_IFACE2);
+
+        // Remove the forwarding pair <IFACE_NAME, UPSTREAM_IFACE2> to fallback.
+        inOrder.verify(mBpfCoordinator).maybeDetachProgram(IFACE_NAME, UPSTREAM_IFACE2);
         inOrder.verify(mNetd).ipfwdRemoveInterfaceForward(IFACE_NAME, UPSTREAM_IFACE2);
         inOrder.verify(mNetd).tetherRemoveForward(IFACE_NAME, UPSTREAM_IFACE2);
     }
@@ -513,11 +534,21 @@ public class IpServerTest {
                 IFACE_NAME, UPSTREAM_IFACE2);
 
         dispatchTetherConnectionChanged(UPSTREAM_IFACE2);
-        InOrder inOrder = inOrder(mNetd);
+        InOrder inOrder = inOrder(mNetd, mBpfCoordinator);
+
+        // Remove the forwarding pair <IFACE_NAME, UPSTREAM_IFACE>.
+        inOrder.verify(mBpfCoordinator).maybeDetachProgram(IFACE_NAME, UPSTREAM_IFACE);
         inOrder.verify(mNetd).ipfwdRemoveInterfaceForward(IFACE_NAME, UPSTREAM_IFACE);
         inOrder.verify(mNetd).tetherRemoveForward(IFACE_NAME, UPSTREAM_IFACE);
+
+        // Add the forwarding pair <IFACE_NAME, UPSTREAM_IFACE2> and expect that failed on
+        // ipfwdAddInterfaceForward.
+        inOrder.verify(mBpfCoordinator).maybeAttachProgram(IFACE_NAME, UPSTREAM_IFACE2);
         inOrder.verify(mNetd).tetherAddForward(IFACE_NAME, UPSTREAM_IFACE2);
         inOrder.verify(mNetd).ipfwdAddInterfaceForward(IFACE_NAME, UPSTREAM_IFACE2);
+
+        // Remove the forwarding pair <IFACE_NAME, UPSTREAM_IFACE2> to fallback.
+        inOrder.verify(mBpfCoordinator).maybeDetachProgram(IFACE_NAME, UPSTREAM_IFACE2);
         inOrder.verify(mNetd).ipfwdRemoveInterfaceForward(IFACE_NAME, UPSTREAM_IFACE2);
         inOrder.verify(mNetd).tetherRemoveForward(IFACE_NAME, UPSTREAM_IFACE2);
     }
@@ -527,19 +558,22 @@ public class IpServerTest {
         initTetheredStateMachine(TETHERING_BLUETOOTH, UPSTREAM_IFACE);
 
         dispatchCommand(IpServer.CMD_TETHER_UNREQUESTED);
-        InOrder inOrder = inOrder(mNetd, mCallback, mAddressCoordinator);
+        InOrder inOrder = inOrder(mNetd, mCallback, mAddressCoordinator, mBpfCoordinator);
+        inOrder.verify(mBpfCoordinator).maybeDetachProgram(IFACE_NAME, UPSTREAM_IFACE);
         inOrder.verify(mNetd).ipfwdRemoveInterfaceForward(IFACE_NAME, UPSTREAM_IFACE);
         inOrder.verify(mNetd).tetherRemoveForward(IFACE_NAME, UPSTREAM_IFACE);
+        inOrder.verify(mBpfCoordinator).tetherOffloadRuleClear(mIpServer);
         inOrder.verify(mNetd).tetherApplyDnsInterfaces();
         inOrder.verify(mNetd).tetherInterfaceRemove(IFACE_NAME);
         inOrder.verify(mNetd).networkRemoveInterface(INetd.LOCAL_NET_ID, IFACE_NAME);
         inOrder.verify(mNetd).interfaceSetCfg(argThat(cfg -> IFACE_NAME.equals(cfg.ifName)));
         inOrder.verify(mAddressCoordinator).releaseDownstream(any());
+        inOrder.verify(mBpfCoordinator).stopMonitoring(mIpServer);
         inOrder.verify(mCallback).updateInterfaceState(
                 mIpServer, STATE_AVAILABLE, TETHER_ERROR_NO_ERROR);
         inOrder.verify(mCallback).updateLinkProperties(
                 eq(mIpServer), any(LinkProperties.class));
-        verifyNoMoreInteractions(mNetd, mCallback, mAddressCoordinator);
+        verifyNoMoreInteractions(mNetd, mCallback, mAddressCoordinator, mBpfCoordinator);
     }
 
     @Test

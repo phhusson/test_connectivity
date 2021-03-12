@@ -1291,6 +1291,7 @@ public class IpServer extends StateMachine {
             // Sometimes interfaces are gone before we get
             // to remove their rules, which generates errors.
             // Just do the best we can.
+            mBpfCoordinator.maybeDetachProgram(mIfaceName, upstreamIface);
             try {
                 mNetd.ipfwdRemoveInterfaceForward(mIfaceName, upstreamIface);
             } catch (RemoteException | ServiceSpecificException e) {
@@ -1334,6 +1335,7 @@ public class IpServer extends StateMachine {
                     mUpstreamIfaceSet = newUpstreamIfaceSet;
 
                     for (String ifname : added) {
+                        mBpfCoordinator.maybeAttachProgram(mIfaceName, ifname);
                         try {
                             mNetd.tetherAddForward(mIfaceName, ifname);
                             mNetd.ipfwdAddInterfaceForward(mIfaceName, ifname);
