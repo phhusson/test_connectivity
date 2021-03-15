@@ -25,7 +25,7 @@ java_defaults {
     srcs: [
         "apishim/**/*.java",
         "src/**/*.java",
-        ":framework-tethering-shared-srcs",
+        ":framework-connectivity-shared-srcs",
         ":tethering-module-utils-srcs",
         ":services-tethering-shared-srcs",
     ],
