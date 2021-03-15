@@ -50,13 +50,16 @@ import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.net.util.SharedLog;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.Message;
+import android.os.test.TestLooper;
 
 import androidx.test.filters.SmallTest;
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.internal.util.State;
 import com.android.internal.util.StateMachine;
+import com.android.networkstack.tethering.TestConnectivityManager.NetworkRequestInfo;
 import com.android.networkstack.tethering.TestConnectivityManager.TestNetworkAgent;
 
 import org.junit.After;
@@ -100,6 +103,8 @@ public class UpstreamNetworkMonitorTest {
     private TestConnectivityManager mCM;
     private UpstreamNetworkMonitor mUNM;
 
+    private final TestLooper mLooper = new TestLooper();
+
     @Before public void setUp() throws Exception {
         MockitoAnnotations.initMocks(this);
         reset(mContext);
@@ -109,7 +114,7 @@ public class UpstreamNetworkMonitorTest {
         when(mEntitleMgr.isCellularUpstreamPermitted()).thenReturn(true);
 
         mCM = spy(new TestConnectivityManager(mContext, mCS, sDefaultRequest));
-        mSM = new TestStateMachine();
+        mSM = new TestStateMachine(mLooper.getLooper());
         mUNM = new UpstreamNetworkMonitor(mCM, mSM, mLog, EVENT_UNM_UPDATE);
     }
 
@@ -295,14 +300,17 @@ public class UpstreamNetworkMonitorTest {
 
         final TestNetworkAgent wifiAgent = new TestNetworkAgent(mCM, WIFI_CAPABILITIES);
         wifiAgent.fakeConnect();
+        mLooper.dispatchAll();
         // WiFi is up, we should prefer it.
         assertSatisfiesLegacyType(TYPE_WIFI, mUNM.selectPreferredUpstreamType(preferredTypes));
         wifiAgent.fakeDisconnect();
+        mLooper.dispatchAll();
         // There are no networks, so there is nothing to select.
         assertSatisfiesLegacyType(TYPE_NONE, mUNM.selectPreferredUpstreamType(preferredTypes));
 
         final TestNetworkAgent cellAgent = new TestNetworkAgent(mCM, CELL_CAPABILITIES);
         cellAgent.fakeConnect();
+        mLooper.dispatchAll();
         assertSatisfiesLegacyType(TYPE_NONE, mUNM.selectPreferredUpstreamType(preferredTypes));
 
         preferredTypes.add(TYPE_MOBILE_DUN);
@@ -319,7 +327,7 @@ public class UpstreamNetworkMonitorTest {
                 mUNM.selectPreferredUpstreamType(preferredTypes));
         // Check to see we filed an explicit request.
         assertEquals(1, mCM.requested.size());
-        NetworkRequest netReq = (NetworkRequest) mCM.requested.values().toArray()[0];
+        NetworkRequest netReq = ((NetworkRequestInfo) mCM.requested.values().toArray()[0]).request;
         assertTrue(netReq.networkCapabilities.hasTransport(TRANSPORT_CELLULAR));
         assertFalse(netReq.networkCapabilities.hasCapability(NET_CAPABILITY_DUN));
         // mobile is not permitted, we should not use HIPRI.
@@ -332,6 +340,7 @@ public class UpstreamNetworkMonitorTest {
                 mUNM.selectPreferredUpstreamType(preferredTypes));
 
         wifiAgent.fakeConnect();
+        mLooper.dispatchAll();
         // WiFi is up, and we should prefer it over cell.
         assertSatisfiesLegacyType(TYPE_WIFI, mUNM.selectPreferredUpstreamType(preferredTypes));
         assertEquals(0, mCM.requested.size());
@@ -344,17 +353,19 @@ public class UpstreamNetworkMonitorTest {
 
         final TestNetworkAgent dunAgent = new TestNetworkAgent(mCM, DUN_CAPABILITIES);
         dunAgent.fakeConnect();
+        mLooper.dispatchAll();
 
         // WiFi is still preferred.
         assertSatisfiesLegacyType(TYPE_WIFI, mUNM.selectPreferredUpstreamType(preferredTypes));
 
         // WiFi goes down, cell and DUN are still up but only DUN is preferred.
         wifiAgent.fakeDisconnect();
+        mLooper.dispatchAll();
         assertSatisfiesLegacyType(TYPE_MOBILE_DUN,
                 mUNM.selectPreferredUpstreamType(preferredTypes));
         // Check to see we filed an explicit request.
         assertEquals(1, mCM.requested.size());
-        netReq = (NetworkRequest) mCM.requested.values().toArray()[0];
+        netReq = ((NetworkRequestInfo) mCM.requested.values().toArray()[0]).request;
         assertTrue(netReq.networkCapabilities.hasTransport(TRANSPORT_CELLULAR));
         assertTrue(netReq.networkCapabilities.hasCapability(NET_CAPABILITY_DUN));
         // mobile is not permitted, we should not use DUN.
@@ -378,6 +389,7 @@ public class UpstreamNetworkMonitorTest {
         final TestNetworkAgent cellAgent = new TestNetworkAgent(mCM, CELL_CAPABILITIES);
         cellAgent.fakeConnect();
         mCM.makeDefaultNetwork(cellAgent);
+        mLooper.dispatchAll();
         assertEquals(cellAgent.networkId, mUNM.getCurrentPreferredUpstream().network);
         assertEquals(0, mCM.requested.size());
 
@@ -390,11 +402,13 @@ public class UpstreamNetworkMonitorTest {
         // [2] WiFi connects but not validated/promoted to default -> mobile selected.
         final TestNetworkAgent wifiAgent = new TestNetworkAgent(mCM, WIFI_CAPABILITIES);
         wifiAgent.fakeConnect();
+        mLooper.dispatchAll();
         assertEquals(cellAgent.networkId, mUNM.getCurrentPreferredUpstream().network);
         assertEquals(0, mCM.requested.size());
 
         // [3] WiFi validates and is promoted to the default network -> WiFi selected.
         mCM.makeDefaultNetwork(wifiAgent);
+        mLooper.dispatchAll();
         assertEquals(wifiAgent.networkId, mUNM.getCurrentPreferredUpstream().network);
         assertEquals(0, mCM.requested.size());
 
@@ -406,6 +420,7 @@ public class UpstreamNetworkMonitorTest {
 
         // [5] WiFi no longer validated, mobile becomes default, DUN required -> null selected.
         mCM.makeDefaultNetwork(cellAgent);
+        mLooper.dispatchAll();
         assertEquals(null, mUNM.getCurrentPreferredUpstream());
         assertEquals(1, mCM.requested.size());
         assertTrue(isDunRequested());
@@ -415,6 +430,7 @@ public class UpstreamNetworkMonitorTest {
         dunAgent.networkCapabilities.addCapability(NET_CAPABILITY_DUN);
         dunAgent.networkCapabilities.removeCapability(NET_CAPABILITY_INTERNET);
         dunAgent.fakeConnect();
+        mLooper.dispatchAll();
         assertEquals(dunAgent.networkId, mUNM.getCurrentPreferredUpstream().network);
         assertEquals(1, mCM.requested.size());
 
@@ -461,6 +477,7 @@ public class UpstreamNetworkMonitorTest {
         }
         wifiAgent.fakeConnect();
         wifiAgent.sendLinkProperties();
+        mLooper.dispatchAll();
 
         local = mUNM.getLocalPrefixes();
         assertPrefixSet(local, INCLUDES, alreadySeen);
@@ -485,6 +502,7 @@ public class UpstreamNetworkMonitorTest {
         }
         cellAgent.fakeConnect();
         cellAgent.sendLinkProperties();
+        mLooper.dispatchAll();
 
         local = mUNM.getLocalPrefixes();
         assertPrefixSet(local, INCLUDES, alreadySeen);
@@ -506,6 +524,7 @@ public class UpstreamNetworkMonitorTest {
         }
         dunAgent.fakeConnect();
         dunAgent.sendLinkProperties();
+        mLooper.dispatchAll();
 
         local = mUNM.getLocalPrefixes();
         assertPrefixSet(local, INCLUDES, alreadySeen);
@@ -517,6 +536,7 @@ public class UpstreamNetworkMonitorTest {
         // [4] Pretend Wi-Fi disconnected.  It's addresses/prefixes should no
         // longer be included (should be properly removed).
         wifiAgent.fakeDisconnect();
+        mLooper.dispatchAll();
         local = mUNM.getLocalPrefixes();
         assertPrefixSet(local, EXCLUDES, wifiLinkPrefixes);
         assertPrefixSet(local, INCLUDES, cellLinkPrefixes);
@@ -524,6 +544,7 @@ public class UpstreamNetworkMonitorTest {
 
         // [5] Pretend mobile disconnected.
         cellAgent.fakeDisconnect();
+        mLooper.dispatchAll();
         local = mUNM.getLocalPrefixes();
         assertPrefixSet(local, EXCLUDES, wifiLinkPrefixes);
         assertPrefixSet(local, EXCLUDES, cellLinkPrefixes);
@@ -531,6 +552,7 @@ public class UpstreamNetworkMonitorTest {
 
         // [6] Pretend DUN disconnected.
         dunAgent.fakeDisconnect();
+        mLooper.dispatchAll();
         local = mUNM.getLocalPrefixes();
         assertTrue(local.isEmpty());
     }
@@ -550,6 +572,7 @@ public class UpstreamNetworkMonitorTest {
         // Setup mobile network.
         final TestNetworkAgent cellAgent = new TestNetworkAgent(mCM, CELL_CAPABILITIES);
         cellAgent.fakeConnect();
+        mLooper.dispatchAll();
 
         assertSatisfiesLegacyType(TYPE_MOBILE_HIPRI,
                 mUNM.selectPreferredUpstreamType(preferredTypes));
@@ -575,8 +598,8 @@ public class UpstreamNetworkMonitorTest {
     }
 
     private boolean isDunRequested() {
-        for (NetworkRequest req : mCM.requested.values()) {
-            if (req.networkCapabilities.hasCapability(NET_CAPABILITY_DUN)) {
+        for (NetworkRequestInfo nri : mCM.requested.values()) {
+            if (nri.request.networkCapabilities.hasCapability(NET_CAPABILITY_DUN)) {
                 return true;
             }
         }
@@ -602,8 +625,8 @@ public class UpstreamNetworkMonitorTest {
             }
         }
 
-        public TestStateMachine() {
-            super("UpstreamNetworkMonitor.TestStateMachine");
+        public TestStateMachine(Looper looper) {
+            super("UpstreamNetworkMonitor.TestStateMachine", looper);
             addState(mLoggingState);
             setInitialState(mLoggingState);
             super.start();
