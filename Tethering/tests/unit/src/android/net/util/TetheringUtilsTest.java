@@ -167,6 +167,7 @@ public class TetheringUtilsTest {
         Inet6Address allRouters = NetworkStackConstants.IPV6_ADDR_ALL_ROUTERS_MULTICAST;
 
         final ByteBuffer na = Ipv6Utils.buildNaPacket(mac1, mac2, ll1, ll2, 0, ll1);
+        final ByteBuffer ns = Ipv6Utils.buildNsPacket(mac1, mac2, ll1, ll2, ll1);
         final ByteBuffer rs = Ipv6Utils.buildRsPacket(mac1, mac2, ll1, allRouters);
 
         ByteBuffer received = checkIcmpSocketFilter(na /* passed */, rs /* dropped */,
@@ -175,5 +176,12 @@ public class TetheringUtilsTest {
         Struct.parse(Ipv6Header.class, received);  // Skip IPv6 header.
         Icmpv6Header icmpv6 = Struct.parse(Icmpv6Header.class, received);
         assertEquals(NetworkStackConstants.ICMPV6_NEIGHBOR_ADVERTISEMENT, icmpv6.type);
+
+        received = checkIcmpSocketFilter(ns /* passed */, rs /* dropped */,
+                TetheringUtils::setupNsSocket);
+
+        Struct.parse(Ipv6Header.class, received);  // Skip IPv6 header.
+        icmpv6 = Struct.parse(Icmpv6Header.class, received);
+        assertEquals(NetworkStackConstants.ICMPV6_NEIGHBOR_SOLICITATION, icmpv6.type);
     }
 }
