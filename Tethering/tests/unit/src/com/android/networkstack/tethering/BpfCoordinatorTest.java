@@ -1150,6 +1150,7 @@ public class BpfCoordinatorTest {
     }
 
     @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testStartStopConntrackMonitoring() throws Exception {
         setupFunctioningNetdInterface();
 
@@ -1170,6 +1171,7 @@ public class BpfCoordinatorTest {
     }
 
     @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testStartStopConntrackMonitoringWithTwoDownstreamIfaces() throws Exception {
         setupFunctioningNetdInterface();
 
