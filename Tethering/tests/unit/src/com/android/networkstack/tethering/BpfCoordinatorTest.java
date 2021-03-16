@@ -77,10 +77,13 @@ import com.android.dx.mockito.inline.extended.ExtendedMockito;
 import com.android.net.module.util.NetworkStackConstants;
 import com.android.net.module.util.Struct;
 import com.android.networkstack.tethering.BpfCoordinator.Ipv6ForwardingRule;
+import com.android.testutils.DevSdkIgnoreRule;
+import com.android.testutils.DevSdkIgnoreRule.IgnoreAfter;
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
 import com.android.testutils.TestableNetworkStatsProviderCbBinder;
 
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
@@ -102,6 +105,9 @@ import java.util.function.BiConsumer;
 @RunWith(AndroidJUnit4.class)
 @SmallTest
 public class BpfCoordinatorTest {
+    @Rule
+    public final DevSdkIgnoreRule mIgnoreRule = new DevSdkIgnoreRule();
+
     private static final int DOWNSTREAM_IFINDEX = 10;
     private static final MacAddress DOWNSTREAM_MAC = MacAddress.ALL_ZEROS_ADDRESS;
     private static final InetAddress NEIGH_A = InetAddresses.parseNumericAddress("2001:db8::1");
@@ -1168,6 +1174,22 @@ public class BpfCoordinatorTest {
         // [3] Stop monitoring.
         coordinator.stopMonitoring(mIpServer);
         verify(mConntrackMonitor).stop();
+    }
+
+    @Test
+    @IgnoreUpTo(Build.VERSION_CODES.Q)
+    @IgnoreAfter(Build.VERSION_CODES.R)
+    // Only run this test on Android R.
+    public void testStartStopConntrackMonitoring_R() throws Exception {
+        setupFunctioningNetdInterface();
+
+        final BpfCoordinator coordinator = makeBpfCoordinator();
+
+        coordinator.startMonitoring(mIpServer);
+        verify(mConntrackMonitor, never()).start();
+
+        coordinator.stopMonitoring(mIpServer);
+        verify(mConntrackMonitor, never()).stop();
     }
 
     @Test
