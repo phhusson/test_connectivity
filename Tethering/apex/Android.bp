@@ -35,7 +35,10 @@ apex {
         "offload.o",
         "test.o",
     ],
-    apps: ["Tethering"],
+    apps: [
+        "ServiceConnectivityResources",
+        "Tethering",
+    ],
     manifest: "manifest.json",
     key: "com.android.tethering.key",
 
@@ -58,6 +61,7 @@ override_apex {
     base: "com.android.tethering",
     package_name: "com.android.tethering.inprocess",
     apps: [
+        "ServiceConnectivityResources",
         "InProcessTethering",
     ],
 }
