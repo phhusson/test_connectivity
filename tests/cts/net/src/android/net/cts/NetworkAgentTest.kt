@@ -44,6 +44,7 @@ import android.net.NetworkCapabilities.TRANSPORT_VPN
 import android.net.NetworkInfo
 import android.net.NetworkProvider
 import android.net.NetworkRequest
+import android.net.NetworkScore
 import android.net.RouteInfo
 import android.net.SocketKeepalive
 import android.net.Uri
@@ -631,7 +632,7 @@ class NetworkAgentTest {
                 argThat<NetworkInfo> { it.detailedState == NetworkInfo.DetailedState.CONNECTING },
                 any(LinkProperties::class.java),
                 any(NetworkCapabilities::class.java),
-                any() /* score */,
+                any(NetworkScore::class.java),
                 any(NetworkAgentConfig::class.java),
                 eq(NetworkProvider.ID_NONE))
     }
