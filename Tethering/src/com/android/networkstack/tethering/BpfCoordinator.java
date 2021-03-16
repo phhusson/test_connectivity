@@ -420,7 +420,8 @@ public class BpfCoordinator {
      * See NetlinkMonitor#handlePacket, NetlinkMessage#parseNfMessage.
      */
     public void startMonitoring(@NonNull final IpServer ipServer) {
-        if (!isUsingBpf()) return;
+        // TODO: Wrap conntrackMonitor starting function into mBpfCoordinatorShim.
+        if (!isUsingBpf() || !mDeps.isAtLeastS()) return;
 
         if (mMonitoringIpServers.contains(ipServer)) {
             Log.wtf(TAG, "The same downstream " + ipServer.interfaceName()
@@ -441,6 +442,9 @@ public class BpfCoordinator {
      * Note that this can be only called on handler thread.
      */
     public void stopMonitoring(@NonNull final IpServer ipServer) {
+        // TODO: Wrap conntrackMonitor stopping function into mBpfCoordinatorShim.
+        if (!isUsingBpf() || !mDeps.isAtLeastS()) return;
+
         mMonitoringIpServers.remove(ipServer);
 
         if (!mMonitoringIpServers.isEmpty()) return;
