@@ -91,7 +91,10 @@ android_test {
     target_sdk_version: "30",
     test_suites: [
         "general-tests",
-        "mts",
+        "mts-dnsresolver",
+        "mts-networking",
+        "mts-tethering",
+        "mts-wifi",
     ],
     test_config_template: "AndroidTestTemplate.xml",
 }
