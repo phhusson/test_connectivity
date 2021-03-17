@@ -19,12 +19,29 @@ package android.net.cts;
 import static android.Manifest.permission.CONNECTIVITY_INTERNAL;
 import static android.Manifest.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS;
 import static android.Manifest.permission.NETWORK_SETTINGS;
+import static android.content.pm.PackageManager.FEATURE_BLUETOOTH;
 import static android.content.pm.PackageManager.FEATURE_ETHERNET;
 import static android.content.pm.PackageManager.FEATURE_TELEPHONY;
 import static android.content.pm.PackageManager.FEATURE_USB_HOST;
+import static android.content.pm.PackageManager.FEATURE_WATCH;
 import static android.content.pm.PackageManager.FEATURE_WIFI;
+import static android.content.pm.PackageManager.FEATURE_WIFI_DIRECT;
 import static android.content.pm.PackageManager.GET_PERMISSIONS;
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
+import static android.net.ConnectivityManager.TYPE_BLUETOOTH;
+import static android.net.ConnectivityManager.TYPE_ETHERNET;
+import static android.net.ConnectivityManager.TYPE_MOBILE_CBS;
+import static android.net.ConnectivityManager.TYPE_MOBILE_DUN;
+import static android.net.ConnectivityManager.TYPE_MOBILE_EMERGENCY;
+import static android.net.ConnectivityManager.TYPE_MOBILE_FOTA;
+import static android.net.ConnectivityManager.TYPE_MOBILE_HIPRI;
+import static android.net.ConnectivityManager.TYPE_MOBILE_IA;
+import static android.net.ConnectivityManager.TYPE_MOBILE_IMS;
+import static android.net.ConnectivityManager.TYPE_MOBILE_MMS;
+import static android.net.ConnectivityManager.TYPE_MOBILE_SUPL;
+import static android.net.ConnectivityManager.TYPE_PROXY;
+import static android.net.ConnectivityManager.TYPE_VPN;
+import static android.net.ConnectivityManager.TYPE_WIFI_P2P;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_FOREGROUND;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_IMS;
 import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
@@ -78,7 +95,6 @@ import android.net.LinkAddress;
 import android.net.LinkProperties;
 import android.net.Network;
 import android.net.NetworkCapabilities;
-import android.net.NetworkConfig;
 import android.net.NetworkInfo;
 import android.net.NetworkInfo.DetailedState;
 import android.net.NetworkInfo.State;
@@ -100,7 +116,9 @@ import android.os.SystemProperties;
 import android.os.VintfRuntimeInfo;
 import android.platform.test.annotations.AppModeFull;
 import android.provider.Settings;
+import android.telephony.TelephonyManager;
 import android.text.TextUtils;
+import android.util.ArraySet;
 import android.util.Log;
 import android.util.Pair;
 
@@ -115,6 +133,7 @@ import com.android.networkstack.apishim.common.ConnectivityManagerShim;
 import com.android.testutils.CompatUtil;
 import com.android.testutils.DevSdkIgnoreRule;
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
+import com.android.testutils.DevSdkIgnoreRuleKt;
 import com.android.testutils.RecorderCallback.CallbackEntry;
 import com.android.testutils.SkipPresubmit;
 import com.android.testutils.TestableNetworkCallback;
@@ -146,7 +165,6 @@ import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
@@ -201,8 +219,7 @@ public class ConnectivityManagerTest {
     private ConnectivityManagerShim mCmShim;
     private WifiManager mWifiManager;
     private PackageManager mPackageManager;
-    private final HashMap<Integer, NetworkConfig> mNetworks =
-            new HashMap<Integer, NetworkConfig>();
+    private final ArraySet<Integer> mNetworkTypes = new ArraySet<>();
     private UiAutomation mUiAutomation;
     private CtsNetUtils mCtsNetUtils;
 
@@ -216,23 +233,67 @@ public class ConnectivityManagerTest {
         mPackageManager = mContext.getPackageManager();
         mCtsNetUtils = new CtsNetUtils(mContext);
 
-        // Get com.android.internal.R.array.networkAttributes
-        int resId = mContext.getResources().getIdentifier("networkAttributes", "array", "android");
-        String[] naStrings = mContext.getResources().getStringArray(resId);
-        //TODO: What is the "correct" way to determine if this is a wifi only device?
-        boolean wifiOnly = SystemProperties.getBoolean("ro.radio.noril", false);
-        for (String naString : naStrings) {
-            try {
-                NetworkConfig n = new NetworkConfig(naString);
-                if (wifiOnly && ConnectivityManager.isNetworkTypeMobile(n.type)) {
-                    continue;
-                }
-                mNetworks.put(n.type, n);
-            } catch (Exception e) {}
+        if (DevSdkIgnoreRuleKt.isDevSdkInRange(null /* minExclusive */,
+                Build.VERSION_CODES.R /* maxInclusive */)) {
+            addLegacySupportedNetworkTypes();
+        } else {
+            addSupportedNetworkTypes();
         }
+
         mUiAutomation = mInstrumentation.getUiAutomation();
 
         assertNotNull("CTS requires a working Internet connection", mCm.getActiveNetwork());
+    }
+
+    private void addLegacySupportedNetworkTypes() {
+        // Network type support as expected for android R-
+        // Get com.android.internal.R.array.networkAttributes
+        int resId = mContext.getResources().getIdentifier("networkAttributes", "array", "android");
+        String[] naStrings = mContext.getResources().getStringArray(resId);
+        boolean wifiOnly = SystemProperties.getBoolean("ro.radio.noril", false);
+        for (String naString : naStrings) {
+            try {
+                final String[] splitConfig = naString.split(",");
+                // Format was name,type,radio,priority,restoreTime,dependencyMet
+                final int type = Integer.parseInt(splitConfig[1]);
+                if (wifiOnly && ConnectivityManager.isNetworkTypeMobile(type)) {
+                    continue;
+                }
+                mNetworkTypes.add(type);
+            } catch (Exception e) {}
+        }
+    }
+
+    private void addSupportedNetworkTypes() {
+        final PackageManager pm = mContext.getPackageManager();
+        if (pm.hasSystemFeature(FEATURE_WIFI)) {
+            mNetworkTypes.add(TYPE_WIFI);
+        }
+        if (pm.hasSystemFeature(FEATURE_WIFI_DIRECT)) {
+            mNetworkTypes.add(TYPE_WIFI_P2P);
+        }
+        if (mContext.getSystemService(TelephonyManager.class).isDataCapable()) {
+            mNetworkTypes.add(TYPE_MOBILE);
+            mNetworkTypes.add(TYPE_MOBILE_MMS);
+            mNetworkTypes.add(TYPE_MOBILE_SUPL);
+            mNetworkTypes.add(TYPE_MOBILE_DUN);
+            mNetworkTypes.add(TYPE_MOBILE_HIPRI);
+            mNetworkTypes.add(TYPE_MOBILE_FOTA);
+            mNetworkTypes.add(TYPE_MOBILE_IMS);
+            mNetworkTypes.add(TYPE_MOBILE_CBS);
+            mNetworkTypes.add(TYPE_MOBILE_IA);
+            mNetworkTypes.add(TYPE_MOBILE_EMERGENCY);
+        }
+        if (pm.hasSystemFeature(FEATURE_BLUETOOTH)) {
+            mNetworkTypes.add(TYPE_BLUETOOTH);
+        }
+        if (pm.hasSystemFeature(FEATURE_WATCH)) {
+            mNetworkTypes.add(TYPE_PROXY);
+        }
+        if (mContext.getSystemService(Context.ETHERNET_SERVICE) != null) {
+            mNetworkTypes.add(TYPE_ETHERNET);
+        }
+        mNetworkTypes.add(TYPE_VPN);
     }
 
     @After
@@ -461,9 +522,9 @@ public class ConnectivityManagerTest {
     }
 
     private boolean shouldBeSupported(int networkType) {
-        return mNetworks.containsKey(networkType) ||
-               (networkType == ConnectivityManager.TYPE_VPN) ||
-               (networkType == ConnectivityManager.TYPE_ETHERNET && shouldEthernetBeSupported());
+        return mNetworkTypes.contains(networkType)
+            || (networkType == ConnectivityManager.TYPE_VPN)
+            || (networkType == ConnectivityManager.TYPE_ETHERNET && shouldEthernetBeSupported());
     }
 
     @Test
