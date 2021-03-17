@@ -52,7 +52,7 @@ android_test {
     test_suites: [
         "cts",
         "general-tests",
-        "mts",
+        "mts-tethering",
     ],
 
     // Include both the 32 and 64 bit versions
