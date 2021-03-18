@@ -39,28 +39,23 @@ import android.net.MatchAllNetworkSpecifier;
 import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.net.NetworkSpecifier;
+import android.net.UidRange;
 import android.net.wifi.WifiNetworkSpecifier;
 import android.os.Build;
 import android.os.PatternMatcher;
 import android.os.Process;
 import android.util.ArraySet;
-import android.util.Range;
 
 import androidx.test.runner.AndroidJUnit4;
 
 import com.android.modules.utils.build.SdkLevel;
 import com.android.networkstack.apishim.ConstantsShim;
-import com.android.networkstack.apishim.NetworkRequestShimImpl;
-import com.android.networkstack.apishim.common.NetworkRequestShim;
-import com.android.networkstack.apishim.common.UnsupportedApiLevelException;
 import com.android.testutils.DevSdkIgnoreRule;
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
 
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-
-import java.util.Set;
 
 @RunWith(AndroidJUnit4.class)
 public class NetworkRequestTest {
@@ -230,14 +225,6 @@ public class NetworkRequestTest {
         assertTrue(requestCellularInternet.canBeSatisfiedBy(capCellularVpnMmsInternet));
     }
 
-    private void setUids(NetworkRequest.Builder builder, Set<Range<Integer>> ranges)
-            throws UnsupportedApiLevelException {
-        if (SdkLevel.isAtLeastS()) {
-            final NetworkRequestShim networkRequestShim = NetworkRequestShimImpl.newInstance();
-            networkRequestShim.setUids(builder, ranges);
-        }
-    }
-
     @Test
     @IgnoreUpTo(Build.VERSION_CODES.Q)
     public void testInvariantInCanBeSatisfiedBy() {
@@ -245,26 +232,15 @@ public class NetworkRequestTest {
         // NetworkCapabilities.satisfiedByNetworkCapabilities().
         final LocalNetworkSpecifier specifier1 = new LocalNetworkSpecifier(1234 /* id */);
         final int uid = Process.myUid();
-        final NetworkRequest.Builder nrBuilder = new NetworkRequest.Builder()
+        final ArraySet<UidRange> ranges = new ArraySet<>();
+        ranges.add(new UidRange(uid, uid));
+        final NetworkRequest requestCombination = new NetworkRequest.Builder()
                 .addTransportType(TRANSPORT_CELLULAR)
                 .addCapability(NET_CAPABILITY_INTERNET)
                 .setLinkUpstreamBandwidthKbps(1000)
                 .setNetworkSpecifier(specifier1)
-                .setSignalStrength(-123);
-
-        // The uid ranges should be set into the request, but setUids() takes a set of UidRange
-        // that is hidden and inaccessible from shims. Before, S setUids will be a no-op. But
-        // because NetworkRequest.Builder sets the UID of the request to the current UID, the
-        // request contains the current UID both on S and before S.
-        final Set<Range<Integer>> ranges = new ArraySet<>();
-        ranges.add(new Range<Integer>(uid, uid));
-        try {
-            setUids(nrBuilder, ranges);
-        } catch (UnsupportedApiLevelException e) {
-            // Not supported before API31.
-        }
-        final NetworkRequest requestCombination = nrBuilder.build();
-
+                .setSignalStrength(-123)
+                .setUids(ranges).build();
         final NetworkCapabilities capCell = new NetworkCapabilities.Builder()
                 .addTransportType(TRANSPORT_CELLULAR).build();
         assertCorrectlySatisfies(false, requestCombination, capCell);
