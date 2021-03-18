@@ -72,11 +72,11 @@
 DEFINE_BPF_MAP_GRW(tether_error_map, ARRAY, uint32_t, uint32_t, BPF_TETHER_ERR__MAX,
                    AID_NETWORK_STACK)
 
-#define COUNT_AND_RETURN(counter, ret) do {                  \
+#define COUNT_AND_RETURN(counter, ret) do {                     \
     uint32_t code = BPF_TETHER_ERR_ ## counter;                 \
     uint32_t *count = bpf_tether_error_map_lookup_elem(&code);  \
-    if (count) __sync_fetch_and_add(count, 1);               \
-    return ret;                                              \
+    if (count) __sync_fetch_and_add(count, 1);                  \
+    return ret;                                                 \
 } while(0)
 
 #define TC_DROP(counter) COUNT_AND_RETURN(counter, TC_ACT_SHOT)
