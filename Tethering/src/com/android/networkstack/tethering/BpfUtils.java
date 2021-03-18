@@ -56,7 +56,7 @@ public class BpfUtils {
     // Sync from system/netd/server/OffloadUtils.h.
     static final short PRIO_TETHER6 = 1;
     static final short PRIO_TETHER4 = 2;
-    static final short PRIO_CLAT = 3;
+    // note that the above must be lower than PRIO_CLAT from netd's OffloadUtils.cpp
 
     private static String makeProgPath(boolean downstream, int ipVersion, boolean ether) {
         String path = "/sys/fs/bpf/tethering/prog_offload_schedcls_tether_"
