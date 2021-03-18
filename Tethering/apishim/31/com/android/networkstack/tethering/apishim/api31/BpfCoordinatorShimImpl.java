@@ -184,12 +184,13 @@ public class BpfCoordinatorShimImpl
 
     @Override
     public boolean startUpstreamIpv6Forwarding(int downstreamIfindex, int upstreamIfindex,
-            MacAddress srcMac, MacAddress dstMac, int mtu) {
+            @NonNull MacAddress inDstMac, @NonNull MacAddress outSrcMac,
+            @NonNull MacAddress outDstMac, int mtu) {
         if (!isInitialized()) return false;
 
-        final TetherUpstream6Key key = new TetherUpstream6Key(downstreamIfindex);
-        final Tether6Value value = new Tether6Value(upstreamIfindex, srcMac,
-                dstMac, OsConstants.ETH_P_IPV6, mtu);
+        final TetherUpstream6Key key = new TetherUpstream6Key(downstreamIfindex, inDstMac);
+        final Tether6Value value = new Tether6Value(upstreamIfindex, outSrcMac,
+                outDstMac, OsConstants.ETH_P_IPV6, mtu);
         try {
             mBpfUpstream6Map.insertEntry(key, value);
         } catch (ErrnoException | IllegalStateException e) {
@@ -200,10 +201,11 @@ public class BpfCoordinatorShimImpl
     }
 
     @Override
-    public boolean stopUpstreamIpv6Forwarding(int downstreamIfindex, int upstreamIfindex) {
+    public boolean stopUpstreamIpv6Forwarding(int downstreamIfindex, int upstreamIfindex,
+            @NonNull MacAddress inDstMac) {
         if (!isInitialized()) return false;
 
-        final TetherUpstream6Key key = new TetherUpstream6Key(downstreamIfindex);
+        final TetherUpstream6Key key = new TetherUpstream6Key(downstreamIfindex, inDstMac);
         try {
             mBpfUpstream6Map.deleteEntry(key);
         } catch (ErrnoException e) {

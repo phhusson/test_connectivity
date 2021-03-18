@@ -78,21 +78,25 @@ public abstract class BpfCoordinatorShim {
 
      * @param downstreamIfindex the downstream interface index
      * @param upstreamIfindex the upstream interface index
-     * @param srcMac the source MAC address to use for packets
-     * @oaram dstMac the destination MAC address to use for packets
+     * @param inDstMac the destination MAC address to use for XDP
+     * @param outSrcMac the source MAC address to use for packets
+     * @param outDstMac the destination MAC address to use for packets
      * @return true if operation succeeded or was a no-op, false otherwise
      */
     public abstract boolean startUpstreamIpv6Forwarding(int downstreamIfindex, int upstreamIfindex,
-            MacAddress srcMac, MacAddress dstMac, int mtu);
+            @NonNull MacAddress inDstMac, @NonNull MacAddress outSrcMac,
+            @NonNull MacAddress outDstMac, int mtu);
 
     /**
      * Stops IPv6 forwarding between the specified interfaces.
 
      * @param downstreamIfindex the downstream interface index
      * @param upstreamIfindex the upstream interface index
+     * @param inDstMac the destination MAC address to use for XDP
      * @return true if operation succeeded or was a no-op, false otherwise
      */
-    public abstract boolean stopUpstreamIpv6Forwarding(int downstreamIfindex, int upstreamIfindex);
+    public abstract boolean stopUpstreamIpv6Forwarding(int downstreamIfindex,
+            int upstreamIfindex, @NonNull MacAddress inDstMac);
 
     /**
      * Return BPF tethering offload statistics.

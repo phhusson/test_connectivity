@@ -485,7 +485,7 @@ public class BpfCoordinator {
             final int upstream = rule.upstreamIfindex;
             // TODO: support upstream forwarding on non-point-to-point interfaces.
             // TODO: get the MTU from LinkProperties and update the rules when it changes.
-            if (!mBpfCoordinatorShim.startUpstreamIpv6Forwarding(downstream, upstream,
+            if (!mBpfCoordinatorShim.startUpstreamIpv6Forwarding(downstream, upstream, rule.srcMac,
                     NULL_MAC_ADDRESS, NULL_MAC_ADDRESS, NetworkStackConstants.ETHER_MTU)) {
                 mLog.e("Failed to enable upstream IPv6 forwarding from "
                         + mInterfaceNames.get(downstream) + " to " + mInterfaceNames.get(upstream));
@@ -526,7 +526,8 @@ public class BpfCoordinator {
         if (!isAnyRuleFromDownstreamToUpstream(rule.downstreamIfindex, rule.upstreamIfindex)) {
             final int downstream = rule.downstreamIfindex;
             final int upstream = rule.upstreamIfindex;
-            if (!mBpfCoordinatorShim.stopUpstreamIpv6Forwarding(downstream, upstream)) {
+            if (!mBpfCoordinatorShim.stopUpstreamIpv6Forwarding(downstream, upstream,
+                    rule.srcMac)) {
                 mLog.e("Failed to disable upstream IPv6 forwarding from "
                         + mInterfaceNames.get(downstream) + " to " + mInterfaceNames.get(upstream));
             }
@@ -795,8 +796,8 @@ public class BpfCoordinator {
     }
 
     private String ipv6UpstreamRuletoString(TetherUpstream6Key key, Tether6Value value) {
-        return String.format("%d(%s) -> %d(%s) %04x %s %s",
-                key.iif, getIfName(key.iif), value.oif, getIfName(value.oif),
+        return String.format("%d(%s) %s -> %d(%s) %04x %s %s",
+                key.iif, getIfName(key.iif), key.dstMac, value.oif, getIfName(value.oif),
                 value.ethProto, value.ethSrcMac, value.ethDstMac);
     }
 
@@ -885,6 +886,62 @@ public class BpfCoordinator {
 
     /** IPv6 forwarding rule class. */
     public static class Ipv6ForwardingRule {
+        // The upstream6 and downstream6 rules are built as the following tables. Only raw ip
+        // upstream interface is supported.
+        // TODO: support ether ip upstream interface.
+        //
+        // NAT network topology:
+        //
+        //         public network (rawip)                 private network
+        //                   |                 UE                |
+        // +------------+    V    +------------+------------+    V    +------------+
+        // |   Sever    +---------+  Upstream  | Downstream +---------+   Client   |
+        // +------------+         +------------+------------+         +------------+
+        //
+        // upstream6 key and value:
+        //
+        // +------+-------------+
+        // | TetherUpstream6Key |
+        // +------+------+------+
+        // |field |iif   |dstMac|
+        // |      |      |      |
+        // +------+------+------+
+        // |value |downst|downst|
+        // |      |ream  |ream  |
+        // +------+------+------+
+        //
+        // +------+----------------------------------+
+        // |      |Tether6Value                      |
+        // +------+------+------+------+------+------+
+        // |field |oif   |ethDst|ethSrc|ethPro|pmtu  |
+        // |      |      |mac   |mac   |to    |      |
+        // +------+------+------+------+------+------+
+        // |value |upstre|--    |--    |ETH_P_|1500  |
+        // |      |am    |      |      |IP    |      |
+        // +------+------+------+------+------+------+
+        //
+        // downstream6 key and value:
+        //
+        // +------+--------------------+
+        // |      |TetherDownstream6Key|
+        // +------+------+------+------+
+        // |field |iif   |dstMac|neigh6|
+        // |      |      |      |      |
+        // +------+------+------+------+
+        // |value |upstre|--    |client|
+        // |      |am    |      |      |
+        // +------+------+------+------+
+        //
+        // +------+----------------------------------+
+        // |      |Tether6Value                      |
+        // +------+------+------+------+------+------+
+        // |field |oif   |ethDst|ethSrc|ethPro|pmtu  |
+        // |      |      |mac   |mac   |to    |      |
+        // +------+------+------+------+------+------+
+        // |value |downst|client|downst|ETH_P_|1500  |
+        // |      |ream  |      |ream  |IP    |      |
+        // +------+------+------+------+------+------+
+        //
         public final int upstreamIfindex;
         public final int downstreamIfindex;
 
@@ -934,7 +991,8 @@ public class BpfCoordinator {
          */
         @NonNull
         public TetherDownstream6Key makeTetherDownstream6Key() {
-            return new TetherDownstream6Key(upstreamIfindex, address.getAddress());
+            return new TetherDownstream6Key(upstreamIfindex, NULL_MAC_ADDRESS,
+                    address.getAddress());
         }
 
         /**

@@ -16,14 +16,26 @@
 
 package com.android.networkstack.tethering;
 
+import android.net.MacAddress;
+
+import androidx.annotation.NonNull;
+
 import com.android.net.module.util.Struct;
+
+import java.util.Objects;
 
 /** Key type for upstream IPv6 forwarding map. */
 public class TetherUpstream6Key extends Struct {
     @Field(order = 0, type = Type.S32)
     public final int iif; // The input interface index.
 
-    public TetherUpstream6Key(int iif) {
+    @Field(order = 1, type = Type.EUI48, padding = 2)
+    public final MacAddress dstMac; // Destination ethernet mac address (zeroed iff rawip ingress).
+
+    public TetherUpstream6Key(int iif, @NonNull final MacAddress dstMac) {
+        Objects.requireNonNull(dstMac);
+
         this.iif = iif;
+        this.dstMac = dstMac;
     }
 }

@@ -65,13 +65,13 @@ public final class BpfMapTest {
     @Before
     public void setUp() throws Exception {
         mTestData = new ArrayMap<>();
-        mTestData.put(createTetherDownstream6Key(101, "2001:db8::1"),
+        mTestData.put(createTetherDownstream6Key(101, "00:00:00:00:00:aa", "2001:db8::1"),
                 createTether6Value(11, "00:00:00:00:00:0a", "11:11:11:00:00:0b",
                 ETH_P_IPV6, 1280));
-        mTestData.put(createTetherDownstream6Key(102, "2001:db8::2"),
+        mTestData.put(createTetherDownstream6Key(102, "00:00:00:00:00:bb", "2001:db8::2"),
                 createTether6Value(22, "00:00:00:00:00:0c", "22:22:22:00:00:0d",
                 ETH_P_IPV6, 1400));
-        mTestData.put(createTetherDownstream6Key(103, "2001:db8::3"),
+        mTestData.put(createTetherDownstream6Key(103, "00:00:00:00:00:cc", "2001:db8::3"),
                 createTether6Value(33, "00:00:00:00:00:0e", "33:33:33:00:00:0f",
                 ETH_P_IPV6, 1500));
 
@@ -94,11 +94,12 @@ public final class BpfMapTest {
         assertTrue(mTestMap.isEmpty());
     }
 
-    private TetherDownstream6Key createTetherDownstream6Key(long iif, String address)
-            throws Exception {
+    private TetherDownstream6Key createTetherDownstream6Key(long iif, String mac,
+            String address) throws Exception {
+        final MacAddress dstMac = MacAddress.fromString(mac);
         final InetAddress ipv6Address = InetAddress.getByName(address);
 
-        return new TetherDownstream6Key(iif, ipv6Address.getAddress());
+        return new TetherDownstream6Key(iif, dstMac, ipv6Address.getAddress());
     }
 
     private Tether6Value createTether6Value(int oif, String src, String dst, int proto, int pmtu) {
@@ -164,7 +165,7 @@ public final class BpfMapTest {
     public void testGetNextKey() throws Exception {
         // [1] If the passed-in key is not found on empty map, return null.
         final TetherDownstream6Key nonexistentKey =
-                createTetherDownstream6Key(1234, "2001:db8::10");
+                createTetherDownstream6Key(1234, "00:00:00:00:00:01", "2001:db8::10");
         assertNull(mTestMap.getNextKey(nonexistentKey));
 
         // [2] If the passed-in key is null on empty map, throw NullPointerException.
@@ -344,7 +345,8 @@ public final class BpfMapTest {
 
         // Build test data for TEST_MAP_SIZE + 1 entries.
         for (int i = 1; i <= TEST_MAP_SIZE + 1; i++) {
-            testData.put(createTetherDownstream6Key(i, "2001:db8::1"),
+            testData.put(
+                    createTetherDownstream6Key(i, "00:00:00:00:00:01", "2001:db8::1"),
                     createTether6Value(100, "de:ad:be:ef:00:01", "de:ad:be:ef:00:02",
                     ETH_P_IPV6, 1500));
         }
