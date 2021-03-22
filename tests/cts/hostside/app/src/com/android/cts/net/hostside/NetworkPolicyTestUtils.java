@@ -22,12 +22,13 @@ import static android.net.ConnectivityManager.RESTRICT_BACKGROUND_STATUS_WHITELI
 import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED;
 import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
+import static android.net.wifi.WifiConfiguration.METERED_OVERRIDE_METERED;
+import static android.net.wifi.WifiConfiguration.METERED_OVERRIDE_NONE;
 
 import static com.android.compatibility.common.util.SystemUtil.runShellCommand;
 import static com.android.cts.net.hostside.AbstractRestrictBackgroundNetworkTestCase.TAG;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -35,19 +36,21 @@ import static org.junit.Assert.fail;
 
 import android.app.ActivityManager;
 import android.app.Instrumentation;
+import android.app.UiAutomation;
 import android.content.Context;
 import android.location.LocationManager;
 import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.NetworkCallback;
 import android.net.Network;
 import android.net.NetworkCapabilities;
+import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiManager.ActionListener;
 import android.os.PersistableBundle;
 import android.os.Process;
 import android.telephony.CarrierConfigManager;
 import android.telephony.SubscriptionManager;
 import android.telephony.data.ApnSetting;
-import android.text.TextUtils;
 import android.util.Log;
 
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -57,7 +60,12 @@ import com.android.compatibility.common.util.BatteryUtils;
 import com.android.compatibility.common.util.ShellIdentityUtils;
 import com.android.compatibility.common.util.ThrowingRunnable;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 public class NetworkPolicyTestUtils {
@@ -182,19 +190,14 @@ public class NetworkPolicyTestUtils {
     }
 
     private static String getWifiSsid() {
-        final boolean isLocationEnabled = isLocationEnabled();
+        final UiAutomation uiAutomation = getInstrumentation().getUiAutomation();
         try {
-            if (!isLocationEnabled) {
-                setLocationEnabled(true);
-            }
-            final String ssid = unquoteSSID(getWifiManager().getConnectionInfo().getSSID());
+            uiAutomation.adoptShellPermissionIdentity();
+            final String ssid = getWifiManager().getConnectionInfo().getSSID();
             assertNotEquals(WifiManager.UNKNOWN_SSID, ssid);
             return ssid;
         } finally {
-            // Reset the location enabled state
-            if (!isLocationEnabled) {
-                setLocationEnabled(false);
-            }
+            uiAutomation.dropShellPermissionIdentity();
         }
     }
 
@@ -205,18 +208,71 @@ public class NetworkPolicyTestUtils {
     }
 
     private static void setWifiMeteredStatus(String ssid, boolean metered) throws Exception {
-        assertFalse("SSID should not be empty", TextUtils.isEmpty(ssid));
-        final String cmd = "cmd netpolicy set metered-network " + ssid + " " + metered;
-        executeShellCommand(cmd);
-        assertWifiMeteredStatus(ssid, metered);
-        assertActiveNetworkMetered(metered);
+        final UiAutomation uiAutomation = getInstrumentation().getUiAutomation();
+        try {
+            uiAutomation.adoptShellPermissionIdentity();
+            final WifiConfiguration currentConfig = getWifiConfiguration(ssid);
+            currentConfig.meteredOverride = metered
+                    ? METERED_OVERRIDE_METERED : METERED_OVERRIDE_NONE;
+            BlockingQueue<Integer> blockingQueue = new LinkedBlockingQueue<>();
+            getWifiManager().save(currentConfig, createActionListener(
+                    blockingQueue, Integer.MAX_VALUE));
+            Integer resultCode = blockingQueue.poll(TIMEOUT_CHANGE_METEREDNESS_MS,
+                    TimeUnit.MILLISECONDS);
+            if (resultCode == null) {
+                fail("Timed out waiting for meteredness to change; ssid=" + ssid
+                        + ", metered=" + metered);
+            } else if (resultCode != Integer.MAX_VALUE) {
+                fail("Error overriding the meteredness; ssid=" + ssid
+                        + ", metered=" + metered + ", error=" + resultCode);
+            }
+            final boolean success = assertActiveNetworkMetered(metered, false /* throwOnFailure */);
+            if (!success) {
+                Log.i(TAG, "Retry connecting to wifi; ssid=" + ssid);
+                blockingQueue = new LinkedBlockingQueue<>();
+                getWifiManager().connect(currentConfig, createActionListener(
+                        blockingQueue, Integer.MAX_VALUE));
+                resultCode = blockingQueue.poll(TIMEOUT_CHANGE_METEREDNESS_MS,
+                        TimeUnit.MILLISECONDS);
+                if (resultCode == null) {
+                    fail("Timed out waiting for wifi to connect; ssid=" + ssid);
+                } else if (resultCode != Integer.MAX_VALUE) {
+                    fail("Error connecting to wifi; ssid=" + ssid
+                            + ", error=" + resultCode);
+                }
+                assertActiveNetworkMetered(metered, true /* throwOnFailure */);
+            }
+        } finally {
+            uiAutomation.dropShellPermissionIdentity();
+        }
     }
 
-    private static void assertWifiMeteredStatus(String ssid, boolean expectedMeteredStatus) {
-        final String result = executeShellCommand("cmd netpolicy list wifi-networks");
-        final String expectedLine = ssid + ";" + expectedMeteredStatus;
-        assertTrue("Expected line: " + expectedLine + "; Actual result: " + result,
-                result.contains(expectedLine));
+    private static WifiConfiguration getWifiConfiguration(String ssid) {
+        final List<String> ssids = new ArrayList<>();
+        for (WifiConfiguration config : getWifiManager().getConfiguredNetworks()) {
+            if (config.SSID.equals(ssid)) {
+                return config;
+            }
+            ssids.add(config.SSID);
+        }
+        fail("Couldn't find the wifi config; ssid=" + ssid
+                + ", all=" + Arrays.toString(ssids.toArray()));
+        return null;
+    }
+
+    private static ActionListener createActionListener(BlockingQueue<Integer> blockingQueue,
+            int successCode) {
+        return new ActionListener() {
+            @Override
+            public void onSuccess() {
+                blockingQueue.offer(successCode);
+            }
+
+            @Override
+            public void onFailure(int reason) {
+                blockingQueue.offer(reason);
+            }
+        };
     }
 
     private static void setCellularMeteredStatus(int subId, boolean metered) throws Exception {
@@ -225,11 +281,11 @@ public class NetworkPolicyTestUtils {
                 new String[] {ApnSetting.TYPE_MMS_STRING});
         ShellIdentityUtils.invokeMethodWithShellPermissionsNoReturn(getCarrierConfigManager(),
                 (cm) -> cm.overrideConfig(subId, metered ? null : bundle));
-        assertActiveNetworkMetered(metered);
+        assertActiveNetworkMetered(metered, true /* throwOnFailure */);
     }
 
-    // Copied from cts/tests/tests/net/src/android/net/cts/ConnectivityManagerTest.java
-    private static void assertActiveNetworkMetered(boolean expectedMeteredStatus) throws Exception {
+    private static boolean assertActiveNetworkMetered(boolean expectedMeteredStatus,
+            boolean throwOnFailure) throws Exception {
         final CountDownLatch latch = new CountDownLatch(1);
         final NetworkCallback networkCallback = new NetworkCallback() {
             @Override
@@ -246,10 +302,16 @@ public class NetworkPolicyTestUtils {
         getConnectivityManager().registerDefaultNetworkCallback(networkCallback);
         try {
             if (!latch.await(TIMEOUT_CHANGE_METEREDNESS_MS, TimeUnit.MILLISECONDS)) {
-                fail("Timed out waiting for active network metered status to change to "
-                        + expectedMeteredStatus + "; network = "
-                        + getConnectivityManager().getActiveNetwork());
+                final String errorMsg = "Timed out waiting for active network metered status "
+                        + "to change to " + expectedMeteredStatus + "; network = "
+                        + getConnectivityManager().getActiveNetwork();
+                if (throwOnFailure) {
+                    fail(errorMsg);
+                }
+                Log.w(TAG, errorMsg);
+                return false;
             }
+            return true;
         } finally {
             getConnectivityManager().unregisterNetworkCallback(networkCallback);
         }
