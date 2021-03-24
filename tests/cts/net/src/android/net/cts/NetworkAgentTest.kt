@@ -547,6 +547,7 @@ class NetworkAgentTest {
     @Test
     @IgnoreUpTo(Build.VERSION_CODES.R)
     fun testSetUnderlyingNetworksAndVpnSpecifier() {
+        val mySessionId = "MySession12345"
         val request = NetworkRequest.Builder()
                 .addTransportType(TRANSPORT_TEST)
                 .addTransportType(TRANSPORT_VPN)
@@ -560,7 +561,7 @@ class NetworkAgentTest {
             addTransportType(TRANSPORT_TEST)
             addTransportType(TRANSPORT_VPN)
             removeCapability(NET_CAPABILITY_NOT_VPN)
-            setTransportInfo(VpnTransportInfo(VpnManager.TYPE_VPN_SERVICE))
+            setTransportInfo(VpnTransportInfo(VpnManager.TYPE_VPN_SERVICE, mySessionId))
             if (SdkLevel.isAtLeastS()) {
                 addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
             }
@@ -580,6 +581,8 @@ class NetworkAgentTest {
         assertNotNull(vpnNc)
         assertEquals(VpnManager.TYPE_VPN_SERVICE,
                 (vpnNc.transportInfo as VpnTransportInfo).type)
+        // TODO: b/183938194 please fix the issue and enable following check.
+        // assertEquals(mySessionId, (vpnNc.transportInfo as VpnTransportInfo).sessionId)
 
         val testAndVpn = intArrayOf(TRANSPORT_TEST, TRANSPORT_VPN)
         assertTrue(hasAllTransports(vpnNc, testAndVpn))
