@@ -55,6 +55,8 @@ import android.net.VpnTransportInfo
 import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnAddKeepalivePacketFilter
 import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnAutomaticReconnectDisabled
 import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnBandwidthUpdateRequested
+import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnNetworkCreated
+import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnNetworkDestroyed
 import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnNetworkUnwanted
 import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnRemoveKeepalivePacketFilter
 import android.net.cts.NetworkAgentTest.TestableNetworkAgent.CallbackEntry.OnSaveAcceptUnvalidated
@@ -216,6 +218,8 @@ class NetworkAgentTest {
             object OnAutomaticReconnectDisabled : CallbackEntry()
             data class OnValidationStatus(val status: Int, val uri: Uri?) : CallbackEntry()
             data class OnSignalStrengthThresholdsUpdated(val thresholds: IntArray) : CallbackEntry()
+            object OnNetworkCreated : CallbackEntry()
+            object OnNetworkDestroyed : CallbackEntry()
         }
 
         override fun onBandwidthUpdateRequested() {
@@ -267,6 +271,14 @@ class NetworkAgentTest {
 
         override fun onValidationStatus(status: Int, uri: Uri?) {
             history.add(OnValidationStatus(status, uri))
+        }
+
+        override fun onNetworkCreated() {
+            history.add(OnNetworkCreated)
+        }
+
+        override fun onNetworkDestroyed() {
+            history.add(OnNetworkDestroyed)
         }
 
         // Expects the initial validation event that always occurs immediately after registering
@@ -347,8 +359,10 @@ class NetworkAgentTest {
         val callback = TestableNetworkCallback(timeoutMs = DEFAULT_TIMEOUT_MS)
         requestNetwork(request, callback)
         val agent = createNetworkAgent(context, name)
+        agent.setTeardownDelayMs(0)
         agent.register()
         agent.markConnected()
+        agent.expectCallback<OnNetworkCreated>()
         return agent to callback
     }
 
@@ -368,6 +382,7 @@ class NetworkAgentTest {
         assertFailsWith<IllegalStateException>("Must not be able to register an agent twice") {
             agent.register()
         }
+        agent.expectCallback<OnNetworkDestroyed>()
     }
 
     @Test
@@ -627,7 +642,8 @@ class NetworkAgentTest {
         val mockContext = mock(Context::class.java)
         val mockCm = mock(ConnectivityManager::class.java)
         doReturn(mockCm).`when`(mockContext).getSystemService(Context.CONNECTIVITY_SERVICE)
-        createConnectedNetworkAgent(mockContext)
+        val agent = createNetworkAgent(mockContext)
+        agent.register()
         verify(mockCm).registerNetworkAgent(any(),
                 argThat<NetworkInfo> { it.detailedState == NetworkInfo.DetailedState.CONNECTING },
                 any(LinkProperties::class.java),
