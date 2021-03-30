@@ -106,11 +106,11 @@ public class NetworkPolicyTestUtils {
         if (mDataSaverSupported == null) {
             assertMyRestrictBackgroundStatus(RESTRICT_BACKGROUND_STATUS_DISABLED);
             try {
-                setRestrictBackground(true);
+                setRestrictBackgroundInternal(true);
                 mDataSaverSupported = !isMyRestrictBackgroundStatus(
                         RESTRICT_BACKGROUND_STATUS_DISABLED);
             } finally {
-                setRestrictBackground(false);
+                setRestrictBackgroundInternal(false);
             }
         }
         return mDataSaverSupported;
@@ -318,6 +318,13 @@ public class NetworkPolicyTestUtils {
     }
 
     public static void setRestrictBackground(boolean enabled) {
+        if (!isDataSaverSupported()) {
+            return;
+        }
+        setRestrictBackgroundInternal(enabled);
+    }
+
+    private static void setRestrictBackgroundInternal(boolean enabled) {
         executeShellCommand("cmd netpolicy set restrict-background " + enabled);
         final String output = executeShellCommand("cmd netpolicy get restrict-background");
         final String expectedSuffix = enabled ? "enabled" : "disabled";
