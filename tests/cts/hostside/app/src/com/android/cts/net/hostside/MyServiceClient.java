@@ -20,11 +20,10 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.net.NetworkRequest;
 import android.os.ConditionVariable;
 import android.os.IBinder;
 import android.os.RemoteException;
-
-import com.android.cts.net.hostside.IMyService;
 
 public class MyServiceClient {
     private static final int TIMEOUT_MS = 5000;
@@ -93,12 +92,14 @@ public class MyServiceClient {
         return mService.getRestrictBackgroundStatus();
     }
 
-    public void sendNotification(int notificationId, String notificationType) throws RemoteException {
+    public void sendNotification(int notificationId, String notificationType)
+            throws RemoteException {
         mService.sendNotification(notificationId, notificationType);
     }
 
-    public void registerNetworkCallback(INetworkCallback cb) throws RemoteException {
-        mService.registerNetworkCallback(cb);
+    public void registerNetworkCallback(final NetworkRequest request, INetworkCallback cb)
+            throws RemoteException {
+        mService.registerNetworkCallback(request, cb);
     }
 
     public void unregisterNetworkCallback() throws RemoteException {
