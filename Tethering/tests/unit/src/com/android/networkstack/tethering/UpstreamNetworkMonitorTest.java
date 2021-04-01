@@ -41,7 +41,6 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import android.content.Context;
-import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.NetworkCallback;
 import android.net.IConnectivityManager;
 import android.net.IpPrefix;
@@ -111,8 +110,7 @@ public class UpstreamNetworkMonitorTest {
 
         mCM = spy(new TestConnectivityManager(mContext, mCS, sDefaultRequest));
         mSM = new TestStateMachine();
-        mUNM = new UpstreamNetworkMonitor(
-                (ConnectivityManager) mCM, mSM, mLog, EVENT_UNM_UPDATE);
+        mUNM = new UpstreamNetworkMonitor(mCM, mSM, mLog, EVENT_UNM_UPDATE);
     }
 
     @After public void tearDown() throws Exception {
@@ -373,38 +371,44 @@ public class UpstreamNetworkMonitorTest {
     public void testGetCurrentPreferredUpstream() throws Exception {
         mUNM.startTrackDefaultNetwork(sDefaultRequest, mEntitleMgr);
         mUNM.startObserveAllNetworks();
-        mUNM.setUpstreamConfig(false /* autoUpstream */, false /* dunRequired */);
+        mUNM.setUpstreamConfig(true /* autoUpstream */, false /* dunRequired */);
+        mUNM.setTryCell(true);
 
         // [0] Mobile connects, DUN not required -> mobile selected.
         final TestNetworkAgent cellAgent = new TestNetworkAgent(mCM, CELL_CAPABILITIES);
         cellAgent.fakeConnect();
         mCM.makeDefaultNetwork(cellAgent);
         assertEquals(cellAgent.networkId, mUNM.getCurrentPreferredUpstream().network);
+        assertEquals(0, mCM.requested.size());
 
         // [1] Mobile connects but not permitted -> null selected
         when(mEntitleMgr.isCellularUpstreamPermitted()).thenReturn(false);
         assertEquals(null, mUNM.getCurrentPreferredUpstream());
         when(mEntitleMgr.isCellularUpstreamPermitted()).thenReturn(true);
+        assertEquals(0, mCM.requested.size());
 
         // [2] WiFi connects but not validated/promoted to default -> mobile selected.
         final TestNetworkAgent wifiAgent = new TestNetworkAgent(mCM, WIFI_CAPABILITIES);
         wifiAgent.fakeConnect();
         assertEquals(cellAgent.networkId, mUNM.getCurrentPreferredUpstream().network);
+        assertEquals(0, mCM.requested.size());
 
         // [3] WiFi validates and is promoted to the default network -> WiFi selected.
         mCM.makeDefaultNetwork(wifiAgent);
         assertEquals(wifiAgent.networkId, mUNM.getCurrentPreferredUpstream().network);
+        assertEquals(0, mCM.requested.size());
 
         // [4] DUN required, no other changes -> WiFi still selected
         mUNM.setUpstreamConfig(false /* autoUpstream */, true /* dunRequired */);
         assertEquals(wifiAgent.networkId, mUNM.getCurrentPreferredUpstream().network);
+        assertEquals(1, mCM.requested.size());
+        assertTrue(isDunRequested());
 
         // [5] WiFi no longer validated, mobile becomes default, DUN required -> null selected.
         mCM.makeDefaultNetwork(cellAgent);
         assertEquals(null, mUNM.getCurrentPreferredUpstream());
-        // TODO: make sure that a DUN request has been filed. This is currently
-        // triggered by code over in Tethering, but once that has been moved
-        // into UNM we should test for this here.
+        assertEquals(1, mCM.requested.size());
+        assertTrue(isDunRequested());
 
         // [6] DUN network arrives -> DUN selected
         final TestNetworkAgent dunAgent = new TestNetworkAgent(mCM, CELL_CAPABILITIES);
@@ -412,10 +416,22 @@ public class UpstreamNetworkMonitorTest {
         dunAgent.networkCapabilities.removeCapability(NET_CAPABILITY_INTERNET);
         dunAgent.fakeConnect();
         assertEquals(dunAgent.networkId, mUNM.getCurrentPreferredUpstream().network);
+        assertEquals(1, mCM.requested.size());
 
         // [7] Mobile is not permitted -> null selected
         when(mEntitleMgr.isCellularUpstreamPermitted()).thenReturn(false);
         assertEquals(null, mUNM.getCurrentPreferredUpstream());
+        assertEquals(1, mCM.requested.size());
+
+        // [7] Mobile is permitted again -> DUN selected
+        when(mEntitleMgr.isCellularUpstreamPermitted()).thenReturn(true);
+        assertEquals(dunAgent.networkId, mUNM.getCurrentPreferredUpstream().network);
+        assertEquals(1, mCM.requested.size());
+
+        // [8] DUN no longer required -> request is withdrawn
+        mUNM.setUpstreamConfig(true /* autoUpstream */, false /* dunRequired */);
+        assertEquals(0, mCM.requested.size());
+        assertFalse(isDunRequested());
     }
 
     @Test
