@@ -37,7 +37,7 @@ import android.system.StructTimeval;
 import android.util.Log;
 
 import com.android.internal.annotations.GuardedBy;
-import com.android.internal.util.TrafficStatsConstants;
+import com.android.net.module.util.NetworkStackConstants;
 
 import java.io.FileDescriptor;
 import java.io.IOException;
@@ -589,7 +589,7 @@ public class RouterAdvertisementDaemon {
         final int send_timout_ms = 300;
 
         final int oldTag = TrafficStats.getAndSetThreadStatsTag(
-                TrafficStatsConstants.TAG_SYSTEM_NEIGHBOR);
+                NetworkStackConstants.TAG_SYSTEM_NEIGHBOR);
         try {
             mSocket = Os.socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
             // Setting SNDTIMEO is purely for defensive purposes.
