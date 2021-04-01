@@ -134,9 +134,9 @@ public class UpstreamNetworkMonitorTest {
         assertTrue(mCM.hasNoCallbacks());
         assertFalse(mUNM.mobileNetworkRequested());
 
-        mUNM.updateMobileRequiresDun(true);
+        mUNM.setUpstreamConfig(false /* autoUpstream */, true /* dunRequired */);
         assertTrue(mCM.hasNoCallbacks());
-        mUNM.updateMobileRequiresDun(false);
+        mUNM.setUpstreamConfig(false /* autoUpstream */, false /* dunRequired */);
         assertTrue(mCM.hasNoCallbacks());
     }
 
@@ -187,11 +187,11 @@ public class UpstreamNetworkMonitorTest {
         assertFalse(mUNM.mobileNetworkRequested());
         assertEquals(0, mCM.requested.size());
 
-        mUNM.updateMobileRequiresDun(false);
+        mUNM.setUpstreamConfig(false /* autoUpstream */, false /* dunRequired */);
         assertFalse(mUNM.mobileNetworkRequested());
         assertEquals(0, mCM.requested.size());
 
-        mUNM.registerMobileNetworkRequest();
+        mUNM.setTryCell(true);
         assertTrue(mUNM.mobileNetworkRequested());
         assertUpstreamTypeRequested(TYPE_MOBILE_HIPRI);
         assertFalse(isDunRequested());
@@ -212,8 +212,8 @@ public class UpstreamNetworkMonitorTest {
         assertFalse(mUNM.mobileNetworkRequested());
         assertEquals(0, mCM.requested.size());
 
-        mUNM.updateMobileRequiresDun(true);
-        mUNM.registerMobileNetworkRequest();
+        mUNM.setUpstreamConfig(false /* autoUpstream */, true /* dunRequired */);
+        mUNM.setTryCell(true);
         verify(mCM, times(1)).requestNetwork(
                 any(NetworkRequest.class), anyInt(), anyInt(), any(Handler.class),
                 any(NetworkCallback.class));
@@ -223,9 +223,9 @@ public class UpstreamNetworkMonitorTest {
         assertTrue(isDunRequested());
 
         // Try a few things that must not result in any state change.
-        mUNM.registerMobileNetworkRequest();
-        mUNM.updateMobileRequiresDun(true);
-        mUNM.registerMobileNetworkRequest();
+        mUNM.setTryCell(true);
+        mUNM.setUpstreamConfig(false /* autoUpstream */, true /* dunRequired */);
+        mUNM.setTryCell(true);
 
         assertTrue(mUNM.mobileNetworkRequested());
         assertUpstreamTypeRequested(TYPE_MOBILE_DUN);
@@ -246,11 +246,11 @@ public class UpstreamNetworkMonitorTest {
         assertFalse(mUNM.mobileNetworkRequested());
         assertEquals(0, mCM.requested.size());
 
-        mUNM.updateMobileRequiresDun(true);
+        mUNM.setUpstreamConfig(false /* autoUpstream */, true /* dunRequired */);
         assertFalse(mUNM.mobileNetworkRequested());
         assertEquals(0, mCM.requested.size());
 
-        mUNM.registerMobileNetworkRequest();
+        mUNM.setTryCell(true);
         assertTrue(mUNM.mobileNetworkRequested());
         assertUpstreamTypeRequested(TYPE_MOBILE_DUN);
         assertTrue(isDunRequested());
@@ -265,18 +265,18 @@ public class UpstreamNetworkMonitorTest {
         mUNM.startObserveAllNetworks();
 
         // Test going from no-DUN to DUN correctly re-registers callbacks.
-        mUNM.updateMobileRequiresDun(false);
-        mUNM.registerMobileNetworkRequest();
+        mUNM.setUpstreamConfig(false /* autoUpstream */, false /* dunRequired */);
+        mUNM.setTryCell(true);
         assertTrue(mUNM.mobileNetworkRequested());
         assertUpstreamTypeRequested(TYPE_MOBILE_HIPRI);
         assertFalse(isDunRequested());
-        mUNM.updateMobileRequiresDun(true);
+        mUNM.setUpstreamConfig(false /* autoUpstream */, true /* dunRequired */);
         assertTrue(mUNM.mobileNetworkRequested());
         assertUpstreamTypeRequested(TYPE_MOBILE_DUN);
         assertTrue(isDunRequested());
 
         // Test going from DUN to no-DUN correctly re-registers callbacks.
-        mUNM.updateMobileRequiresDun(false);
+        mUNM.setUpstreamConfig(false /* autoUpstream */, false /* dunRequired */);
         assertTrue(mUNM.mobileNetworkRequested());
         assertUpstreamTypeRequested(TYPE_MOBILE_HIPRI);
         assertFalse(isDunRequested());
@@ -309,14 +309,14 @@ public class UpstreamNetworkMonitorTest {
 
         preferredTypes.add(TYPE_MOBILE_DUN);
         // This is coupled with preferred types in TetheringConfiguration.
-        mUNM.updateMobileRequiresDun(true);
+        mUNM.setUpstreamConfig(false /* autoUpstream */, true /* dunRequired */);
         // DUN is available, but only use regular cell: no upstream selected.
         assertSatisfiesLegacyType(TYPE_NONE, mUNM.selectPreferredUpstreamType(preferredTypes));
         preferredTypes.remove(TYPE_MOBILE_DUN);
         // No WiFi, but our preferred flavour of cell is up.
         preferredTypes.add(TYPE_MOBILE_HIPRI);
         // This is coupled with preferred types in TetheringConfiguration.
-        mUNM.updateMobileRequiresDun(false);
+        mUNM.setUpstreamConfig(false /* autoUpstream */, false /* dunRequired */);
         assertSatisfiesLegacyType(TYPE_MOBILE_HIPRI,
                 mUNM.selectPreferredUpstreamType(preferredTypes));
         // Check to see we filed an explicit request.
@@ -341,7 +341,7 @@ public class UpstreamNetworkMonitorTest {
         preferredTypes.remove(TYPE_MOBILE_HIPRI);
         preferredTypes.add(TYPE_MOBILE_DUN);
         // This is coupled with preferred types in TetheringConfiguration.
-        mUNM.updateMobileRequiresDun(true);
+        mUNM.setUpstreamConfig(false /* autoUpstream */, true /* dunRequired */);
         assertSatisfiesLegacyType(TYPE_WIFI, mUNM.selectPreferredUpstreamType(preferredTypes));
 
         final TestNetworkAgent dunAgent = new TestNetworkAgent(mCM, DUN_CAPABILITIES);
@@ -373,7 +373,7 @@ public class UpstreamNetworkMonitorTest {
     public void testGetCurrentPreferredUpstream() throws Exception {
         mUNM.startTrackDefaultNetwork(sDefaultRequest, mEntitleMgr);
         mUNM.startObserveAllNetworks();
-        mUNM.updateMobileRequiresDun(false);
+        mUNM.setUpstreamConfig(false /* autoUpstream */, false /* dunRequired */);
 
         // [0] Mobile connects, DUN not required -> mobile selected.
         final TestNetworkAgent cellAgent = new TestNetworkAgent(mCM, CELL_CAPABILITIES);
@@ -396,7 +396,7 @@ public class UpstreamNetworkMonitorTest {
         assertEquals(wifiAgent.networkId, mUNM.getCurrentPreferredUpstream().network);
 
         // [4] DUN required, no other changes -> WiFi still selected
-        mUNM.updateMobileRequiresDun(true);
+        mUNM.setUpstreamConfig(false /* autoUpstream */, true /* dunRequired */);
         assertEquals(wifiAgent.networkId, mUNM.getCurrentPreferredUpstream().network);
 
         // [5] WiFi no longer validated, mobile becomes default, DUN required -> null selected.
