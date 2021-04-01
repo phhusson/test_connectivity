@@ -149,7 +149,7 @@ public class UpstreamNetworkMonitorTest {
         mUNM.startTrackDefaultNetwork(sDefaultRequest, mEntitleMgr);
 
         mUNM.startObserveAllNetworks();
-        assertEquals(1, mCM.trackingDefault.size());
+        assertEquals(1, mCM.mTrackingDefault.size());
 
         mUNM.stop();
         assertTrue(mCM.onlyHasDefaultCallbacks());
@@ -157,11 +157,11 @@ public class UpstreamNetworkMonitorTest {
 
     @Test
     public void testListensForAllNetworks() throws Exception {
-        assertTrue(mCM.listening.isEmpty());
+        assertTrue(mCM.mListening.isEmpty());
 
         mUNM.startTrackDefaultNetwork(sDefaultRequest, mEntitleMgr);
         mUNM.startObserveAllNetworks();
-        assertFalse(mCM.listening.isEmpty());
+        assertFalse(mCM.mListening.isEmpty());
         assertTrue(mCM.isListeningForAll());
 
         mUNM.stop();
@@ -184,15 +184,15 @@ public class UpstreamNetworkMonitorTest {
     @Test
     public void testRequestsMobileNetwork() throws Exception {
         assertFalse(mUNM.mobileNetworkRequested());
-        assertEquals(0, mCM.requested.size());
+        assertEquals(0, mCM.mRequested.size());
 
         mUNM.startObserveAllNetworks();
         assertFalse(mUNM.mobileNetworkRequested());
-        assertEquals(0, mCM.requested.size());
+        assertEquals(0, mCM.mRequested.size());
 
         mUNM.setUpstreamConfig(false /* autoUpstream */, false /* dunRequired */);
         assertFalse(mUNM.mobileNetworkRequested());
-        assertEquals(0, mCM.requested.size());
+        assertEquals(0, mCM.mRequested.size());
 
         mUNM.setTryCell(true);
         assertTrue(mUNM.mobileNetworkRequested());
@@ -207,13 +207,13 @@ public class UpstreamNetworkMonitorTest {
     @Test
     public void testDuplicateMobileRequestsIgnored() throws Exception {
         assertFalse(mUNM.mobileNetworkRequested());
-        assertEquals(0, mCM.requested.size());
+        assertEquals(0, mCM.mRequested.size());
 
         mUNM.startObserveAllNetworks();
         verify(mCM, times(1)).registerNetworkCallback(
                 any(NetworkRequest.class), any(NetworkCallback.class), any(Handler.class));
         assertFalse(mUNM.mobileNetworkRequested());
-        assertEquals(0, mCM.requested.size());
+        assertEquals(0, mCM.mRequested.size());
 
         mUNM.setUpstreamConfig(false /* autoUpstream */, true /* dunRequired */);
         mUNM.setTryCell(true);
@@ -243,15 +243,15 @@ public class UpstreamNetworkMonitorTest {
     @Test
     public void testRequestsDunNetwork() throws Exception {
         assertFalse(mUNM.mobileNetworkRequested());
-        assertEquals(0, mCM.requested.size());
+        assertEquals(0, mCM.mRequested.size());
 
         mUNM.startObserveAllNetworks();
         assertFalse(mUNM.mobileNetworkRequested());
-        assertEquals(0, mCM.requested.size());
+        assertEquals(0, mCM.mRequested.size());
 
         mUNM.setUpstreamConfig(false /* autoUpstream */, true /* dunRequired */);
         assertFalse(mUNM.mobileNetworkRequested());
-        assertEquals(0, mCM.requested.size());
+        assertEquals(0, mCM.mRequested.size());
 
         mUNM.setTryCell(true);
         assertTrue(mUNM.mobileNetworkRequested());
@@ -326,14 +326,14 @@ public class UpstreamNetworkMonitorTest {
         assertSatisfiesLegacyType(TYPE_MOBILE_HIPRI,
                 mUNM.selectPreferredUpstreamType(preferredTypes));
         // Check to see we filed an explicit request.
-        assertEquals(1, mCM.requested.size());
-        NetworkRequest netReq = ((NetworkRequestInfo) mCM.requested.values().toArray()[0]).request;
+        assertEquals(1, mCM.mRequested.size());
+        NetworkRequest netReq = ((NetworkRequestInfo) mCM.mRequested.values().toArray()[0]).request;
         assertTrue(netReq.networkCapabilities.hasTransport(TRANSPORT_CELLULAR));
         assertFalse(netReq.networkCapabilities.hasCapability(NET_CAPABILITY_DUN));
         // mobile is not permitted, we should not use HIPRI.
         when(mEntitleMgr.isCellularUpstreamPermitted()).thenReturn(false);
         assertSatisfiesLegacyType(TYPE_NONE, mUNM.selectPreferredUpstreamType(preferredTypes));
-        assertEquals(0, mCM.requested.size());
+        assertEquals(0, mCM.mRequested.size());
         // mobile change back to permitted, HIRPI should come back
         when(mEntitleMgr.isCellularUpstreamPermitted()).thenReturn(true);
         assertSatisfiesLegacyType(TYPE_MOBILE_HIPRI,
@@ -343,7 +343,7 @@ public class UpstreamNetworkMonitorTest {
         mLooper.dispatchAll();
         // WiFi is up, and we should prefer it over cell.
         assertSatisfiesLegacyType(TYPE_WIFI, mUNM.selectPreferredUpstreamType(preferredTypes));
-        assertEquals(0, mCM.requested.size());
+        assertEquals(0, mCM.mRequested.size());
 
         preferredTypes.remove(TYPE_MOBILE_HIPRI);
         preferredTypes.add(TYPE_MOBILE_DUN);
@@ -364,14 +364,14 @@ public class UpstreamNetworkMonitorTest {
         assertSatisfiesLegacyType(TYPE_MOBILE_DUN,
                 mUNM.selectPreferredUpstreamType(preferredTypes));
         // Check to see we filed an explicit request.
-        assertEquals(1, mCM.requested.size());
-        netReq = ((NetworkRequestInfo) mCM.requested.values().toArray()[0]).request;
+        assertEquals(1, mCM.mRequested.size());
+        netReq = ((NetworkRequestInfo) mCM.mRequested.values().toArray()[0]).request;
         assertTrue(netReq.networkCapabilities.hasTransport(TRANSPORT_CELLULAR));
         assertTrue(netReq.networkCapabilities.hasCapability(NET_CAPABILITY_DUN));
         // mobile is not permitted, we should not use DUN.
         when(mEntitleMgr.isCellularUpstreamPermitted()).thenReturn(false);
         assertSatisfiesLegacyType(TYPE_NONE, mUNM.selectPreferredUpstreamType(preferredTypes));
-        assertEquals(0, mCM.requested.size());
+        assertEquals(0, mCM.mRequested.size());
         // mobile change back to permitted, DUN should come back
         when(mEntitleMgr.isCellularUpstreamPermitted()).thenReturn(true);
         assertSatisfiesLegacyType(TYPE_MOBILE_DUN,
@@ -391,38 +391,38 @@ public class UpstreamNetworkMonitorTest {
         mCM.makeDefaultNetwork(cellAgent);
         mLooper.dispatchAll();
         assertEquals(cellAgent.networkId, mUNM.getCurrentPreferredUpstream().network);
-        assertEquals(0, mCM.requested.size());
+        assertEquals(0, mCM.mRequested.size());
 
         // [1] Mobile connects but not permitted -> null selected
         when(mEntitleMgr.isCellularUpstreamPermitted()).thenReturn(false);
         assertEquals(null, mUNM.getCurrentPreferredUpstream());
         when(mEntitleMgr.isCellularUpstreamPermitted()).thenReturn(true);
-        assertEquals(0, mCM.requested.size());
+        assertEquals(0, mCM.mRequested.size());
 
         // [2] WiFi connects but not validated/promoted to default -> mobile selected.
         final TestNetworkAgent wifiAgent = new TestNetworkAgent(mCM, WIFI_CAPABILITIES);
         wifiAgent.fakeConnect();
         mLooper.dispatchAll();
         assertEquals(cellAgent.networkId, mUNM.getCurrentPreferredUpstream().network);
-        assertEquals(0, mCM.requested.size());
+        assertEquals(0, mCM.mRequested.size());
 
         // [3] WiFi validates and is promoted to the default network -> WiFi selected.
         mCM.makeDefaultNetwork(wifiAgent);
         mLooper.dispatchAll();
         assertEquals(wifiAgent.networkId, mUNM.getCurrentPreferredUpstream().network);
-        assertEquals(0, mCM.requested.size());
+        assertEquals(0, mCM.mRequested.size());
 
         // [4] DUN required, no other changes -> WiFi still selected
         mUNM.setUpstreamConfig(false /* autoUpstream */, true /* dunRequired */);
         assertEquals(wifiAgent.networkId, mUNM.getCurrentPreferredUpstream().network);
-        assertEquals(1, mCM.requested.size());
+        assertEquals(1, mCM.mRequested.size());
         assertTrue(isDunRequested());
 
         // [5] WiFi no longer validated, mobile becomes default, DUN required -> null selected.
         mCM.makeDefaultNetwork(cellAgent);
         mLooper.dispatchAll();
         assertEquals(null, mUNM.getCurrentPreferredUpstream());
-        assertEquals(1, mCM.requested.size());
+        assertEquals(1, mCM.mRequested.size());
         assertTrue(isDunRequested());
 
         // [6] DUN network arrives -> DUN selected
@@ -432,21 +432,21 @@ public class UpstreamNetworkMonitorTest {
         dunAgent.fakeConnect();
         mLooper.dispatchAll();
         assertEquals(dunAgent.networkId, mUNM.getCurrentPreferredUpstream().network);
-        assertEquals(1, mCM.requested.size());
+        assertEquals(1, mCM.mRequested.size());
 
         // [7] Mobile is not permitted -> null selected
         when(mEntitleMgr.isCellularUpstreamPermitted()).thenReturn(false);
         assertEquals(null, mUNM.getCurrentPreferredUpstream());
-        assertEquals(1, mCM.requested.size());
+        assertEquals(1, mCM.mRequested.size());
 
         // [7] Mobile is permitted again -> DUN selected
         when(mEntitleMgr.isCellularUpstreamPermitted()).thenReturn(true);
         assertEquals(dunAgent.networkId, mUNM.getCurrentPreferredUpstream().network);
-        assertEquals(1, mCM.requested.size());
+        assertEquals(1, mCM.mRequested.size());
 
         // [8] DUN no longer required -> request is withdrawn
         mUNM.setUpstreamConfig(true /* autoUpstream */, false /* dunRequired */);
-        assertEquals(0, mCM.requested.size());
+        assertEquals(0, mCM.mRequested.size());
         assertFalse(isDunRequested());
     }
 
@@ -591,14 +591,14 @@ public class UpstreamNetworkMonitorTest {
     }
 
     private void assertUpstreamTypeRequested(int upstreamType) throws Exception {
-        assertEquals(1, mCM.requested.size());
-        assertEquals(1, mCM.legacyTypeMap.size());
+        assertEquals(1, mCM.mRequested.size());
+        assertEquals(1, mCM.mLegacyTypeMap.size());
         assertEquals(Integer.valueOf(upstreamType),
-                mCM.legacyTypeMap.values().iterator().next());
+                mCM.mLegacyTypeMap.values().iterator().next());
     }
 
     private boolean isDunRequested() {
-        for (NetworkRequestInfo nri : mCM.requested.values()) {
+        for (NetworkRequestInfo nri : mCM.mRequested.values()) {
             if (nri.request.networkCapabilities.hasCapability(NET_CAPABILITY_DUN)) {
                 return true;
             }
