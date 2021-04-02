@@ -169,6 +169,7 @@ static inline __always_inline int do_forward6(struct __sk_buff* skb, const bool 
     TetherUpstream6Key ku = {
             .iif = skb->ifindex,
     };
+    if (is_ethernet) __builtin_memcpy(downstream ? kd.dstMac : ku.dstMac, eth->h_dest, ETH_ALEN);
 
     Tether6Value* v = downstream ? bpf_tether_downstream6_map_lookup_elem(&kd)
                                  : bpf_tether_upstream6_map_lookup_elem(&ku);
@@ -474,7 +475,7 @@ static inline __always_inline int do_forward4(struct __sk_buff* skb, const bool 
             .srcPort = is_tcp ? tcph->source : udph->source,
             .dstPort = is_tcp ? tcph->dest : udph->dest,
     };
-    if (is_ethernet) for (int i = 0; i < ETH_ALEN; ++i) k.dstMac[i] = eth->h_dest[i];
+    if (is_ethernet) __builtin_memcpy(k.dstMac, eth->h_dest, ETH_ALEN);
 
     Tether4Value* v = downstream ? bpf_tether_downstream4_map_lookup_elem(&k)
                                  : bpf_tether_upstream4_map_lookup_elem(&k);
