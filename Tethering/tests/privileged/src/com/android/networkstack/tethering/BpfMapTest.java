@@ -209,7 +209,7 @@ public final class BpfMapTest {
     }
 
     @Test
-    public void testUpdateBpfMap() throws Exception {
+    public void testUpdateEntry() throws Exception {
         final TetherDownstream6Key key = mTestData.keyAt(0);
         final Tether6Value value = mTestData.valueAt(0);
         final Tether6Value value2 = mTestData.valueAt(1);
@@ -223,6 +223,29 @@ public final class BpfMapTest {
 
         // updateEntry will update an entry that already exists.
         mTestMap.updateEntry(key, value2);
+        assertTrue(mTestMap.containsKey(key));
+        final Tether6Value result2 = mTestMap.getValue(key);
+        assertEquals(value2, result2);
+
+        assertTrue(mTestMap.deleteEntry(key));
+        assertFalse(mTestMap.containsKey(key));
+    }
+
+    @Test
+    public void testInsertOrReplaceEntry() throws Exception {
+        final TetherDownstream6Key key = mTestData.keyAt(0);
+        final Tether6Value value = mTestData.valueAt(0);
+        final Tether6Value value2 = mTestData.valueAt(1);
+        assertFalse(mTestMap.deleteEntry(key));
+
+        // insertOrReplaceEntry will create an entry if it does not exist already.
+        assertTrue(mTestMap.insertOrReplaceEntry(key, value));
+        assertTrue(mTestMap.containsKey(key));
+        final Tether6Value result = mTestMap.getValue(key);
+        assertEquals(value, result);
+
+        // updateEntry will update an entry that already exists.
+        assertFalse(mTestMap.insertOrReplaceEntry(key, value2));
         assertTrue(mTestMap.containsKey(key));
         final Tether6Value result2 = mTestMap.getValue(key);
         assertEquals(value2, result2);
