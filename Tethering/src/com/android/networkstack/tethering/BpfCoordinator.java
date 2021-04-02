@@ -814,7 +814,7 @@ public class BpfCoordinator {
                 final int upstreamIfindex = rule.upstreamIfindex;
                 pw.println(String.format("%d(%s) %d(%s) %s %s %s", upstreamIfindex,
                         mInterfaceNames.get(upstreamIfindex), rule.downstreamIfindex,
-                        downstreamIface, rule.address, rule.srcMac, rule.dstMac));
+                        downstreamIface, rule.address.getHostAddress(), rule.srcMac, rule.dstMac));
             }
             pw.decreaseIndent();
         }
@@ -851,9 +851,10 @@ public class BpfCoordinator {
         } catch (UnknownHostException impossible) {
             throw new AssertionError("4-byte array not valid IPv4 address!");
         }
-        return String.format("%d(%s) %d(%s) %s:%d -> %s:%d -> %s:%d",
-                key.iif, getIfName(key.iif), value.oif, getIfName(value.oif),
-                private4, key.srcPort, public4, value.srcPort, dst4, key.dstPort);
+        return String.format("[%s] %d(%s) %s:%d -> %d(%s) %s:%d -> %s:%d",
+                key.dstMac, key.iif, getIfName(key.iif), private4, key.srcPort,
+                value.oif, getIfName(value.oif),
+                public4, value.srcPort, dst4, key.dstPort);
     }
 
     private void dumpIpv4ForwardingRules(IndentingPrintWriter pw) {
@@ -866,7 +867,7 @@ public class BpfCoordinator {
                 pw.println("No IPv4 rules");
                 return;
             }
-            pw.println("[IPv4]: iif(iface) oif(iface) src nat dst");
+            pw.println("IPv4: [inDstMac] iif(iface) src -> nat -> dst");
             pw.increaseIndent();
             map.forEach((k, v) -> pw.println(ipv4RuleToString(k, v)));
         } catch (ErrnoException e) {
