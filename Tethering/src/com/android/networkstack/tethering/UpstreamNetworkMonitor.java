@@ -42,11 +42,14 @@ import android.os.Handler;
 import android.util.Log;
 import android.util.SparseIntArray;
 
+import androidx.annotation.NonNull;
+
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.util.StateMachine;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 
 
@@ -82,6 +85,7 @@ public class UpstreamNetworkMonitor {
     public static final int EVENT_ON_CAPABILITIES   = 1;
     public static final int EVENT_ON_LINKPROPERTIES = 2;
     public static final int EVENT_ON_LOST           = 3;
+    public static final int EVENT_DEFAULT_SWITCHED  = 4;
     public static final int NOTIFY_LOCAL_PREFIXES   = 10;
     // This value is used by deprecated preferredUpstreamIfaceTypes selection which is default
     // disabled.
@@ -398,7 +402,7 @@ public class UpstreamNetworkMonitor {
         notifyTarget(EVENT_ON_CAPABILITIES, network);
     }
 
-    private void handleLinkProp(Network network, LinkProperties newLp) {
+    private void updateLinkProperties(Network network, LinkProperties newLp) {
         final UpstreamNetworkState prev = mNetworkMap.get(network);
         if (prev == null || newLp.equals(prev.linkProperties)) {
             // Ignore notifications about networks for which we have not yet
@@ -414,8 +418,10 @@ public class UpstreamNetworkMonitor {
 
         mNetworkMap.put(network, new UpstreamNetworkState(
                 newLp, prev.networkCapabilities, network));
-        // TODO: If sufficient information is available to select a more
-        // preferable upstream, do so now and notify the target.
+    }
+
+    private void handleLinkProp(Network network, LinkProperties newLp) {
+        updateLinkProperties(network, newLp);
         notifyTarget(EVENT_ON_LINKPROPERTIES, network);
     }
 
@@ -443,6 +449,24 @@ public class UpstreamNetworkMonitor {
         // if the current upstream network is gone, notify the target of the
         // fact that we now have no upstream at all.
         notifyTarget(EVENT_ON_LOST, mNetworkMap.remove(network));
+    }
+
+    private void maybeHandleNetworkSwitch(@NonNull Network network) {
+        if (Objects.equals(mDefaultInternetNetwork, network)) return;
+
+        final UpstreamNetworkState ns = mNetworkMap.get(network);
+        if (ns == null) {
+            // Can never happen unless there is a bug in ConnectivityService. Entries are only
+            // removed from mNetworkMap when receiving onLost, and onLost for a given network can
+            // never be followed by any other callback on that network.
+            Log.wtf(TAG, "maybeHandleNetworkSwitch: no UpstreamNetworkState for " + network);
+            return;
+        }
+
+        // Default network changed. Update local data and notify tethering.
+        Log.d(TAG, "New default Internet network: " + network);
+        mDefaultInternetNetwork = network;
+        notifyTarget(EVENT_DEFAULT_SWITCHED, ns);
     }
 
     private void recomputeLocalPrefixes() {
@@ -482,7 +506,22 @@ public class UpstreamNetworkMonitor {
         @Override
         public void onCapabilitiesChanged(Network network, NetworkCapabilities newNc) {
             if (mCallbackType == CALLBACK_DEFAULT_INTERNET) {
-                mDefaultInternetNetwork = network;
+                // mDefaultInternetNetwork is not updated here because upstream selection must only
+                // run when the LinkProperties have been updated as well as the capabilities. If
+                // this callback is due to a default network switch, then the system will invoke
+                // onLinkPropertiesChanged right after this method and mDefaultInternetNetwork will
+                // be updated then.
+                //
+                // Technically, not updating here isn't necessary, because the notifications to
+                // Tethering sent by notifyTarget are messages sent to a state machine running on
+                // the same thread as this method, and so cannot arrive until after this method has
+                // returned. However, it is not a good idea to rely on that because fact that
+                // Tethering uses multiple state machines running on the same thread is a major
+                // source of race conditions and something that should be fixed.
+                //
+                // TODO: is it correct that this code always updates EntitlementManager?
+                // This code runs when the default network connects or changes capabilities, but the
+                // default network might not be the tethering upstream.
                 final boolean newIsCellular = isCellular(newNc);
                 if (mIsDefaultCellularUpstream != newIsCellular) {
                     mIsDefaultCellularUpstream = newIsCellular;
@@ -496,7 +535,15 @@ public class UpstreamNetworkMonitor {
 
         @Override
         public void onLinkPropertiesChanged(Network network, LinkProperties newLp) {
-            if (mCallbackType == CALLBACK_DEFAULT_INTERNET) return;
+            if (mCallbackType == CALLBACK_DEFAULT_INTERNET) {
+                updateLinkProperties(network, newLp);
+                // When the default network callback calls onLinkPropertiesChanged, it means that
+                // all the network information for the default network is known (because
+                // onLinkPropertiesChanged is called after onAvailable and onCapabilitiesChanged).
+                // Inform tethering that the default network might have changed.
+                maybeHandleNetworkSwitch(network);
+                return;
+            }
 
             handleLinkProp(network, newLp);
             // Any non-LISTEN_ALL callback will necessarily concern a network that will
@@ -513,6 +560,8 @@ public class UpstreamNetworkMonitor {
                 mDefaultInternetNetwork = null;
                 mIsDefaultCellularUpstream = false;
                 mEntitlementMgr.notifyUpstream(false);
+                Log.d(TAG, "Lost default Internet network: " + network);
+                notifyTarget(EVENT_DEFAULT_SWITCHED, null);
                 return;
             }
 

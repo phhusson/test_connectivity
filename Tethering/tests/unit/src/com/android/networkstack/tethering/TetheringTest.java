@@ -1120,37 +1120,26 @@ public class TetheringTest {
         mLooper.dispatchAll();
         inOrder.verify(mUpstreamNetworkMonitor).setCurrentUpstream(wifi.networkId);
 
+        // This code has historically been racy, so test different orderings of CONNECTIVITY_ACTION
+        // broadcasts and callbacks, and add mLooper.dispatchAll() calls between the two.
         final Runnable doDispatchAll = () -> mLooper.dispatchAll();
 
-        // There is a race where if Tethering and UpstreamNetworkMonitor process the
-        // CONNECTIVITY_ACTION before UpstreamNetworkMonitor gets onCapabilitiesChanged on
-        // CALLBACK_DEFAULT_INTERNET, the upstream does not change.
-        // Simulate this by telling TestConnectivityManager to call mLooper.dispatchAll() between
-        // sending the CONNECTIVITY_ACTION and sending the callbacks.
-        // The switch to wifi just above shows that if the CONNECTIVITY_ACTION and the callbacks
-        // happen close enough together that the tethering code sees both, the code behaves as
-        // expected.
         mCm.makeDefaultNetwork(mobile, BROADCAST_FIRST, doDispatchAll);
         mLooper.dispatchAll();
-        inOrder.verify(mUpstreamNetworkMonitor, never()).setCurrentUpstream(any());  // BUG
+        inOrder.verify(mUpstreamNetworkMonitor).setCurrentUpstream(mobile.networkId);
 
         mCm.makeDefaultNetwork(wifi, BROADCAST_FIRST, doDispatchAll);
         mLooper.dispatchAll();
-        inOrder.verify(mUpstreamNetworkMonitor).setCurrentUpstream(mobile.networkId);  // BUG
+        inOrder.verify(mUpstreamNetworkMonitor).setCurrentUpstream(wifi.networkId);
 
-        // If the broadcast immediately follows the callbacks, the code behaves as expected.
-        // In this case nothing happens because the upstream is already set to cellular and
-        // remaining on cellular is correct.
         mCm.makeDefaultNetwork(mobile, CALLBACKS_FIRST);
         mLooper.dispatchAll();
-        inOrder.verify(mUpstreamNetworkMonitor, never()).setCurrentUpstream(any());
+        inOrder.verify(mUpstreamNetworkMonitor).setCurrentUpstream(mobile.networkId);
 
         mCm.makeDefaultNetwork(wifi, CALLBACKS_FIRST);
         mLooper.dispatchAll();
         inOrder.verify(mUpstreamNetworkMonitor).setCurrentUpstream(wifi.networkId);
 
-        // If the broadcast happens after the callbacks have been processed, the code also behaves
-        // correctly.
         mCm.makeDefaultNetwork(mobile, CALLBACKS_FIRST, doDispatchAll);
         mLooper.dispatchAll();
         inOrder.verify(mUpstreamNetworkMonitor).setCurrentUpstream(mobile.networkId);
@@ -1161,31 +1150,30 @@ public class TetheringTest {
         inOrder.verify(mUpstreamNetworkMonitor, never()).setCurrentUpstream(any());
 
         // Lose and regain upstream.
-        // As above, if broadcasts are processed before the callbacks, upstream is not updated.
         assertTrue(mUpstreamNetworkMonitor.getCurrentPreferredUpstream().linkProperties
                 .hasIPv4Address());
         mCm.makeDefaultNetwork(null, BROADCAST_FIRST, doDispatchAll);
         mLooper.dispatchAll();
         mobile.fakeDisconnect();
         mLooper.dispatchAll();
-        inOrder.verify(mUpstreamNetworkMonitor, never()).setCurrentUpstream(any());  // BUG
+        inOrder.verify(mUpstreamNetworkMonitor).setCurrentUpstream(null);
 
         mobile = new TestNetworkAgent(mCm, buildMobile464xlatUpstreamState());
         mobile.fakeConnect();
         mCm.makeDefaultNetwork(mobile, BROADCAST_FIRST, doDispatchAll);
         mLooper.dispatchAll();
-        inOrder.verify(mUpstreamNetworkMonitor).setCurrentUpstream(null);  // BUG
+        inOrder.verify(mUpstreamNetworkMonitor).setCurrentUpstream(mobile.networkId);
 
         // Check the IP addresses to ensure that the upstream is indeed not the same as the previous
         // mobile upstream, even though the netId is (unrealistically) the same.
         assertFalse(mUpstreamNetworkMonitor.getCurrentPreferredUpstream().linkProperties
                 .hasIPv4Address());
 
-        // Lose and regain upstream again, but this time send events in an order that works.
+        // Lose and regain upstream again.
         mCm.makeDefaultNetwork(null, CALLBACKS_FIRST, doDispatchAll);
         mobile.fakeDisconnect();
         mLooper.dispatchAll();
-        inOrder.verify(mUpstreamNetworkMonitor, never()).setCurrentUpstream(any());  // BUG
+        inOrder.verify(mUpstreamNetworkMonitor).setCurrentUpstream(null);
 
         mobile = new TestNetworkAgent(mCm, buildMobileDualStackUpstreamState());
         mobile.fakeConnect();
