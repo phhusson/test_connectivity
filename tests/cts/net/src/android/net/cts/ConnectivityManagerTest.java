@@ -1636,6 +1636,62 @@ public class ConnectivityManagerTest {
     }
 
     /**
+     * Verifies that apps are forbidden from getting ssid information from
+     * {@Code NetworkCapabilities} if they do not hold NETWORK_SETTINGS permission.
+     * See b/161370134.
+     */
+    @AppModeFull(reason = "Cannot get WifiManager in instant app mode")
+    @Test
+    public void testSsidInNetworkCapabilities() throws Exception {
+        assumeTrue("testSsidInNetworkCapabilities cannot execute unless device supports WiFi",
+                mPackageManager.hasSystemFeature(FEATURE_WIFI));
+
+        final Network network = mCtsNetUtils.ensureWifiConnected();
+        final String ssid = unquoteSSID(mWifiManager.getConnectionInfo().getSSID());
+        assertNotNull("Ssid getting from WiifManager is null", ssid);
+        // This package should have no NETWORK_SETTINGS permission. Verify that no ssid is contained
+        // in the NetworkCapabilities.
+        verifySsidFromQueriedNetworkCapabilities(network, ssid, false /* hasSsid */);
+        verifySsidFromCallbackNetworkCapabilities(ssid, false /* hasSsid */);
+        // Adopt shell permission to allow to get ssid information.
+        runWithShellPermissionIdentity(() -> {
+            verifySsidFromQueriedNetworkCapabilities(network, ssid, true /* hasSsid */);
+            verifySsidFromCallbackNetworkCapabilities(ssid, true /* hasSsid */);
+        });
+    }
+
+    private void verifySsidFromQueriedNetworkCapabilities(@NonNull Network network,
+            @NonNull String ssid, boolean hasSsid) throws Exception {
+        // Verify if ssid is contained in NetworkCapabilities queried from ConnectivityManager.
+        final NetworkCapabilities nc = mCm.getNetworkCapabilities(network);
+        assertNotNull("NetworkCapabilities of the network is null", nc);
+        assertEquals(hasSsid, Pattern.compile(ssid).matcher(nc.toString()).find());
+    }
+
+    private void verifySsidFromCallbackNetworkCapabilities(@NonNull String ssid, boolean hasSsid)
+            throws Exception {
+        final CompletableFuture<NetworkCapabilities> foundNc = new CompletableFuture();
+        final NetworkCallback callback = new NetworkCallback() {
+            @Override
+            public void onCapabilitiesChanged(Network network, NetworkCapabilities nc) {
+                foundNc.complete(nc);
+            }
+        };
+        try {
+            mCm.registerNetworkCallback(makeWifiNetworkRequest(), callback);
+            // Registering a callback here guarantees onCapabilitiesChanged is called immediately
+            // because WiFi network should be connected.
+            final NetworkCapabilities nc =
+                    foundNc.get(NETWORK_CALLBACK_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            // Verify if ssid is contained in the NetworkCapabilities received from callback.
+            assertNotNull("NetworkCapabilities of the network is null", nc);
+            assertEquals(hasSsid, Pattern.compile(ssid).matcher(nc.toString()).find());
+        } finally {
+            mCm.unregisterNetworkCallback(callback);
+        }
+    }
+
+    /**
      * Verify background request can only be requested when acquiring
      * {@link android.Manifest.permission.NETWORK_SETTINGS}.
      */
