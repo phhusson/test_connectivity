@@ -1719,6 +1719,12 @@ public class Tethering {
                     break;
             }
 
+            if (mConfig.chooseUpstreamAutomatically
+                    && arg1 == UpstreamNetworkMonitor.EVENT_DEFAULT_SWITCHED) {
+                chooseUpstreamType(true);
+                return;
+            }
+
             if (ns == null || !pertainsToCurrentUpstream(ns)) {
                 // TODO: In future, this is where upstream evaluation and selection
                 // could be handled for notifications which include sufficient data.
