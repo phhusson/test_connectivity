@@ -32,6 +32,8 @@ import android.os.Handler;
 import android.os.UserHandle;
 import android.util.ArrayMap;
 
+import androidx.annotation.Nullable;
+
 import java.util.Map;
 import java.util.Objects;
 
@@ -58,6 +60,9 @@ import java.util.Objects;
  *   that state changes), this may become less important or unnecessary.
  */
 public class TestConnectivityManager extends ConnectivityManager {
+    public static final boolean BROADCAST_FIRST = false;
+    public static final boolean CALLBACKS_FIRST = true;
+
     final Map<NetworkCallback, NetworkRequestInfo> mAllCallbacks = new ArrayMap<>();
     final Map<NetworkCallback, NetworkRequestInfo> mTrackingDefault = new ArrayMap<>();
     final Map<NetworkCallback, NetworkRequestInfo> mListening = new ArrayMap<>();
@@ -151,14 +156,29 @@ public class TestConnectivityManager extends ConnectivityManager {
         }
     }
 
-    void makeDefaultNetwork(TestNetworkAgent agent) {
+    void makeDefaultNetwork(TestNetworkAgent agent, boolean order, @Nullable Runnable inBetween) {
         if (Objects.equals(mDefaultNetwork, agent)) return;
 
         final TestNetworkAgent formerDefault = mDefaultNetwork;
         mDefaultNetwork = agent;
 
-        sendDefaultNetworkCallbacks(formerDefault, mDefaultNetwork);
-        sendDefaultNetworkBroadcasts(formerDefault, mDefaultNetwork);
+        if (order == CALLBACKS_FIRST) {
+            sendDefaultNetworkCallbacks(formerDefault, mDefaultNetwork);
+            if (inBetween != null) inBetween.run();
+            sendDefaultNetworkBroadcasts(formerDefault, mDefaultNetwork);
+        } else {
+            sendDefaultNetworkBroadcasts(formerDefault, mDefaultNetwork);
+            if (inBetween != null) inBetween.run();
+            sendDefaultNetworkCallbacks(formerDefault, mDefaultNetwork);
+        }
+    }
+
+    void makeDefaultNetwork(TestNetworkAgent agent, boolean order) {
+        makeDefaultNetwork(agent, order, null /* inBetween */);
+    }
+
+    void makeDefaultNetwork(TestNetworkAgent agent) {
+        makeDefaultNetwork(agent, BROADCAST_FIRST, null /* inBetween */);
     }
 
     @Override
@@ -308,6 +328,7 @@ public class TestConnectivityManager extends ConnectivityManager {
                         networkId, copy(networkCapabilities)));
                 nri.handler.post(() -> cb.onLinkPropertiesChanged(networkId, copy(linkProperties)));
             }
+            // mTrackingDefault will be updated if/when the caller calls makeDefaultNetwork
         }
 
         public void fakeDisconnect() {
@@ -320,6 +341,7 @@ public class TestConnectivityManager extends ConnectivityManager {
             for (NetworkCallback cb : cm.mListening.keySet()) {
                 cb.onLost(networkId);
             }
+            // mTrackingDefault will be updated if/when the caller calls makeDefaultNetwork
         }
 
         public void sendLinkProperties() {
