@@ -107,17 +107,24 @@ DEFINE_BPF_MAP_GRW(tether_upstream6_map, HASH, TetherUpstream6Key, Tether6Value,
 
 static inline __always_inline int do_forward6(struct __sk_buff* skb, const bool is_ethernet,
         const bool downstream) {
-    const int l2_header_size = is_ethernet ? sizeof(struct ethhdr) : 0;
-    void* data = (void*)(long)skb->data;
-    const void* data_end = (void*)(long)skb->data_end;
-    struct ethhdr* eth = is_ethernet ? data : NULL;  // used iff is_ethernet
-    struct ipv6hdr* ip6 = is_ethernet ? (void*)(eth + 1) : data;
+    // Must be meta-ethernet IPv6 frame
+    if (skb->protocol != htons(ETH_P_IPV6)) return TC_ACT_OK;
 
     // Require ethernet dst mac address to be our unicast address.
     if (is_ethernet && (skb->pkt_type != PACKET_HOST)) return TC_ACT_OK;
 
-    // Must be meta-ethernet IPv6 frame
-    if (skb->protocol != htons(ETH_P_IPV6)) return TC_ACT_OK;
+    const int l2_header_size = is_ethernet ? sizeof(struct ethhdr) : 0;
+
+    // Since the program never writes via DPA (direct packet access) auto-pull/unclone logic does
+    // not trigger and thus we need to manually make sure we can read packet headers via DPA.
+    // Note: this is a blind best effort pull, which may fail or pull less - this doesn't matter.
+    // It has to be done early cause it will invalidate any skb->data/data_end derived pointers.
+    try_make_readable(skb, l2_header_size + IP6_HLEN + TCP_HLEN);
+
+    void* data = (void*)(long)skb->data;
+    const void* data_end = (void*)(long)skb->data_end;
+    struct ethhdr* eth = is_ethernet ? data : NULL;  // used iff is_ethernet
+    struct ipv6hdr* ip6 = is_ethernet ? (void*)(eth + 1) : data;
 
     // Must have (ethernet and) ipv6 header
     if (data + l2_header_size + sizeof(*ip6) > data_end) return TC_ACT_OK;
@@ -346,17 +353,24 @@ DEFINE_BPF_MAP_GRW(tether_upstream4_map, HASH, Tether4Key, Tether4Value, 1024, A
 
 static inline __always_inline int do_forward4(struct __sk_buff* skb, const bool is_ethernet,
         const bool downstream, const bool updatetime) {
-    const int l2_header_size = is_ethernet ? sizeof(struct ethhdr) : 0;
-    void* data = (void*)(long)skb->data;
-    const void* data_end = (void*)(long)skb->data_end;
-    struct ethhdr* eth = is_ethernet ? data : NULL;  // used iff is_ethernet
-    struct iphdr* ip = is_ethernet ? (void*)(eth + 1) : data;
-
     // Require ethernet dst mac address to be our unicast address.
     if (is_ethernet && (skb->pkt_type != PACKET_HOST)) return TC_ACT_OK;
 
     // Must be meta-ethernet IPv4 frame
     if (skb->protocol != htons(ETH_P_IP)) return TC_ACT_OK;
+
+    const int l2_header_size = is_ethernet ? sizeof(struct ethhdr) : 0;
+
+    // Since the program never writes via DPA (direct packet access) auto-pull/unclone logic does
+    // not trigger and thus we need to manually make sure we can read packet headers via DPA.
+    // Note: this is a blind best effort pull, which may fail or pull less - this doesn't matter.
+    // It has to be done early cause it will invalidate any skb->data/data_end derived pointers.
+    try_make_readable(skb, l2_header_size + IP4_HLEN + TCP_HLEN);
+
+    void* data = (void*)(long)skb->data;
+    const void* data_end = (void*)(long)skb->data_end;
+    struct ethhdr* eth = is_ethernet ? data : NULL;  // used iff is_ethernet
+    struct iphdr* ip = is_ethernet ? (void*)(eth + 1) : data;
 
     // Must have (ethernet and) ipv4 header
     if (data + l2_header_size + sizeof(*ip) > data_end) return TC_ACT_OK;
