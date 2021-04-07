@@ -107,11 +107,12 @@ typedef uint64_t TetherLimitValue;  // in bytes
 // Ethernet) have 6-byte MAC addresses.
 
 typedef struct {
-    uint32_t iif;            // The input interface index
-                             // TODO: extend this to include dstMac
-    struct in6_addr neigh6;  // The destination IPv6 address
+    uint32_t iif;              // The input interface index
+    uint8_t dstMac[ETH_ALEN];  // destination ethernet mac address (zeroed iff rawip ingress)
+    uint8_t zero[2];           // zero pad for 8 byte alignment
+    struct in6_addr neigh6;    // The destination IPv6 address
 } TetherDownstream6Key;
-STRUCT_SIZE(TetherDownstream6Key, 4 + 16);  // 20
+STRUCT_SIZE(TetherDownstream6Key, 4 + 6 + 2 + 16);  // 28
 
 typedef struct {
     uint32_t oif;             // The output interface to redirect to
@@ -154,10 +155,12 @@ STRUCT_SIZE(TetherDownstream64Value, 4 + 14 + 2 + 4 + 4 + 2 + 2 + 8);  // 40
 #define TETHER_UPSTREAM6_MAP_PATH BPF_PATH_TETHER "map_offload_tether_upstream6_map"
 
 typedef struct {
-    uint32_t iif;  // The input interface index
-                   // TODO: extend this to include dstMac and src ip /64 subnet
+    uint32_t iif;              // The input interface index
+    uint8_t dstMac[ETH_ALEN];  // destination ethernet mac address (zeroed iff rawip ingress)
+    uint8_t zero[2];           // zero pad for 8 byte alignment
+                               // TODO: extend this to include src ip /64 subnet
 } TetherUpstream6Key;
-STRUCT_SIZE(TetherUpstream6Key, 4);
+STRUCT_SIZE(TetherUpstream6Key, 12);
 
 #define TETHER_DOWNSTREAM4_TC_PROG_RAWIP_NAME "prog_offload_schedcls_tether_downstream4_rawip"
 #define TETHER_DOWNSTREAM4_TC_PROG_ETHER_NAME "prog_offload_schedcls_tether_downstream4_ether"

@@ -742,15 +742,13 @@ public class IpServer extends StateMachine {
                     params.dnses.add(dnsServer);
                 }
             }
-
-            // Add upstream index to name mapping for the tether stats usage in the coordinator.
-            // Although this mapping could be added by both class Tethering and IpServer, adding
-            // mapping from IpServer guarantees that the mapping is added before the adding
-            // forwarding rules. That is because there are different state machines in both
-            // classes. It is hard to guarantee the link property update order between multiple
-            // state machines.
-            mBpfCoordinator.addUpstreamNameToLookupTable(upstreamIfIndex, upstreamIface);
         }
+
+        // Add upstream index to name mapping. See the comment of the interface mapping update in
+        // CMD_TETHER_CONNECTION_CHANGED. Adding the mapping update here to the avoid potential
+        // timing issue. It prevents that the IPv6 capability is updated later than
+        // CMD_TETHER_CONNECTION_CHANGED.
+        mBpfCoordinator.addUpstreamNameToLookupTable(upstreamIfIndex, upstreamIface);
 
         // If v6only is null, we pass in null to setRaParams(), which handles
         // deprecation of any existing RA data.
@@ -1335,6 +1333,26 @@ public class IpServer extends StateMachine {
                     mUpstreamIfaceSet = newUpstreamIfaceSet;
 
                     for (String ifname : added) {
+                        // Add upstream index to name mapping for the tether stats usage in the
+                        // coordinator. Although this mapping could be added by both class
+                        // Tethering and IpServer, adding mapping from IpServer guarantees that
+                        // the mapping is added before adding forwarding rules. That is because
+                        // there are different state machines in both classes. It is hard to
+                        // guarantee the link property update order between multiple state machines.
+                        // Note that both IPv4 and IPv6 interface may be added because
+                        // Tethering::setUpstreamNetwork calls getTetheringInterfaces which merges
+                        // IPv4 and IPv6 interface name (if any) into an InterfaceSet. The IPv6
+                        // capability may be updated later. In that case, IPv6 interface mapping is
+                        // updated in updateUpstreamIPv6LinkProperties.
+                        if (!ifname.startsWith("v4-")) {  // ignore clat interfaces
+                            final InterfaceParams upstreamIfaceParams =
+                                    mDeps.getInterfaceParams(ifname);
+                            if (upstreamIfaceParams != null) {
+                                mBpfCoordinator.addUpstreamNameToLookupTable(
+                                        upstreamIfaceParams.index, ifname);
+                            }
+                        }
+
                         mBpfCoordinator.maybeAttachProgram(mIfaceName, ifname);
                         try {
                             mNetd.tetherAddForward(mIfaceName, ifname);
