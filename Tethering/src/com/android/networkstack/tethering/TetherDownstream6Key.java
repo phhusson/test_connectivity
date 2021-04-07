@@ -16,6 +16,10 @@
 
 package com.android.networkstack.tethering;
 
+import android.net.MacAddress;
+
+import androidx.annotation.NonNull;
+
 import com.android.net.module.util.Struct;
 import com.android.net.module.util.Struct.Field;
 import com.android.net.module.util.Struct.Type;
@@ -24,16 +28,23 @@ import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Arrays;
+import java.util.Objects;
 
 /** The key of BpfMap which is used for bpf offload. */
 public class TetherDownstream6Key extends Struct {
     @Field(order = 0, type = Type.U32)
     public final long iif; // The input interface index.
 
-    @Field(order = 1, type = Type.ByteArray, arraysize = 16)
+    @Field(order = 1, type = Type.EUI48, padding = 2)
+    public final MacAddress dstMac; // Destination ethernet mac address (zeroed iff rawip ingress).
+
+    @Field(order = 2, type = Type.ByteArray, arraysize = 16)
     public final byte[] neigh6; // The destination IPv6 address.
 
-    public TetherDownstream6Key(final long iif, final byte[] neigh6) {
+    public TetherDownstream6Key(final long iif, @NonNull final MacAddress dstMac,
+            final byte[] neigh6) {
+        Objects.requireNonNull(dstMac);
+
         try {
             final Inet6Address unused = (Inet6Address) InetAddress.getByAddress(neigh6);
         } catch (ClassCastException | UnknownHostException e) {
@@ -41,29 +52,15 @@ public class TetherDownstream6Key extends Struct {
                     + Arrays.toString(neigh6));
         }
         this.iif = iif;
+        this.dstMac = dstMac;
         this.neigh6 = neigh6;
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-        if (this == obj) return true;
-
-        if (!(obj instanceof TetherDownstream6Key)) return false;
-
-        final TetherDownstream6Key that = (TetherDownstream6Key) obj;
-
-        return iif == that.iif && Arrays.equals(neigh6, that.neigh6);
-    }
-
-    @Override
-    public int hashCode() {
-        return Long.hashCode(iif) ^ Arrays.hashCode(neigh6);
     }
 
     @Override
     public String toString() {
         try {
-            return String.format("iif: %d, neigh: %s", iif, Inet6Address.getByAddress(neigh6));
+            return String.format("iif: %d, dstMac: %s, neigh: %s", iif, dstMac,
+                    Inet6Address.getByAddress(neigh6));
         } catch (UnknownHostException e) {
             // Should not happen because construtor already verify neigh6.
             throw new IllegalStateException("Invalid TetherDownstream6Key");
