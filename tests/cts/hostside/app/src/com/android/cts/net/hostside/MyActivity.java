@@ -17,6 +17,7 @@
 package com.android.cts.net.hostside;
 
 import android.app.Activity;
+import android.app.KeyguardManager;
 import android.content.Intent;
 import android.os.Bundle;
 import android.view.WindowManager;
@@ -34,6 +35,11 @@ public class MyActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
                 | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
                 | WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD);
+
+        // Dismiss the keyguard so that the tests can click on the VPN confirmation dialog.
+        // FLAG_DISMISS_KEYGUARD is not sufficient to do this because as soon as the dialog appears,
+        // this activity goes into the background and the keyguard reappears.
+        getSystemService(KeyguardManager.class).requestDismissKeyguard(this, null /* callback */);
     }
 
     @Override
