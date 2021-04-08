@@ -59,6 +59,8 @@ import static android.telephony.SubscriptionManager.INVALID_SUBSCRIPTION_ID;
 
 import static com.android.net.module.util.Inet4AddressUtils.inet4AddressToIntHTH;
 import static com.android.net.module.util.Inet4AddressUtils.intToInet4AddressHTH;
+import static com.android.networkstack.tethering.TestConnectivityManager.BROADCAST_FIRST;
+import static com.android.networkstack.tethering.TestConnectivityManager.CALLBACKS_FIRST;
 import static com.android.networkstack.tethering.Tethering.UserRestrictionActionListener;
 import static com.android.networkstack.tethering.TetheringNotificationUpdater.DOWNSTREAM_NONE;
 import static com.android.networkstack.tethering.UpstreamNetworkMonitor.EVENT_ON_CAPABILITIES;
@@ -78,6 +80,7 @@ import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
@@ -165,6 +168,7 @@ import com.android.internal.util.ArrayUtils;
 import com.android.internal.util.StateMachine;
 import com.android.internal.util.test.BroadcastInterceptingContext;
 import com.android.internal.util.test.FakeSettingsProvider;
+import com.android.networkstack.tethering.TestConnectivityManager.TestNetworkAgent;
 import com.android.testutils.MiscAsserts;
 
 import org.junit.After;
@@ -174,6 +178,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
@@ -329,13 +334,14 @@ public class TetheringTest {
             assertTrue("Non-mocked interface " + ifName,
                     ifName.equals(TEST_USB_IFNAME)
                             || ifName.equals(TEST_WLAN_IFNAME)
+                            || ifName.equals(TEST_WIFI_IFNAME)
                             || ifName.equals(TEST_MOBILE_IFNAME)
                             || ifName.equals(TEST_P2P_IFNAME)
                             || ifName.equals(TEST_NCM_IFNAME)
                             || ifName.equals(TEST_ETH_IFNAME));
             final String[] ifaces = new String[] {
-                    TEST_USB_IFNAME, TEST_WLAN_IFNAME, TEST_MOBILE_IFNAME, TEST_P2P_IFNAME,
-                    TEST_NCM_IFNAME, TEST_ETH_IFNAME};
+                    TEST_USB_IFNAME, TEST_WLAN_IFNAME, TEST_WIFI_IFNAME, TEST_MOBILE_IFNAME,
+                    TEST_P2P_IFNAME, TEST_NCM_IFNAME, TEST_ETH_IFNAME};
             return new InterfaceParams(ifName, ArrayUtils.indexOf(ifaces, ifName) + IFINDEX_OFFSET,
                     MacAddress.ALL_ZEROS_ADDRESS);
         }
@@ -501,6 +507,7 @@ public class TetheringTest {
         prop.setInterfaceName(interfaceName);
 
         if (withIPv4) {
+            prop.addLinkAddress(new LinkAddress("10.1.2.3/15"));
             prop.addRoute(new RouteInfo(new IpPrefix(Inet4Address.ANY, 0),
                     InetAddresses.parseNumericAddress("10.0.0.1"),
                     interfaceName, RTN_UNICAST));
@@ -614,6 +621,7 @@ public class TetheringTest {
         when(mOffloadHardwareInterface.getForwardedStats(any())).thenReturn(mForwardedStats);
 
         mServiceContext = new TestContext(mContext);
+        mServiceContext.setUseRegisteredHandlers(true);
         mContentResolver = new MockContentResolver(mServiceContext);
         mContentResolver.addProvider(Settings.AUTHORITY, new FakeSettingsProvider());
         setTetheringSupported(true /* supported */);
@@ -712,6 +720,7 @@ public class TetheringTest {
         final Intent intent = new Intent(WifiManager.WIFI_AP_STATE_CHANGED_ACTION);
         intent.putExtra(EXTRA_WIFI_AP_STATE, state);
         mServiceContext.sendStickyBroadcastAsUser(intent, UserHandle.ALL);
+        mLooper.dispatchAll();
     }
 
     private void sendWifiApStateChanged(int state, String ifname, int ipmode) {
@@ -720,6 +729,7 @@ public class TetheringTest {
         intent.putExtra(EXTRA_WIFI_AP_INTERFACE_NAME, ifname);
         intent.putExtra(EXTRA_WIFI_AP_MODE, ipmode);
         mServiceContext.sendStickyBroadcastAsUser(intent, UserHandle.ALL);
+        mLooper.dispatchAll();
     }
 
     private static final String[] P2P_RECEIVER_PERMISSIONS_FOR_BROADCAST = {
@@ -746,6 +756,7 @@ public class TetheringTest {
 
         mServiceContext.sendBroadcastAsUserMultiplePermissions(intent, UserHandle.ALL,
                 P2P_RECEIVER_PERMISSIONS_FOR_BROADCAST);
+        mLooper.dispatchAll();
     }
 
     private void sendUsbBroadcast(boolean connected, boolean configured, boolean function,
@@ -759,11 +770,13 @@ public class TetheringTest {
             intent.putExtra(USB_FUNCTION_NCM, function);
         }
         mServiceContext.sendStickyBroadcastAsUser(intent, UserHandle.ALL);
+        mLooper.dispatchAll();
     }
 
     private void sendConfigurationChanged() {
         final Intent intent = new Intent(Intent.ACTION_CONFIGURATION_CHANGED);
         mServiceContext.sendStickyBroadcastAsUser(intent, UserHandle.ALL);
+        mLooper.dispatchAll();
     }
 
     private void verifyDefaultNetworkRequestFiled() {
@@ -805,7 +818,6 @@ public class TetheringTest {
             mTethering.interfaceStatusChanged(TEST_WLAN_IFNAME, true);
         }
         sendWifiApStateChanged(WIFI_AP_STATE_ENABLED);
-        mLooper.dispatchAll();
 
         // If, and only if, Tethering received an interface status changed then
         // it creates a IpServer and sends out a broadcast indicating that the
@@ -830,9 +842,7 @@ public class TetheringTest {
         mTethering.interfaceStatusChanged(TEST_NCM_IFNAME, true);
     }
 
-    private void prepareUsbTethering(UpstreamNetworkState upstreamState) {
-        initTetheringUpstream(upstreamState);
-
+    private void prepareUsbTethering() {
         // Emulate pressing the USB tethering button in Settings UI.
         final TetheringRequestParcel request = createTetheringRequestParcel(TETHERING_USB);
         mTethering.startTethering(request, null);
@@ -847,14 +857,14 @@ public class TetheringTest {
     @Test
     public void testUsbConfiguredBroadcastStartsTethering() throws Exception {
         UpstreamNetworkState upstreamState = buildMobileIPv4UpstreamState();
-        prepareUsbTethering(upstreamState);
+        initTetheringUpstream(upstreamState);
+        prepareUsbTethering();
 
         // This should produce no activity of any kind.
         verifyNoMoreInteractions(mNetd);
 
         // Pretend we then receive USB configured broadcast.
         sendUsbBroadcast(true, true, true, TETHERING_USB);
-        mLooper.dispatchAll();
         // Now we should see the start of tethering mechanics (in this case:
         // tetherMatchingInterfaces() which starts by fetching all interfaces).
         verify(mNetd, times(1)).interfaceGetList();
@@ -883,7 +893,6 @@ public class TetheringTest {
             mTethering.interfaceStatusChanged(TEST_WLAN_IFNAME, true);
         }
         sendWifiApStateChanged(WIFI_AP_STATE_ENABLED, TEST_WLAN_IFNAME, IFACE_IP_MODE_LOCAL_ONLY);
-        mLooper.dispatchAll();
 
         verifyInterfaceServingModeStarted(TEST_WLAN_IFNAME);
         verifyTetheringBroadcast(TEST_WLAN_IFNAME, EXTRA_AVAILABLE_TETHER);
@@ -942,9 +951,9 @@ public class TetheringTest {
     }
 
     private void runUsbTethering(UpstreamNetworkState upstreamState) {
-        prepareUsbTethering(upstreamState);
+        initTetheringUpstream(upstreamState);
+        prepareUsbTethering();
         sendUsbBroadcast(true, true, true, TETHERING_USB);
-        mLooper.dispatchAll();
     }
 
     private void assertSetIfaceToDadProxy(final int numOfCalls, final String ifaceName) {
@@ -1083,10 +1092,103 @@ public class TetheringTest {
         verify(mUpstreamNetworkMonitor, times(1)).setCurrentUpstream(upstreamState.network);
     }
 
+    @Test
+    public void testAutomaticUpstreamSelection() throws Exception {
+        // Enable automatic upstream selection.
+        when(mResources.getBoolean(R.bool.config_tether_upstream_automatic)).thenReturn(true);
+        sendConfigurationChanged();
+        mLooper.dispatchAll();
+
+        InOrder inOrder = inOrder(mCm, mUpstreamNetworkMonitor);
+
+        // Start USB tethering with no current upstream.
+        prepareUsbTethering();
+        sendUsbBroadcast(true, true, true, TETHERING_USB);
+        inOrder.verify(mUpstreamNetworkMonitor).startObserveAllNetworks();
+        inOrder.verify(mUpstreamNetworkMonitor).setTryCell(true);
+
+        // Pretend cellular connected and expect the upstream to be set.
+        TestNetworkAgent mobile = new TestNetworkAgent(mCm, buildMobileDualStackUpstreamState());
+        mobile.fakeConnect();
+        mCm.makeDefaultNetwork(mobile, BROADCAST_FIRST);
+        mLooper.dispatchAll();
+        inOrder.verify(mUpstreamNetworkMonitor).setCurrentUpstream(mobile.networkId);
+
+        // Switch upstreams a few times.
+        TestNetworkAgent wifi = new TestNetworkAgent(mCm, buildWifiUpstreamState());
+        wifi.fakeConnect();
+        mCm.makeDefaultNetwork(wifi, BROADCAST_FIRST);
+        mLooper.dispatchAll();
+        inOrder.verify(mUpstreamNetworkMonitor).setCurrentUpstream(wifi.networkId);
+
+        // This code has historically been racy, so test different orderings of CONNECTIVITY_ACTION
+        // broadcasts and callbacks, and add mLooper.dispatchAll() calls between the two.
+        final Runnable doDispatchAll = () -> mLooper.dispatchAll();
+
+        mCm.makeDefaultNetwork(mobile, BROADCAST_FIRST, doDispatchAll);
+        mLooper.dispatchAll();
+        inOrder.verify(mUpstreamNetworkMonitor).setCurrentUpstream(mobile.networkId);
+
+        mCm.makeDefaultNetwork(wifi, BROADCAST_FIRST, doDispatchAll);
+        mLooper.dispatchAll();
+        inOrder.verify(mUpstreamNetworkMonitor).setCurrentUpstream(wifi.networkId);
+
+        mCm.makeDefaultNetwork(mobile, CALLBACKS_FIRST);
+        mLooper.dispatchAll();
+        inOrder.verify(mUpstreamNetworkMonitor).setCurrentUpstream(mobile.networkId);
+
+        mCm.makeDefaultNetwork(wifi, CALLBACKS_FIRST);
+        mLooper.dispatchAll();
+        inOrder.verify(mUpstreamNetworkMonitor).setCurrentUpstream(wifi.networkId);
+
+        mCm.makeDefaultNetwork(mobile, CALLBACKS_FIRST, doDispatchAll);
+        mLooper.dispatchAll();
+        inOrder.verify(mUpstreamNetworkMonitor).setCurrentUpstream(mobile.networkId);
+
+        // Wifi disconnecting should not have any affect since it's not the current upstream.
+        wifi.fakeDisconnect();
+        mLooper.dispatchAll();
+        inOrder.verify(mUpstreamNetworkMonitor, never()).setCurrentUpstream(any());
+
+        // Lose and regain upstream.
+        assertTrue(mUpstreamNetworkMonitor.getCurrentPreferredUpstream().linkProperties
+                .hasIPv4Address());
+        mCm.makeDefaultNetwork(null, BROADCAST_FIRST, doDispatchAll);
+        mLooper.dispatchAll();
+        mobile.fakeDisconnect();
+        mLooper.dispatchAll();
+        inOrder.verify(mUpstreamNetworkMonitor).setCurrentUpstream(null);
+
+        mobile = new TestNetworkAgent(mCm, buildMobile464xlatUpstreamState());
+        mobile.fakeConnect();
+        mCm.makeDefaultNetwork(mobile, BROADCAST_FIRST, doDispatchAll);
+        mLooper.dispatchAll();
+        inOrder.verify(mUpstreamNetworkMonitor).setCurrentUpstream(mobile.networkId);
+
+        // Check the IP addresses to ensure that the upstream is indeed not the same as the previous
+        // mobile upstream, even though the netId is (unrealistically) the same.
+        assertFalse(mUpstreamNetworkMonitor.getCurrentPreferredUpstream().linkProperties
+                .hasIPv4Address());
+
+        // Lose and regain upstream again.
+        mCm.makeDefaultNetwork(null, CALLBACKS_FIRST, doDispatchAll);
+        mobile.fakeDisconnect();
+        mLooper.dispatchAll();
+        inOrder.verify(mUpstreamNetworkMonitor).setCurrentUpstream(null);
+
+        mobile = new TestNetworkAgent(mCm, buildMobileDualStackUpstreamState());
+        mobile.fakeConnect();
+        mCm.makeDefaultNetwork(mobile, CALLBACKS_FIRST, doDispatchAll);
+        mLooper.dispatchAll();
+        inOrder.verify(mUpstreamNetworkMonitor).setCurrentUpstream(mobile.networkId);
+
+        assertTrue(mUpstreamNetworkMonitor.getCurrentPreferredUpstream().linkProperties
+                .hasIPv4Address());
+    }
+
     private void runNcmTethering() {
         prepareNcmTethering();
         sendUsbBroadcast(true, true, true, TETHERING_NCM);
-        mLooper.dispatchAll();
     }
 
     @Test
@@ -1134,7 +1236,6 @@ public class TetheringTest {
         // tethering mode is to be started.
         mTethering.interfaceStatusChanged(TEST_WLAN_IFNAME, true);
         sendWifiApStateChanged(WIFI_AP_STATE_ENABLED);
-        mLooper.dispatchAll();
 
         // There is 1 IpServer state change event: STATE_AVAILABLE
         verify(mNotificationUpdater, times(1)).onDownstreamChanged(DOWNSTREAM_NONE);
@@ -1162,7 +1263,6 @@ public class TetheringTest {
         // tethering mode is to be started.
         mTethering.interfaceStatusChanged(TEST_WLAN_IFNAME, true);
         sendWifiApStateChanged(WIFI_AP_STATE_ENABLED, TEST_WLAN_IFNAME, IFACE_IP_MODE_TETHERED);
-        mLooper.dispatchAll();
 
         verifyInterfaceServingModeStarted(TEST_WLAN_IFNAME);
         verifyTetheringBroadcast(TEST_WLAN_IFNAME, EXTRA_AVAILABLE_TETHER);
@@ -1180,7 +1280,7 @@ public class TetheringTest {
         verify(mUpstreamNetworkMonitor, times(1)).startObserveAllNetworks();
         // In tethering mode, in the default configuration, an explicit request
         // for a mobile network is also made.
-        verify(mUpstreamNetworkMonitor, times(1)).registerMobileNetworkRequest();
+        verify(mUpstreamNetworkMonitor, times(1)).setTryCell(true);
         // There are 2 IpServer state change events: STATE_AVAILABLE -> STATE_TETHERED
         verify(mNotificationUpdater, times(1)).onDownstreamChanged(DOWNSTREAM_NONE);
         verify(mNotificationUpdater, times(1)).onDownstreamChanged(eq(1 << TETHERING_WIFI));
@@ -1239,7 +1339,6 @@ public class TetheringTest {
         // tethering mode is to be started.
         mTethering.interfaceStatusChanged(TEST_WLAN_IFNAME, true);
         sendWifiApStateChanged(WIFI_AP_STATE_ENABLED, TEST_WLAN_IFNAME, IFACE_IP_MODE_TETHERED);
-        mLooper.dispatchAll();
 
         // We verify get/set called three times here: twice for setup and once during
         // teardown because all events happen over the course of the single
@@ -1563,7 +1662,6 @@ public class TetheringTest {
 
         mTethering.startTethering(createTetheringRequestParcel(TETHERING_WIFI), null);
         sendWifiApStateChanged(WIFI_AP_STATE_ENABLED, TEST_WLAN_IFNAME, IFACE_IP_MODE_TETHERED);
-        mLooper.dispatchAll();
         tetherState = callback.pollTetherStatesChanged();
         assertArrayEquals(tetherState.tetheredList, new String[] {TEST_WLAN_IFNAME});
         callback.expectUpstreamChanged(upstreamState.network);
@@ -1585,7 +1683,6 @@ public class TetheringTest {
         mLooper.dispatchAll();
         mTethering.stopTethering(TETHERING_WIFI);
         sendWifiApStateChanged(WifiManager.WIFI_AP_STATE_DISABLED);
-        mLooper.dispatchAll();
         tetherState = callback2.pollTetherStatesChanged();
         assertArrayEquals(tetherState.availableList, new String[] {TEST_WLAN_IFNAME});
         mLooper.dispatchAll();
@@ -1678,7 +1775,6 @@ public class TetheringTest {
             mTethering.interfaceStatusChanged(TEST_P2P_IFNAME, true);
         }
         sendWifiP2pConnectionChanged(true, true, TEST_P2P_IFNAME);
-        mLooper.dispatchAll();
 
         verifyInterfaceServingModeStarted(TEST_P2P_IFNAME);
         verifyTetheringBroadcast(TEST_P2P_IFNAME, EXTRA_AVAILABLE_TETHER);
@@ -1696,7 +1792,6 @@ public class TetheringTest {
         // is being removed.
         sendWifiP2pConnectionChanged(false, true, TEST_P2P_IFNAME);
         mTethering.interfaceRemoved(TEST_P2P_IFNAME);
-        mLooper.dispatchAll();
 
         verify(mNetd, times(1)).tetherApplyDnsInterfaces();
         verify(mNetd, times(1)).tetherInterfaceRemove(TEST_P2P_IFNAME);
@@ -1719,7 +1814,6 @@ public class TetheringTest {
             mTethering.interfaceStatusChanged(TEST_P2P_IFNAME, true);
         }
         sendWifiP2pConnectionChanged(true, false, TEST_P2P_IFNAME);
-        mLooper.dispatchAll();
 
         verify(mNetd, never()).interfaceSetCfg(any(InterfaceConfigurationParcel.class));
         verify(mNetd, never()).tetherInterfaceAdd(TEST_P2P_IFNAME);
@@ -1731,7 +1825,6 @@ public class TetheringTest {
         // is being removed.
         sendWifiP2pConnectionChanged(false, false, TEST_P2P_IFNAME);
         mTethering.interfaceRemoved(TEST_P2P_IFNAME);
-        mLooper.dispatchAll();
 
         verify(mNetd, never()).tetherApplyDnsInterfaces();
         verify(mNetd, never()).tetherInterfaceRemove(TEST_P2P_IFNAME);
@@ -1767,7 +1860,6 @@ public class TetheringTest {
             mTethering.interfaceStatusChanged(TEST_P2P_IFNAME, true);
         }
         sendWifiP2pConnectionChanged(true, true, TEST_P2P_IFNAME);
-        mLooper.dispatchAll();
 
         verify(mNetd, never()).interfaceSetCfg(any(InterfaceConfigurationParcel.class));
         verify(mNetd, never()).tetherInterfaceAdd(TEST_P2P_IFNAME);
@@ -1897,7 +1989,6 @@ public class TetheringTest {
         // Expect that when USB comes up, the DHCP server is configured with the requested address.
         mTethering.interfaceStatusChanged(TEST_USB_IFNAME, true);
         sendUsbBroadcast(true, true, true, TETHERING_USB);
-        mLooper.dispatchAll();
         verify(mDhcpServer, timeout(DHCPSERVER_START_TIMEOUT_MS).times(1)).startWithCallbacks(
                 any(), any());
         verify(mNetd).interfaceSetCfg(argThat(cfg -> serverAddr.equals(cfg.ipv4Addr)));
@@ -1917,7 +2008,6 @@ public class TetheringTest {
         verify(mUsbManager, times(1)).setCurrentFunctions(UsbManager.FUNCTION_RNDIS);
         mTethering.interfaceStatusChanged(TEST_USB_IFNAME, true);
         sendUsbBroadcast(true, true, true, TETHERING_USB);
-        mLooper.dispatchAll();
         verify(mNetd).interfaceSetCfg(argThat(cfg -> serverAddr.equals(cfg.ipv4Addr)));
         verify(mIpServerDependencies, times(1)).makeDhcpServer(any(), dhcpParamsCaptor.capture(),
                 any());
@@ -2141,7 +2231,6 @@ public class TetheringTest {
 
         mTethering.interfaceStatusChanged(TEST_USB_IFNAME, true);
         sendUsbBroadcast(true, true, true, TETHERING_USB);
-        mLooper.dispatchAll();
         assertContains(Arrays.asList(mTethering.getTetherableIfaces()), TEST_USB_IFNAME);
         assertContains(Arrays.asList(mTethering.getTetherableIfaces()), TEST_ETH_IFNAME);
         assertEquals(TETHER_ERROR_IFACE_CFG_ERROR, mTethering.getLastTetherError(TEST_USB_IFNAME));
@@ -2180,7 +2269,6 @@ public class TetheringTest {
         // Run local only tethering.
         mTethering.interfaceStatusChanged(TEST_P2P_IFNAME, true);
         sendWifiP2pConnectionChanged(true, true, TEST_P2P_IFNAME);
-        mLooper.dispatchAll();
         verify(mDhcpServer, timeout(DHCPSERVER_START_TIMEOUT_MS)).startWithCallbacks(
                 any(), dhcpEventCbsCaptor.capture());
         eventCallbacks = dhcpEventCbsCaptor.getValue();
@@ -2197,7 +2285,6 @@ public class TetheringTest {
         // Run wifi tethering.
         mTethering.interfaceStatusChanged(TEST_WLAN_IFNAME, true);
         sendWifiApStateChanged(WIFI_AP_STATE_ENABLED, TEST_WLAN_IFNAME, IFACE_IP_MODE_TETHERED);
-        mLooper.dispatchAll();
         verify(mDhcpServer, timeout(DHCPSERVER_START_TIMEOUT_MS)).startWithCallbacks(
                 any(), dhcpEventCbsCaptor.capture());
         eventCallbacks = dhcpEventCbsCaptor.getValue();

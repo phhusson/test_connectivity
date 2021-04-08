@@ -30,12 +30,12 @@ import android.net.NetworkInfo;
 import android.net.NetworkRequest;
 import android.os.Handler;
 import android.os.UserHandle;
+import android.util.ArrayMap;
 
-import java.util.HashMap;
-import java.util.HashSet;
+import androidx.annotation.Nullable;
+
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 /**
  * Simulates upstream switching and sending NetworkCallbacks and CONNECTIVITY_ACTION broadcasts.
@@ -60,17 +60,20 @@ import java.util.Set;
  *   that state changes), this may become less important or unnecessary.
  */
 public class TestConnectivityManager extends ConnectivityManager {
-    public Map<NetworkCallback, Handler> allCallbacks = new HashMap<>();
-    public Set<NetworkCallback> trackingDefault = new HashSet<>();
-    public TestNetworkAgent defaultNetwork = null;
-    public Map<NetworkCallback, NetworkRequest> listening = new HashMap<>();
-    public Map<NetworkCallback, NetworkRequest> requested = new HashMap<>();
-    public Map<NetworkCallback, Integer> legacyTypeMap = new HashMap<>();
+    public static final boolean BROADCAST_FIRST = false;
+    public static final boolean CALLBACKS_FIRST = true;
+
+    final Map<NetworkCallback, NetworkRequestInfo> mAllCallbacks = new ArrayMap<>();
+    final Map<NetworkCallback, NetworkRequestInfo> mTrackingDefault = new ArrayMap<>();
+    final Map<NetworkCallback, NetworkRequestInfo> mListening = new ArrayMap<>();
+    final Map<NetworkCallback, NetworkRequestInfo> mRequested = new ArrayMap<>();
+    final Map<NetworkCallback, Integer> mLegacyTypeMap = new ArrayMap<>();
 
     private final NetworkRequest mDefaultRequest;
     private final Context mContext;
 
     private int mNetworkId = 100;
+    private TestNetworkAgent mDefaultNetwork = null;
 
     /**
      * Constructs a TestConnectivityManager.
@@ -86,28 +89,37 @@ public class TestConnectivityManager extends ConnectivityManager {
         mDefaultRequest = defaultRequest;
     }
 
+    class NetworkRequestInfo {
+        public final NetworkRequest request;
+        public final Handler handler;
+        NetworkRequestInfo(NetworkRequest r, Handler h) {
+            request = r;
+            handler = h;
+        }
+    }
+
     boolean hasNoCallbacks() {
-        return allCallbacks.isEmpty()
-                && trackingDefault.isEmpty()
-                && listening.isEmpty()
-                && requested.isEmpty()
-                && legacyTypeMap.isEmpty();
+        return mAllCallbacks.isEmpty()
+                && mTrackingDefault.isEmpty()
+                && mListening.isEmpty()
+                && mRequested.isEmpty()
+                && mLegacyTypeMap.isEmpty();
     }
 
     boolean onlyHasDefaultCallbacks() {
-        return (allCallbacks.size() == 1)
-                && (trackingDefault.size() == 1)
-                && listening.isEmpty()
-                && requested.isEmpty()
-                && legacyTypeMap.isEmpty();
+        return (mAllCallbacks.size() == 1)
+                && (mTrackingDefault.size() == 1)
+                && mListening.isEmpty()
+                && mRequested.isEmpty()
+                && mLegacyTypeMap.isEmpty();
     }
 
     boolean isListeningForAll() {
         final NetworkCapabilities empty = new NetworkCapabilities();
         empty.clearAll();
 
-        for (NetworkRequest req : listening.values()) {
-            if (req.networkCapabilities.equalRequestableCapabilities(empty)) {
+        for (NetworkRequestInfo nri : mListening.values()) {
+            if (nri.request.networkCapabilities.equalRequestableCapabilities(empty)) {
                 return true;
             }
         }
@@ -118,40 +130,67 @@ public class TestConnectivityManager extends ConnectivityManager {
         return ++mNetworkId;
     }
 
-    void makeDefaultNetwork(TestNetworkAgent agent) {
-        if (Objects.equals(defaultNetwork, agent)) return;
-
-        final TestNetworkAgent formerDefault = defaultNetwork;
-        defaultNetwork = agent;
-
+    private void sendDefaultNetworkBroadcasts(TestNetworkAgent formerDefault,
+            TestNetworkAgent defaultNetwork) {
         if (formerDefault != null) {
             sendConnectivityAction(formerDefault.legacyType, false /* connected */);
         }
         if (defaultNetwork != null) {
             sendConnectivityAction(defaultNetwork.legacyType, true /* connected */);
         }
+    }
 
-        for (NetworkCallback cb : trackingDefault) {
+    private void sendDefaultNetworkCallbacks(TestNetworkAgent formerDefault,
+            TestNetworkAgent defaultNetwork) {
+        for (NetworkCallback cb : mTrackingDefault.keySet()) {
+            final NetworkRequestInfo nri = mTrackingDefault.get(cb);
             if (defaultNetwork != null) {
-                cb.onAvailable(defaultNetwork.networkId);
-                cb.onCapabilitiesChanged(
-                        defaultNetwork.networkId, defaultNetwork.networkCapabilities);
-                cb.onLinkPropertiesChanged(
-                        defaultNetwork.networkId, defaultNetwork.linkProperties);
+                nri.handler.post(() -> cb.onAvailable(defaultNetwork.networkId));
+                nri.handler.post(() -> cb.onCapabilitiesChanged(
+                        defaultNetwork.networkId, defaultNetwork.networkCapabilities));
+                nri.handler.post(() -> cb.onLinkPropertiesChanged(
+                        defaultNetwork.networkId, defaultNetwork.linkProperties));
+            } else if (formerDefault != null) {
+                nri.handler.post(() -> cb.onLost(formerDefault.networkId));
             }
         }
     }
 
+    void makeDefaultNetwork(TestNetworkAgent agent, boolean order, @Nullable Runnable inBetween) {
+        if (Objects.equals(mDefaultNetwork, agent)) return;
+
+        final TestNetworkAgent formerDefault = mDefaultNetwork;
+        mDefaultNetwork = agent;
+
+        if (order == CALLBACKS_FIRST) {
+            sendDefaultNetworkCallbacks(formerDefault, mDefaultNetwork);
+            if (inBetween != null) inBetween.run();
+            sendDefaultNetworkBroadcasts(formerDefault, mDefaultNetwork);
+        } else {
+            sendDefaultNetworkBroadcasts(formerDefault, mDefaultNetwork);
+            if (inBetween != null) inBetween.run();
+            sendDefaultNetworkCallbacks(formerDefault, mDefaultNetwork);
+        }
+    }
+
+    void makeDefaultNetwork(TestNetworkAgent agent, boolean order) {
+        makeDefaultNetwork(agent, order, null /* inBetween */);
+    }
+
+    void makeDefaultNetwork(TestNetworkAgent agent) {
+        makeDefaultNetwork(agent, BROADCAST_FIRST, null /* inBetween */);
+    }
+
     @Override
     public void requestNetwork(NetworkRequest req, NetworkCallback cb, Handler h) {
-        assertFalse(allCallbacks.containsKey(cb));
-        allCallbacks.put(cb, h);
+        assertFalse(mAllCallbacks.containsKey(cb));
+        mAllCallbacks.put(cb, new NetworkRequestInfo(req, h));
         if (mDefaultRequest.equals(req)) {
-            assertFalse(trackingDefault.contains(cb));
-            trackingDefault.add(cb);
+            assertFalse(mTrackingDefault.containsKey(cb));
+            mTrackingDefault.put(cb, new NetworkRequestInfo(req, h));
         } else {
-            assertFalse(requested.containsKey(cb));
-            requested.put(cb, req);
+            assertFalse(mRequested.containsKey(cb));
+            mRequested.put(cb, new NetworkRequestInfo(req, h));
         }
     }
 
@@ -163,22 +202,22 @@ public class TestConnectivityManager extends ConnectivityManager {
     @Override
     public void requestNetwork(NetworkRequest req,
             int timeoutMs, int legacyType, Handler h, NetworkCallback cb) {
-        assertFalse(allCallbacks.containsKey(cb));
-        allCallbacks.put(cb, h);
-        assertFalse(requested.containsKey(cb));
-        requested.put(cb, req);
-        assertFalse(legacyTypeMap.containsKey(cb));
+        assertFalse(mAllCallbacks.containsKey(cb));
+        mAllCallbacks.put(cb, new NetworkRequestInfo(req, h));
+        assertFalse(mRequested.containsKey(cb));
+        mRequested.put(cb, new NetworkRequestInfo(req, h));
+        assertFalse(mLegacyTypeMap.containsKey(cb));
         if (legacyType != ConnectivityManager.TYPE_NONE) {
-            legacyTypeMap.put(cb, legacyType);
+            mLegacyTypeMap.put(cb, legacyType);
         }
     }
 
     @Override
     public void registerNetworkCallback(NetworkRequest req, NetworkCallback cb, Handler h) {
-        assertFalse(allCallbacks.containsKey(cb));
-        allCallbacks.put(cb, h);
-        assertFalse(listening.containsKey(cb));
-        listening.put(cb, req);
+        assertFalse(mAllCallbacks.containsKey(cb));
+        mAllCallbacks.put(cb, new NetworkRequestInfo(req, h));
+        assertFalse(mListening.containsKey(cb));
+        mListening.put(cb, new NetworkRequestInfo(req, h));
     }
 
     @Override
@@ -198,22 +237,22 @@ public class TestConnectivityManager extends ConnectivityManager {
 
     @Override
     public void unregisterNetworkCallback(NetworkCallback cb) {
-        if (trackingDefault.contains(cb)) {
-            trackingDefault.remove(cb);
-        } else if (listening.containsKey(cb)) {
-            listening.remove(cb);
-        } else if (requested.containsKey(cb)) {
-            requested.remove(cb);
-            legacyTypeMap.remove(cb);
+        if (mTrackingDefault.containsKey(cb)) {
+            mTrackingDefault.remove(cb);
+        } else if (mListening.containsKey(cb)) {
+            mListening.remove(cb);
+        } else if (mRequested.containsKey(cb)) {
+            mRequested.remove(cb);
+            mLegacyTypeMap.remove(cb);
         } else {
             fail("Unexpected callback removed");
         }
-        allCallbacks.remove(cb);
+        mAllCallbacks.remove(cb);
 
-        assertFalse(allCallbacks.containsKey(cb));
-        assertFalse(trackingDefault.contains(cb));
-        assertFalse(listening.containsKey(cb));
-        assertFalse(requested.containsKey(cb));
+        assertFalse(mAllCallbacks.containsKey(cb));
+        assertFalse(mTrackingDefault.containsKey(cb));
+        assertFalse(mListening.containsKey(cb));
+        assertFalse(mRequested.containsKey(cb));
     }
 
     private void sendConnectivityAction(int type, boolean connected) {
@@ -275,34 +314,38 @@ public class TestConnectivityManager extends ConnectivityManager {
         }
 
         public void fakeConnect() {
-            for (NetworkRequest request : cm.requested.values()) {
-                if (matchesLegacyType(request.legacyType)) {
+            for (NetworkRequestInfo nri : cm.mRequested.values()) {
+                if (matchesLegacyType(nri.request.legacyType)) {
                     cm.sendConnectivityAction(legacyType, true /* connected */);
                     // In practice, a given network can match only one legacy type.
                     break;
                 }
             }
-            for (NetworkCallback cb : cm.listening.keySet()) {
-                cb.onAvailable(networkId);
-                cb.onCapabilitiesChanged(networkId, copy(networkCapabilities));
-                cb.onLinkPropertiesChanged(networkId, copy(linkProperties));
+            for (NetworkCallback cb : cm.mListening.keySet()) {
+                final NetworkRequestInfo nri = cm.mListening.get(cb);
+                nri.handler.post(() -> cb.onAvailable(networkId));
+                nri.handler.post(() -> cb.onCapabilitiesChanged(
+                        networkId, copy(networkCapabilities)));
+                nri.handler.post(() -> cb.onLinkPropertiesChanged(networkId, copy(linkProperties)));
             }
+            // mTrackingDefault will be updated if/when the caller calls makeDefaultNetwork
         }
 
         public void fakeDisconnect() {
-            for (NetworkRequest request : cm.requested.values()) {
-                if (matchesLegacyType(request.legacyType)) {
+            for (NetworkRequestInfo nri : cm.mRequested.values()) {
+                if (matchesLegacyType(nri.request.legacyType)) {
                     cm.sendConnectivityAction(legacyType, false /* connected */);
                     break;
                 }
             }
-            for (NetworkCallback cb : cm.listening.keySet()) {
+            for (NetworkCallback cb : cm.mListening.keySet()) {
                 cb.onLost(networkId);
             }
+            // mTrackingDefault will be updated if/when the caller calls makeDefaultNetwork
         }
 
         public void sendLinkProperties() {
-            for (NetworkCallback cb : cm.listening.keySet()) {
+            for (NetworkCallback cb : cm.mListening.keySet()) {
                 cb.onLinkPropertiesChanged(networkId, copy(linkProperties));
             }
         }

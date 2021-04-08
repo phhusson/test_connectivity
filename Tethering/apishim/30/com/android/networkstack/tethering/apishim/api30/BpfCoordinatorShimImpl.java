@@ -80,12 +80,14 @@ public class BpfCoordinatorShimImpl
 
     @Override
     public boolean startUpstreamIpv6Forwarding(int downstreamIfindex, int upstreamIfindex,
-            MacAddress srcMac, MacAddress dstMac, int mtu) {
+            @NonNull MacAddress inDstMac, @NonNull MacAddress outSrcMac,
+            @NonNull MacAddress outDstMac, int mtu) {
         return true;
     }
 
     @Override
-    public boolean stopUpstreamIpv6Forwarding(int downstreamIfindex, int upstreamIfindex) {
+    public boolean stopUpstreamIpv6Forwarding(int downstreamIfindex,
+            int upstreamIfindex, @NonNull MacAddress inDstMac) {
         return true;
     }
 
@@ -156,6 +158,24 @@ public class BpfCoordinatorShimImpl
     public boolean tetherOffloadRuleRemove(boolean downstream, @NonNull Tether4Key key) {
         /* no op */
         return true;
+    }
+
+    @Override
+    public boolean attachProgram(String iface, boolean downstream) {
+        /* no op */
+        return true;
+    }
+
+    @Override
+    public boolean detachProgram(String iface) {
+        /* no op */
+        return true;
+    }
+
+    @Override
+    public boolean isAnyIpv4RuleOnUpstream(int ifIndex) {
+        /* no op */
+        return false;
     }
 
     @Override

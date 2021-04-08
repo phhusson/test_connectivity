@@ -47,6 +47,7 @@ public class VpnServiceTest extends AndroidTestCase {
         assertEquals(1, count);
     }
 
+    @AppModeFull(reason = "establish() requires prepare(), which requires PackageManager access")
     public void testEstablish() throws Exception {
         ParcelFileDescriptor descriptor = null;
         try {
@@ -62,7 +63,7 @@ public class VpnServiceTest extends AndroidTestCase {
         }
     }
 
-    @AppModeFull(reason = "Socket cannot bind in instant app mode")
+    @AppModeFull(reason = "Protecting sockets requires prepare(), which requires PackageManager")
     public void testProtect_DatagramSocket() throws Exception {
         DatagramSocket socket = new DatagramSocket();
         try {
@@ -77,6 +78,7 @@ public class VpnServiceTest extends AndroidTestCase {
         }
     }
 
+    @AppModeFull(reason = "Protecting sockets requires prepare(), which requires PackageManager")
     public void testProtect_Socket() throws Exception {
         Socket socket = new Socket();
         try {
@@ -91,7 +93,7 @@ public class VpnServiceTest extends AndroidTestCase {
         }
     }
 
-    @AppModeFull(reason = "Socket cannot bind in instant app mode")
+    @AppModeFull(reason = "Protecting sockets requires prepare(), which requires PackageManager")
     public void testProtect_int() throws Exception {
         DatagramSocket socket = new DatagramSocket();
         ParcelFileDescriptor descriptor = ParcelFileDescriptor.fromDatagramSocket(socket);

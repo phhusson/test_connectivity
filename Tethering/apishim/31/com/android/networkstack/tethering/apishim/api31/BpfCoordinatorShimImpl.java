@@ -23,6 +23,7 @@ import android.net.util.SharedLog;
 import android.system.ErrnoException;
 import android.system.Os;
 import android.system.OsConstants;
+import android.util.Log;
 import android.util.SparseArray;
 
 import androidx.annotation.NonNull;
@@ -31,6 +32,7 @@ import androidx.annotation.Nullable;
 import com.android.networkstack.tethering.BpfCoordinator.Dependencies;
 import com.android.networkstack.tethering.BpfCoordinator.Ipv6ForwardingRule;
 import com.android.networkstack.tethering.BpfMap;
+import com.android.networkstack.tethering.BpfUtils;
 import com.android.networkstack.tethering.Tether4Key;
 import com.android.networkstack.tethering.Tether4Value;
 import com.android.networkstack.tethering.Tether6Value;
@@ -42,6 +44,7 @@ import com.android.networkstack.tethering.TetherStatsValue;
 import com.android.networkstack.tethering.TetherUpstream6Key;
 
 import java.io.FileDescriptor;
+import java.io.IOException;
 
 /**
  * Bpf coordinator class for API shims.
@@ -82,14 +85,62 @@ public class BpfCoordinatorShimImpl
     @Nullable
     private final BpfMap<TetherLimitKey, TetherLimitValue> mBpfLimitMap;
 
+    // Tracking IPv4 rule count while any rule is using the given upstream interfaces. Used for
+    // reducing the BPF map iteration query. The count is increased or decreased when the rule is
+    // added or removed successfully on mBpfDownstream4Map. Counting the rules on downstream4 map
+    // is because tetherOffloadRuleRemove can't get upstream interface index from upstream key,
+    // unless pass upstream value which is not required for deleting map entry. The upstream
+    // interface index is the same in Upstream4Value.oif and Downstream4Key.iif. For now, it is
+    // okay to count on Downstream4Key. See BpfConntrackEventConsumer#accept.
+    // Note that except the constructor, any calls to mBpfDownstream4Map.clear() need to clear
+    // this counter as well.
+    // TODO: Count the rule on upstream if multi-upstream is supported and the
+    // packet needs to be sent and responded on different upstream interfaces.
+    // TODO: Add IPv6 rule count.
+    private final SparseArray<Integer> mRule4CountOnUpstream = new SparseArray<>();
+
     public BpfCoordinatorShimImpl(@NonNull final Dependencies deps) {
         mLog = deps.getSharedLog().forSubComponent(TAG);
+
         mBpfDownstream4Map = deps.getBpfDownstream4Map();
         mBpfUpstream4Map = deps.getBpfUpstream4Map();
         mBpfDownstream6Map = deps.getBpfDownstream6Map();
         mBpfUpstream6Map = deps.getBpfUpstream6Map();
         mBpfStatsMap = deps.getBpfStatsMap();
         mBpfLimitMap = deps.getBpfLimitMap();
+
+        // Clear the stubs of the maps for handling the system service crash if any.
+        // Doesn't throw the exception and clear the stubs as many as possible.
+        try {
+            if (mBpfDownstream4Map != null) mBpfDownstream4Map.clear();
+        } catch (ErrnoException e) {
+            mLog.e("Could not clear mBpfDownstream4Map: " + e);
+        }
+        try {
+            if (mBpfUpstream4Map != null) mBpfUpstream4Map.clear();
+        } catch (ErrnoException e) {
+            mLog.e("Could not clear mBpfUpstream4Map: " + e);
+        }
+        try {
+            if (mBpfDownstream6Map != null) mBpfDownstream6Map.clear();
+        } catch (ErrnoException e) {
+            mLog.e("Could not clear mBpfDownstream6Map: " + e);
+        }
+        try {
+            if (mBpfUpstream6Map != null) mBpfUpstream6Map.clear();
+        } catch (ErrnoException e) {
+            mLog.e("Could not clear mBpfUpstream6Map: " + e);
+        }
+        try {
+            if (mBpfStatsMap != null) mBpfStatsMap.clear();
+        } catch (ErrnoException e) {
+            mLog.e("Could not clear mBpfStatsMap: " + e);
+        }
+        try {
+            if (mBpfLimitMap != null) mBpfLimitMap.clear();
+        } catch (ErrnoException e) {
+            mLog.e("Could not clear mBpfLimitMap: " + e);
+        }
     }
 
     @Override
@@ -133,12 +184,13 @@ public class BpfCoordinatorShimImpl
 
     @Override
     public boolean startUpstreamIpv6Forwarding(int downstreamIfindex, int upstreamIfindex,
-            MacAddress srcMac, MacAddress dstMac, int mtu) {
+            @NonNull MacAddress inDstMac, @NonNull MacAddress outSrcMac,
+            @NonNull MacAddress outDstMac, int mtu) {
         if (!isInitialized()) return false;
 
-        final TetherUpstream6Key key = new TetherUpstream6Key(downstreamIfindex);
-        final Tether6Value value = new Tether6Value(upstreamIfindex, srcMac,
-                dstMac, OsConstants.ETH_P_IPV6, mtu);
+        final TetherUpstream6Key key = new TetherUpstream6Key(downstreamIfindex, inDstMac);
+        final Tether6Value value = new Tether6Value(upstreamIfindex, outSrcMac,
+                outDstMac, OsConstants.ETH_P_IPV6, mtu);
         try {
             mBpfUpstream6Map.insertEntry(key, value);
         } catch (ErrnoException | IllegalStateException e) {
@@ -149,10 +201,11 @@ public class BpfCoordinatorShimImpl
     }
 
     @Override
-    public boolean stopUpstreamIpv6Forwarding(int downstreamIfindex, int upstreamIfindex) {
+    public boolean stopUpstreamIpv6Forwarding(int downstreamIfindex, int upstreamIfindex,
+            @NonNull MacAddress inDstMac) {
         if (!isInitialized()) return false;
 
-        final TetherUpstream6Key key = new TetherUpstream6Key(downstreamIfindex);
+        final TetherUpstream6Key key = new TetherUpstream6Key(downstreamIfindex, inDstMac);
         try {
             mBpfUpstream6Map.deleteEntry(key);
         } catch (ErrnoException e) {
@@ -288,18 +341,22 @@ public class BpfCoordinatorShimImpl
         if (!isInitialized()) return false;
 
         try {
-            // The last used time field of the value is updated by the bpf program. Adding the same
-            // map pair twice causes the unexpected refresh. Must be fixed before starting the
-            // conntrack timeout extension implementation.
-            // TODO: consider using insertEntry.
             if (downstream) {
-                mBpfDownstream4Map.updateEntry(key, value);
+                mBpfDownstream4Map.insertEntry(key, value);
+
+                // Increase the rule count while a adding rule is using a given upstream interface.
+                final int upstreamIfindex = (int) key.iif;
+                int count = mRule4CountOnUpstream.get(upstreamIfindex, 0 /* default */);
+                mRule4CountOnUpstream.put(upstreamIfindex, ++count);
             } else {
-                mBpfUpstream4Map.updateEntry(key, value);
+                mBpfUpstream4Map.insertEntry(key, value);
             }
         } catch (ErrnoException e) {
-            mLog.e("Could not update entry: ", e);
+            mLog.e("Could not insert entry (" + key + ", " + value + "): " + e);
             return false;
+        } catch (IllegalStateException e) {
+            // Silent if the rule already exists. Note that the errno EEXIST was rethrown as
+            // IllegalStateException. See BpfMap#insertEntry.
         }
         return true;
     }
@@ -310,7 +367,26 @@ public class BpfCoordinatorShimImpl
 
         try {
             if (downstream) {
-                mBpfDownstream4Map.deleteEntry(key);
+                if (!mBpfDownstream4Map.deleteEntry(key)) {
+                    mLog.e("Could not delete entry (key: " + key + ")");
+                    return false;
+                }
+
+                // Decrease the rule count while a deleting rule is not using a given upstream
+                // interface anymore.
+                final int upstreamIfindex = (int) key.iif;
+                Integer count = mRule4CountOnUpstream.get(upstreamIfindex);
+                if (count == null) {
+                    Log.wtf(TAG, "Could not delete count for interface " + upstreamIfindex);
+                    return false;
+                }
+
+                if (--count == 0) {
+                    // Remove the entry if the count decreases to zero.
+                    mRule4CountOnUpstream.remove(upstreamIfindex);
+                } else {
+                    mRule4CountOnUpstream.put(upstreamIfindex, count);
+                }
             } else {
                 mBpfUpstream4Map.deleteEntry(key);
             }
@@ -322,6 +398,38 @@ public class BpfCoordinatorShimImpl
             }
         }
         return true;
+    }
+
+    @Override
+    public boolean attachProgram(String iface, boolean downstream) {
+        if (!isInitialized()) return false;
+
+        try {
+            BpfUtils.attachProgram(iface, downstream);
+        } catch (IOException e) {
+            mLog.e("Could not attach program: " + e);
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    public boolean detachProgram(String iface) {
+        if (!isInitialized()) return false;
+
+        try {
+            BpfUtils.detachProgram(iface);
+        } catch (IOException e) {
+            mLog.e("Could not detach program: " + e);
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    public boolean isAnyIpv4RuleOnUpstream(int ifIndex) {
+        // No entry means no rule for the given interface because 0 has never been stored.
+        return mRule4CountOnUpstream.get(ifIndex) != null;
     }
 
     private String mapStatus(BpfMap m, String name) {

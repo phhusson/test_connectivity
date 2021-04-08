@@ -26,9 +26,12 @@ import static android.net.NetworkStats.UID_TETHERING;
 import static android.net.netstats.provider.NetworkStatsProvider.QUOTA_UNLIMITED;
 import static android.system.OsConstants.ETH_P_IPV6;
 
+import static com.android.dx.mockito.inline.extended.ExtendedMockito.staticMockMarker;
 import static com.android.networkstack.tethering.BpfCoordinator.StatsType;
 import static com.android.networkstack.tethering.BpfCoordinator.StatsType.STATS_PER_IFACE;
 import static com.android.networkstack.tethering.BpfCoordinator.StatsType.STATS_PER_UID;
+import static com.android.networkstack.tethering.BpfUtils.DOWNSTREAM;
+import static com.android.networkstack.tethering.BpfUtils.UPSTREAM;
 import static com.android.networkstack.tethering.TetheringConfiguration.DEFAULT_TETHER_OFFLOAD_POLL_INTERVAL_MS;
 
 import static org.junit.Assert.assertEquals;
@@ -70,13 +73,17 @@ import androidx.annotation.Nullable;
 import androidx.test.filters.SmallTest;
 import androidx.test.runner.AndroidJUnit4;
 
+import com.android.dx.mockito.inline.extended.ExtendedMockito;
 import com.android.net.module.util.NetworkStackConstants;
 import com.android.net.module.util.Struct;
 import com.android.networkstack.tethering.BpfCoordinator.Ipv6ForwardingRule;
+import com.android.testutils.DevSdkIgnoreRule;
+import com.android.testutils.DevSdkIgnoreRule.IgnoreAfter;
 import com.android.testutils.DevSdkIgnoreRule.IgnoreUpTo;
 import com.android.testutils.TestableNetworkStatsProviderCbBinder;
 
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
@@ -84,6 +91,7 @@ import org.mockito.ArgumentMatcher;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.mockito.MockitoSession;
 
 import java.net.Inet6Address;
 import java.net.InetAddress;
@@ -97,8 +105,11 @@ import java.util.function.BiConsumer;
 @RunWith(AndroidJUnit4.class)
 @SmallTest
 public class BpfCoordinatorTest {
+    @Rule
+    public final DevSdkIgnoreRule mIgnoreRule = new DevSdkIgnoreRule();
+
     private static final int DOWNSTREAM_IFINDEX = 10;
-    private static final MacAddress DOWNSTREAM_MAC = MacAddress.ALL_ZEROS_ADDRESS;
+    private static final MacAddress DOWNSTREAM_MAC = MacAddress.fromString("12:34:56:78:90:ab");
     private static final InetAddress NEIGH_A = InetAddresses.parseNumericAddress("2001:db8::1");
     private static final InetAddress NEIGH_B = InetAddresses.parseNumericAddress("2001:db8::2");
     private static final MacAddress MAC_A = MacAddress.fromString("00:00:00:00:00:0a");
@@ -149,6 +160,12 @@ public class BpfCoordinatorTest {
             // Return value for a given key. Otherwise, return null without an error ENOENT.
             // BpfMap#getValue treats that the entry is not found as no error.
             return mMap.get(key);
+        }
+
+        @Override
+        public void clear() throws ErrnoException {
+            // TODO: consider using mocked #getFirstKey and #deleteEntry to implement.
+            mMap.clear();
         }
     };
 
@@ -366,19 +383,20 @@ public class BpfCoordinatorTest {
     }
 
     private void verifyStartUpstreamIpv6Forwarding(@Nullable InOrder inOrder, int downstreamIfIndex,
-            int upstreamIfindex) throws Exception {
+            MacAddress downstreamMac, int upstreamIfindex) throws Exception {
         if (!mDeps.isAtLeastS()) return;
-        final TetherUpstream6Key key = new TetherUpstream6Key(downstreamIfIndex);
+        final TetherUpstream6Key key = new TetherUpstream6Key(downstreamIfIndex, downstreamMac);
         final Tether6Value value = new Tether6Value(upstreamIfindex,
                 MacAddress.ALL_ZEROS_ADDRESS, MacAddress.ALL_ZEROS_ADDRESS,
                 ETH_P_IPV6, NetworkStackConstants.ETHER_MTU);
         verifyWithOrder(inOrder, mBpfUpstream6Map).insertEntry(key, value);
     }
 
-    private void verifyStopUpstreamIpv6Forwarding(@Nullable InOrder inOrder, int downstreamIfIndex)
+    private void verifyStopUpstreamIpv6Forwarding(@Nullable InOrder inOrder, int downstreamIfIndex,
+            MacAddress downstreamMac)
             throws Exception {
         if (!mDeps.isAtLeastS()) return;
-        final TetherUpstream6Key key = new TetherUpstream6Key(downstreamIfIndex);
+        final TetherUpstream6Key key = new TetherUpstream6Key(downstreamIfIndex, downstreamMac);
         verifyWithOrder(inOrder, mBpfUpstream6Map).deleteEntry(key);
     }
 
@@ -715,9 +733,10 @@ public class BpfCoordinatorTest {
 
         final TetherDownstream6Key key = rule.makeTetherDownstream6Key();
         assertEquals(key.iif, (long) mobileIfIndex);
+        assertEquals(key.dstMac, MacAddress.ALL_ZEROS_ADDRESS);  // rawip upstream
         assertTrue(Arrays.equals(key.neigh6, NEIGH_A.getAddress()));
-        // iif (4) + neigh6 (16) = 20.
-        assertEquals(20, key.writeToBytes().length);
+        // iif (4) + dstMac(6) + padding(2) + neigh6 (16) = 28.
+        assertEquals(28, key.writeToBytes().length);
     }
 
     @Test
@@ -858,7 +877,7 @@ public class BpfCoordinatorTest {
         verifyTetherOffloadRuleAdd(inOrder, ethernetRuleA);
         verifyTetherOffloadSetInterfaceQuota(inOrder, ethIfIndex, QUOTA_UNLIMITED,
                 true /* isInit */);
-        verifyStartUpstreamIpv6Forwarding(inOrder, DOWNSTREAM_IFINDEX, ethIfIndex);
+        verifyStartUpstreamIpv6Forwarding(inOrder, DOWNSTREAM_IFINDEX, DOWNSTREAM_MAC, ethIfIndex);
         coordinator.tetherOffloadRuleAdd(mIpServer, ethernetRuleB);
         verifyTetherOffloadRuleAdd(inOrder, ethernetRuleB);
 
@@ -875,12 +894,13 @@ public class BpfCoordinatorTest {
         coordinator.tetherOffloadRuleUpdate(mIpServer, mobileIfIndex);
         verifyTetherOffloadRuleRemove(inOrder, ethernetRuleA);
         verifyTetherOffloadRuleRemove(inOrder, ethernetRuleB);
-        verifyStopUpstreamIpv6Forwarding(inOrder, DOWNSTREAM_IFINDEX);
+        verifyStopUpstreamIpv6Forwarding(inOrder, DOWNSTREAM_IFINDEX, DOWNSTREAM_MAC);
         verifyTetherOffloadGetAndClearStats(inOrder, ethIfIndex);
         verifyTetherOffloadRuleAdd(inOrder, mobileRuleA);
         verifyTetherOffloadSetInterfaceQuota(inOrder, mobileIfIndex, QUOTA_UNLIMITED,
                 true /* isInit */);
-        verifyStartUpstreamIpv6Forwarding(inOrder, DOWNSTREAM_IFINDEX, mobileIfIndex);
+        verifyStartUpstreamIpv6Forwarding(inOrder, DOWNSTREAM_IFINDEX, DOWNSTREAM_MAC,
+                mobileIfIndex);
         verifyTetherOffloadRuleAdd(inOrder, mobileRuleB);
 
         // [3] Clear all rules for a given IpServer.
@@ -889,7 +909,7 @@ public class BpfCoordinatorTest {
         coordinator.tetherOffloadRuleClear(mIpServer);
         verifyTetherOffloadRuleRemove(inOrder, mobileRuleA);
         verifyTetherOffloadRuleRemove(inOrder, mobileRuleB);
-        verifyStopUpstreamIpv6Forwarding(inOrder, DOWNSTREAM_IFINDEX);
+        verifyStopUpstreamIpv6Forwarding(inOrder, DOWNSTREAM_IFINDEX, DOWNSTREAM_MAC);
         verifyTetherOffloadGetAndClearStats(inOrder, mobileIfIndex);
 
         // [4] Force pushing stats update to verify that the last diff of stats is reported on all
@@ -988,6 +1008,24 @@ public class BpfCoordinatorTest {
 
     @Test
     @IgnoreUpTo(Build.VERSION_CODES.R)
+    public void testBpfDisabledbyNoBpfDownstream4Map() throws Exception {
+        setupFunctioningNetdInterface();
+        doReturn(null).when(mDeps).getBpfDownstream4Map();
+
+        checkBpfDisabled();
+    }
+
+    @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
+    public void testBpfDisabledbyNoBpfUpstream4Map() throws Exception {
+        setupFunctioningNetdInterface();
+        doReturn(null).when(mDeps).getBpfUpstream4Map();
+
+        checkBpfDisabled();
+    }
+
+    @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testBpfDisabledbyNoBpfStatsMap() throws Exception {
         setupFunctioningNetdInterface();
         doReturn(null).when(mDeps).getBpfStatsMap();
@@ -1002,6 +1040,73 @@ public class BpfCoordinatorTest {
         doReturn(null).when(mDeps).getBpfLimitMap();
 
         checkBpfDisabled();
+    }
+
+    @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
+    public void testBpfMapClear() throws Exception {
+        setupFunctioningNetdInterface();
+
+        final BpfCoordinator coordinator = makeBpfCoordinator();
+        verify(mBpfDownstream4Map).clear();
+        verify(mBpfUpstream4Map).clear();
+        verify(mBpfDownstream6Map).clear();
+        verify(mBpfUpstream6Map).clear();
+        verify(mBpfStatsMap).clear();
+        verify(mBpfLimitMap).clear();
+    }
+
+    @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
+    public void testAttachDetachBpfProgram() throws Exception {
+        setupFunctioningNetdInterface();
+
+        // Static mocking for BpfUtils.
+        MockitoSession mockSession = ExtendedMockito.mockitoSession()
+                .mockStatic(BpfUtils.class)
+                .startMocking();
+        try {
+            final String intIface1 = "wlan1";
+            final String intIface2 = "rndis0";
+            final String extIface = "rmnet_data0";
+            final BpfUtils mockMarkerBpfUtils = staticMockMarker(BpfUtils.class);
+            final BpfCoordinator coordinator = makeBpfCoordinator();
+
+            // [1] Add the forwarding pair <wlan1, rmnet_data0>. Expect that attach both wlan1 and
+            // rmnet_data0.
+            coordinator.maybeAttachProgram(intIface1, extIface);
+            ExtendedMockito.verify(() -> BpfUtils.attachProgram(extIface, DOWNSTREAM));
+            ExtendedMockito.verify(() -> BpfUtils.attachProgram(intIface1, UPSTREAM));
+            ExtendedMockito.verifyNoMoreInteractions(mockMarkerBpfUtils);
+            ExtendedMockito.clearInvocations(mockMarkerBpfUtils);
+
+            // [2] Add the forwarding pair <wlan1, rmnet_data0> again. Expect no more action.
+            coordinator.maybeAttachProgram(intIface1, extIface);
+            ExtendedMockito.verifyNoMoreInteractions(mockMarkerBpfUtils);
+            ExtendedMockito.clearInvocations(mockMarkerBpfUtils);
+
+            // [3] Add the forwarding pair <rndis0, rmnet_data0>. Expect that attach rndis0 only.
+            coordinator.maybeAttachProgram(intIface2, extIface);
+            ExtendedMockito.verify(() -> BpfUtils.attachProgram(intIface2, UPSTREAM));
+            ExtendedMockito.verifyNoMoreInteractions(mockMarkerBpfUtils);
+            ExtendedMockito.clearInvocations(mockMarkerBpfUtils);
+
+            // [4] Remove the forwarding pair <rndis0, rmnet_data0>. Expect detach rndis0 only.
+            coordinator.maybeDetachProgram(intIface2, extIface);
+            ExtendedMockito.verify(() -> BpfUtils.detachProgram(intIface2));
+            ExtendedMockito.verifyNoMoreInteractions(mockMarkerBpfUtils);
+            ExtendedMockito.clearInvocations(mockMarkerBpfUtils);
+
+            // [5] Remove the forwarding pair <wlan1, rmnet_data0>. Expect that detach both wlan1
+            // and rmnet_data0.
+            coordinator.maybeDetachProgram(intIface1, extIface);
+            ExtendedMockito.verify(() -> BpfUtils.detachProgram(extIface));
+            ExtendedMockito.verify(() -> BpfUtils.detachProgram(intIface1));
+            ExtendedMockito.verifyNoMoreInteractions(mockMarkerBpfUtils);
+            ExtendedMockito.clearInvocations(mockMarkerBpfUtils);
+        } finally {
+            mockSession.finishMocking();
+        }
     }
 
     @Test
@@ -1054,6 +1159,7 @@ public class BpfCoordinatorTest {
     }
 
     @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testStartStopConntrackMonitoring() throws Exception {
         setupFunctioningNetdInterface();
 
@@ -1074,6 +1180,23 @@ public class BpfCoordinatorTest {
     }
 
     @Test
+    @IgnoreUpTo(Build.VERSION_CODES.Q)
+    @IgnoreAfter(Build.VERSION_CODES.R)
+    // Only run this test on Android R.
+    public void testStartStopConntrackMonitoring_R() throws Exception {
+        setupFunctioningNetdInterface();
+
+        final BpfCoordinator coordinator = makeBpfCoordinator();
+
+        coordinator.startMonitoring(mIpServer);
+        verify(mConntrackMonitor, never()).start();
+
+        coordinator.stopMonitoring(mIpServer);
+        verify(mConntrackMonitor, never()).stop();
+    }
+
+    @Test
+    @IgnoreUpTo(Build.VERSION_CODES.R)
     public void testStartStopConntrackMonitoringWithTwoDownstreamIfaces() throws Exception {
         setupFunctioningNetdInterface();
 

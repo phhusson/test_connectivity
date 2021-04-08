@@ -442,7 +442,8 @@ public class Tethering {
     // NOTE: This is always invoked on the mLooper thread.
     private void updateConfiguration() {
         mConfig = mDeps.generateTetheringConfiguration(mContext, mLog, mActiveDataSubId);
-        mUpstreamNetworkMonitor.updateMobileRequiresDun(mConfig.isDunRequired);
+        mUpstreamNetworkMonitor.setUpstreamConfig(mConfig.chooseUpstreamAutomatically,
+                mConfig.isDunRequired);
         reportConfigurationChanged(mConfig.toStableParcelable());
     }
 
@@ -1559,7 +1560,7 @@ public class Tethering {
                             config.preferredUpstreamIfaceTypes);
             if (ns == null) {
                 if (tryCell) {
-                    mUpstreamNetworkMonitor.registerMobileNetworkRequest();
+                    mUpstreamNetworkMonitor.setTryCell(true);
                     // We think mobile should be coming up; don't set a retry.
                 } else {
                     sendMessageDelayed(CMD_RETRY_UPSTREAM, UPSTREAM_SETTLE_TIME_MS);
@@ -1718,6 +1719,12 @@ public class Tethering {
                     break;
             }
 
+            if (mConfig.chooseUpstreamAutomatically
+                    && arg1 == UpstreamNetworkMonitor.EVENT_DEFAULT_SWITCHED) {
+                chooseUpstreamType(true);
+                return;
+            }
+
             if (ns == null || !pertainsToCurrentUpstream(ns)) {
                 // TODO: In future, this is where upstream evaluation and selection
                 // could be handled for notifications which include sufficient data.
@@ -1852,7 +1859,7 @@ public class Tethering {
                         // longer desired, release any mobile requests.
                         final boolean previousUpstreamWanted = updateUpstreamWanted();
                         if (previousUpstreamWanted && !mUpstreamWanted) {
-                            mUpstreamNetworkMonitor.releaseMobileNetworkRequest();
+                            mUpstreamNetworkMonitor.setTryCell(false);
                         }
                         break;
                     }
