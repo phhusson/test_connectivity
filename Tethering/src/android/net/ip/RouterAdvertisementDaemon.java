@@ -16,7 +16,6 @@
 
 package android.net.ip;
 
-import static android.net.util.NetworkConstants.IPV6_MIN_MTU;
 import static android.net.util.NetworkConstants.RFC7421_PREFIX_LENGTH;
 import static android.net.util.TetheringUtils.getAllNodesForScopeId;
 import static android.system.OsConstants.AF_INET6;
@@ -25,8 +24,18 @@ import static android.system.OsConstants.SOCK_RAW;
 import static android.system.OsConstants.SOL_SOCKET;
 import static android.system.OsConstants.SO_SNDTIMEO;
 
+import static com.android.net.module.util.NetworkStackConstants.ICMPV6_ND_OPTION_SLLA;
+import static com.android.net.module.util.NetworkStackConstants.ICMPV6_RA_HEADER_LEN;
+import static com.android.net.module.util.NetworkStackConstants.ICMPV6_ROUTER_ADVERTISEMENT;
+import static com.android.net.module.util.NetworkStackConstants.ICMPV6_ROUTER_SOLICITATION;
+import static com.android.net.module.util.NetworkStackConstants.IPV6_MIN_MTU;
+import static com.android.net.module.util.NetworkStackConstants.PIO_FLAG_AUTONOMOUS;
+import static com.android.net.module.util.NetworkStackConstants.PIO_FLAG_ON_LINK;
+import static com.android.net.module.util.NetworkStackConstants.TAG_SYSTEM_NEIGHBOR;
+
 import android.net.IpPrefix;
 import android.net.LinkAddress;
+import android.net.MacAddress;
 import android.net.TrafficStats;
 import android.net.util.InterfaceParams;
 import android.net.util.SocketUtils;
@@ -37,7 +46,12 @@ import android.system.StructTimeval;
 import android.util.Log;
 
 import com.android.internal.annotations.GuardedBy;
-import com.android.net.module.util.NetworkStackConstants;
+import com.android.net.module.util.structs.Icmpv6Header;
+import com.android.net.module.util.structs.LlaOption;
+import com.android.net.module.util.structs.MtuOption;
+import com.android.net.module.util.structs.PrefixInformationOption;
+import com.android.net.module.util.structs.RaHeader;
+import com.android.net.module.util.structs.RdnssOption;
 
 import java.io.FileDescriptor;
 import java.io.IOException;
@@ -69,9 +83,6 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class RouterAdvertisementDaemon {
     private static final String TAG = RouterAdvertisementDaemon.class.getSimpleName();
-    private static final byte ICMPV6_ND_ROUTER_SOLICIT = asByte(133);
-    private static final byte ICMPV6_ND_ROUTER_ADVERT  = asByte(134);
-    private static final int MIN_RA_HEADER_SIZE = 16;
 
     // Summary of various timers and lifetimes.
     private static final int MIN_RTR_ADV_INTERVAL_SEC = 300;
@@ -366,54 +377,27 @@ public class RouterAdvertisementDaemon {
     }
 
     private static void putHeader(ByteBuffer ra, boolean hasDefaultRoute, byte hopLimit) {
-        /**
-            Router Advertisement Message Format
-
-             0                   1                   2                   3
-             0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            |     Type      |     Code      |          Checksum             |
-            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            | Cur Hop Limit |M|O|H|Prf|P|R|R|       Router Lifetime         |
-            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            |                         Reachable Time                        |
-            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            |                          Retrans Timer                        |
-            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            |   Options ...
-            +-+-+-+-+-+-+-+-+-+-+-+-
-        */
-        ra.put(ICMPV6_ND_ROUTER_ADVERT)
-                .put(asByte(0))
-                .putShort(asShort(0))
-                .put(hopLimit)
-                // RFC 4191 "high" preference, iff. advertising a default route.
-                .put(hasDefaultRoute ? asByte(0x08) : asByte(0))
-                .putShort(hasDefaultRoute ? asShort(DEFAULT_LIFETIME) : asShort(0))
-                .putInt(0)
-                .putInt(0);
+        // RFC 4191 "high" preference, iff. advertising a default route.
+        final byte flags = hasDefaultRoute ? asByte(0x08) : asByte(0);
+        final short lifetime = hasDefaultRoute ? asShort(DEFAULT_LIFETIME) : asShort(0);
+        final Icmpv6Header icmpv6Header =
+                new Icmpv6Header(asByte(ICMPV6_ROUTER_ADVERTISEMENT) /* type */,
+                        asByte(0) /* code */, asShort(0) /* checksum */);
+        final RaHeader raHeader = new RaHeader(hopLimit, flags, lifetime, 0 /* reachableTime */,
+                0 /* retransTimer */);
+        icmpv6Header.writeToByteBuffer(ra);
+        raHeader.writeToByteBuffer(ra);
     }
 
     private static void putSlla(ByteBuffer ra, byte[] slla) {
-        /**
-            Source/Target Link-layer Address
-
-             0                   1                   2                   3
-             0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            |     Type      |    Length     |    Link-Layer Address ...
-            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-        */
         if (slla == null || slla.length != 6) {
             // Only IEEE 802.3 6-byte addresses are supported.
             return;
         }
 
-        final byte nd_option_slla = 1;
-        final byte slla_num_8octets = 1;
-        ra.put(nd_option_slla)
-            .put(slla_num_8octets)
-            .put(slla);
+        final ByteBuffer sllaOption = LlaOption.build(asByte(ICMPV6_ND_OPTION_SLLA),
+                MacAddress.fromBytes(slla));
+        ra.put(sllaOption);
     }
 
     private static void putExpandedFlagsOption(ByteBuffer ra) {
@@ -439,70 +423,24 @@ public class RouterAdvertisementDaemon {
     }
 
     private static void putMtu(ByteBuffer ra, int mtu) {
-        /**
-            MTU
-
-             0                   1                   2                   3
-             0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            |     Type      |    Length     |           Reserved            |
-            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            |                              MTU                              |
-            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-        */
-        final byte nd_option_mtu = 5;
-        final byte mtu_num_8octs = 1;
-        ra.put(nd_option_mtu)
-            .put(mtu_num_8octs)
-            .putShort(asShort(0))
-            .putInt((mtu < IPV6_MIN_MTU) ? IPV6_MIN_MTU : mtu);
+        final ByteBuffer mtuOption = MtuOption.build((mtu < IPV6_MIN_MTU) ? IPV6_MIN_MTU : mtu);
+        ra.put(mtuOption);
     }
 
     private static void putPio(ByteBuffer ra, IpPrefix ipp,
                                int validTime, int preferredTime) {
-        /**
-            Prefix Information
-
-             0                   1                   2                   3
-             0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            |     Type      |    Length     | Prefix Length |L|A| Reserved1 |
-            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            |                         Valid Lifetime                        |
-            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            |                       Preferred Lifetime                      |
-            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            |                           Reserved2                           |
-            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            |                                                               |
-            +                                                               +
-            |                                                               |
-            +                            Prefix                             +
-            |                                                               |
-            +                                                               +
-            |                                                               |
-            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-        */
         final int prefixLength = ipp.getPrefixLength();
         if (prefixLength != 64) {
             return;
         }
-        final byte nd_option_pio = 3;
-        final byte pio_num_8octets = 4;
 
         if (validTime < 0) validTime = 0;
         if (preferredTime < 0) preferredTime = 0;
         if (preferredTime > validTime) preferredTime = validTime;
 
-        final byte[] addr = ipp.getAddress().getAddress();
-        ra.put(nd_option_pio)
-            .put(pio_num_8octets)
-            .put(asByte(prefixLength))
-            .put(asByte(0xc0)) /* L & A set */
-            .putInt(validTime)
-            .putInt(preferredTime)
-            .putInt(0)
-            .put(addr);
+        final ByteBuffer pioOption = PrefixInformationOption.build(ipp,
+                asByte(PIO_FLAG_ON_LINK | PIO_FLAG_AUTONOMOUS), validTime, preferredTime);
+        ra.put(pioOption);
     }
 
     private static void putRio(ByteBuffer ra, IpPrefix ipp) {
@@ -543,22 +481,6 @@ public class RouterAdvertisementDaemon {
     }
 
     private static void putRdnss(ByteBuffer ra, Set<Inet6Address> dnses, int lifetime) {
-        /**
-            Recursive DNS Server (RDNSS) Option
-
-             0                   1                   2                   3
-             0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            |     Type      |     Length    |           Reserved            |
-            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            |                           Lifetime                            |
-            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-            |                                                               |
-            :            Addresses of IPv6 Recursive DNS Servers            :
-            |                                                               |
-            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-         */
-
         final HashSet<Inet6Address> filteredDnses = new HashSet<>();
         for (Inet6Address dns : dnses) {
             if ((new LinkAddress(dns, RFC7421_PREFIX_LENGTH)).isGlobalPreferred()) {
@@ -567,29 +489,22 @@ public class RouterAdvertisementDaemon {
         }
         if (filteredDnses.isEmpty()) return;
 
-        final byte nd_option_rdnss = 25;
-        final byte rdnss_num_8octets = asByte(dnses.size() * 2 + 1);
-        ra.put(nd_option_rdnss)
-            .put(rdnss_num_8octets)
-            .putShort(asShort(0))
-            .putInt(lifetime);
-
-        for (Inet6Address dns : filteredDnses) {
-            // NOTE: If the full of list DNS servers doesn't fit in the packet,
-            // this code will cause a buffer overflow and the RA won't include
-            // this instance of the option at all.
-            //
-            // TODO: Consider looking at ra.remaining() to determine how many
-            // DNS servers will fit, and adding only those.
-            ra.put(dns.getAddress());
-        }
+        final Inet6Address[] dnsesArray =
+                filteredDnses.toArray(new Inet6Address[filteredDnses.size()]);
+        final ByteBuffer rdnssOption = RdnssOption.build(lifetime, dnsesArray);
+        // NOTE: If the full of list DNS servers doesn't fit in the packet,
+        // this code will cause a buffer overflow and the RA won't include
+        // this instance of the option at all.
+        //
+        // TODO: Consider looking at ra.remaining() to determine how many
+        // DNS servers will fit, and adding only those.
+        ra.put(rdnssOption);
     }
 
     private boolean createSocket() {
         final int send_timout_ms = 300;
 
-        final int oldTag = TrafficStats.getAndSetThreadStatsTag(
-                NetworkStackConstants.TAG_SYSTEM_NEIGHBOR);
+        final int oldTag = TrafficStats.getAndSetThreadStatsTag(TAG_SYSTEM_NEIGHBOR);
         try {
             mSocket = Os.socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
             // Setting SNDTIMEO is purely for defensive purposes.
@@ -639,7 +554,7 @@ public class RouterAdvertisementDaemon {
 
         try {
             synchronized (mLock) {
-                if (mRaLength < MIN_RA_HEADER_SIZE) {
+                if (mRaLength < ICMPV6_RA_HEADER_LEN) {
                     // No actual RA to send.
                     return;
                 }
@@ -668,7 +583,7 @@ public class RouterAdvertisementDaemon {
                     final int rval = Os.recvfrom(
                             mSocket, mSolicitation, 0, mSolicitation.length, 0, mSolicitor);
                     // Do the least possible amount of validation.
-                    if (rval < 1 || mSolicitation[0] != ICMPV6_ND_ROUTER_SOLICIT) {
+                    if (rval < 1 || mSolicitation[0] != asByte(ICMPV6_ROUTER_SOLICITATION)) {
                         continue;
                     }
                 } catch (ErrnoException | SocketException e) {
@@ -721,7 +636,7 @@ public class RouterAdvertisementDaemon {
         private int getNextMulticastTransmitDelaySec() {
             boolean deprecationInProgress = false;
             synchronized (mLock) {
-                if (mRaLength < MIN_RA_HEADER_SIZE) {
+                if (mRaLength < ICMPV6_RA_HEADER_LEN) {
                     // No actual RA to send; just sleep for 1 day.
                     return DAY_IN_SECONDS;
                 }
