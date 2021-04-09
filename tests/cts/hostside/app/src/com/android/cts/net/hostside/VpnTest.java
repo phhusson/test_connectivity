@@ -61,6 +61,7 @@ import android.os.Looper;
 import android.os.ParcelFileDescriptor;
 import android.os.Process;
 import android.os.SystemProperties;
+import android.os.UserHandle;
 import android.provider.Settings;
 import android.support.test.uiautomator.UiDevice;
 import android.support.test.uiautomator.UiObject;
@@ -76,6 +77,7 @@ import android.util.Log;
 
 import com.android.compatibility.common.util.BlockingBroadcastReceiver;
 import com.android.modules.utils.build.SdkLevel;
+import com.android.testutils.TestableNetworkCallback;
 
 import java.io.Closeable;
 import java.io.FileDescriptor;
@@ -92,6 +94,7 @@ import java.net.Socket;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
@@ -698,34 +701,6 @@ public class VpnTest extends InstrumentationTestCase {
         setAndVerifyPrivateDns(initialMode);
     }
 
-    private class NeverChangeNetworkCallback extends NetworkCallback {
-        private CountDownLatch mLatch = new CountDownLatch(1);
-        private volatile Network mFirstNetwork;
-        private volatile Network mOtherNetwork;
-
-        public void onAvailable(Network n) {
-            // Don't assert here, as it crashes the test with a hard to debug message.
-            if (mFirstNetwork == null) {
-                mFirstNetwork = n;
-                mLatch.countDown();
-            } else if (mOtherNetwork == null) {
-                mOtherNetwork = n;
-            }
-        }
-
-        public Network getFirstNetwork() throws Exception {
-            assertTrue(
-                    "System default callback got no network after " + TIMEOUT_MS + "ms. "
-                    + "Please ensure the device has a working Internet connection.",
-                    mLatch.await(TIMEOUT_MS, TimeUnit.MILLISECONDS));
-            return mFirstNetwork;
-        }
-
-        public void assertNeverChanged() {
-            assertNull(mOtherNetwork);
-        }
-    }
-
     public void testDefault() throws Exception {
         if (!supportedHardware()) return;
         // If adb TCP port opened, this test may running by adb over network.
@@ -741,13 +716,24 @@ public class VpnTest extends InstrumentationTestCase {
                 getInstrumentation().getTargetContext(), MyVpnService.ACTION_ESTABLISHED);
         receiver.register();
 
-        // Expect the system default network not to change.
-        final NeverChangeNetworkCallback neverChangeCallback = new NeverChangeNetworkCallback();
+        // Test the behaviour of a variety of types of network callbacks.
         final Network defaultNetwork = mCM.getActiveNetwork();
+        final TestableNetworkCallback systemDefaultCallback = new TestableNetworkCallback();
+        final TestableNetworkCallback otherUidCallback = new TestableNetworkCallback();
+        final TestableNetworkCallback myUidCallback = new TestableNetworkCallback();
         if (SdkLevel.isAtLeastS()) {
-            runWithShellPermissionIdentity(() ->
-                    mCM.registerSystemDefaultNetworkCallback(neverChangeCallback,
-                            new Handler(Looper.getMainLooper())), NETWORK_SETTINGS);
+            final int otherUid = UserHandle.getUid(UserHandle.of(5), Process.FIRST_APPLICATION_UID);
+            final Handler h = new Handler(Looper.getMainLooper());
+            runWithShellPermissionIdentity(() -> {
+                mCM.registerSystemDefaultNetworkCallback(systemDefaultCallback, h);
+                mCM.registerDefaultNetworkCallbackAsUid(otherUid, otherUidCallback, h);
+                mCM.registerDefaultNetworkCallbackAsUid(Process.myUid(), myUidCallback, h);
+            }, NETWORK_SETTINGS);
+            for (TestableNetworkCallback callback :
+                    List.of(systemDefaultCallback, otherUidCallback, myUidCallback)) {
+                callback.expectAvailableCallbacks(defaultNetwork, false /* suspended */,
+                        true /* validated */, false /* blocked */, TIMEOUT_MS);
+            }
         }
 
         FileDescriptor fd = openSocketFdInOtherApp(TEST_HOST, 80, TIMEOUT_MS);
@@ -767,20 +753,24 @@ public class VpnTest extends InstrumentationTestCase {
 
         checkTrafficOnVpn();
 
-        maybeExpectVpnTransportInfo(mCM.getActiveNetwork());
+        final Network vpnNetwork = mCM.getActiveNetwork();
+        myUidCallback.expectAvailableThenValidatedCallbacks(vpnNetwork, TIMEOUT_MS);
+        assertEquals(vpnNetwork, mCM.getActiveNetwork());
+        assertNotEqual(defaultNetwork, vpnNetwork);
+        maybeExpectVpnTransportInfo(vpnNetwork);
 
-        assertNotEqual(defaultNetwork, mCM.getActiveNetwork());
         if (SdkLevel.isAtLeastS()) {
             // Check that system default network callback has not seen any network changes, even
-            // though the app's default network changed. This needs to be done before testing
-            // private DNS because checkStrictModePrivateDns will set the private DNS server to
-            // a nonexistent name, which will cause validation to fail and cause the default
-            // network to switch (e.g., from wifi to cellular).
-            assertEquals(defaultNetwork, neverChangeCallback.getFirstNetwork());
-            neverChangeCallback.assertNeverChanged();
-            runWithShellPermissionIdentity(
-                    () -> mCM.unregisterNetworkCallback(neverChangeCallback),
-                    NETWORK_SETTINGS);
+            // though the app's default network changed. Also check that otherUidCallback saw no
+            // network changes, because otherUid is in a different user and not subject to the VPN.
+            // This needs to be done before testing  private DNS because checkStrictModePrivateDns
+            // will set the private DNS server to a nonexistent name, which will cause validation to
+            // fail and could cause the default network to switch (e.g., from wifi to cellular).
+            systemDefaultCallback.assertNoCallback();
+            otherUidCallback.assertNoCallback();
+            mCM.unregisterNetworkCallback(systemDefaultCallback);
+            mCM.unregisterNetworkCallback(otherUidCallback);
+            mCM.unregisterNetworkCallback(myUidCallback);
         }
 
         checkStrictModePrivateDns();
