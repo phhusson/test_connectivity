@@ -201,7 +201,7 @@ public class NetworkPolicyTestUtils {
         }
     }
 
-    private static NetworkCapabilities getActiveNetworkCapabilities() {
+    static NetworkCapabilities getActiveNetworkCapabilities() {
         final Network activeNetwork = getConnectivityManager().getActiveNetwork();
         assertNotNull("No active network available", activeNetwork);
         return getConnectivityManager().getNetworkCapabilities(activeNetwork);

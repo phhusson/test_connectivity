@@ -47,6 +47,7 @@ import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo.DetailedState;
 import android.net.NetworkInfo.State;
+import android.net.NetworkRequest;
 import android.os.BatteryManager;
 import android.os.Binder;
 import android.os.Bundle;
@@ -713,8 +714,10 @@ public abstract class AbstractRestrictBackgroundNetworkTestCase {
         fail("app2 receiver is not ready");
     }
 
-    protected void registerNetworkCallback(INetworkCallback cb) throws Exception {
-        mServiceClient.registerNetworkCallback(cb);
+    protected void registerNetworkCallback(final NetworkRequest request, INetworkCallback cb)
+            throws Exception {
+        Log.i(TAG, "Registering network callback for request: " + request);
+        mServiceClient.registerNetworkCallback(request, cb);
     }
 
     protected void unregisterNetworkCallback() throws Exception {
