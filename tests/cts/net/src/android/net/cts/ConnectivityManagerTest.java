@@ -111,6 +111,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.MessageQueue;
+import android.os.Process;
 import android.os.SystemClock;
 import android.os.SystemProperties;
 import android.os.VintfRuntimeInfo;
@@ -587,12 +588,14 @@ public class ConnectivityManagerTest {
         final TestNetworkCallback defaultTrackingCallback = new TestNetworkCallback();
         mCm.registerDefaultNetworkCallback(defaultTrackingCallback);
 
-        final TestNetworkCallback systemDefaultTrackingCallback = new TestNetworkCallback();
+        final TestNetworkCallback systemDefaultCallback = new TestNetworkCallback();
+        final TestNetworkCallback perUidCallback = new TestNetworkCallback();
+        final Handler h = new Handler(Looper.getMainLooper());
         if (shouldTestSApis()) {
-            runWithShellPermissionIdentity(() ->
-                    mCmShim.registerSystemDefaultNetworkCallback(systemDefaultTrackingCallback,
-                            new Handler(Looper.getMainLooper())),
-                    NETWORK_SETTINGS);
+            runWithShellPermissionIdentity(() -> {
+                mCmShim.registerSystemDefaultNetworkCallback(systemDefaultCallback, h);
+                mCmShim.registerDefaultNetworkCallbackAsUid(Process.myUid(), perUidCallback, h);
+            }, NETWORK_SETTINGS);
         }
 
         Network wifiNetwork = null;
@@ -607,22 +610,27 @@ public class ConnectivityManagerTest {
             assertNotNull("Did not receive onAvailable for TRANSPORT_WIFI request",
                     wifiNetwork);
 
+            final Network defaultNetwork = defaultTrackingCallback.waitForAvailable();
             assertNotNull("Did not receive onAvailable on default network callback",
-                    defaultTrackingCallback.waitForAvailable());
+                    defaultNetwork);
 
             if (shouldTestSApis()) {
                 assertNotNull("Did not receive onAvailable on system default network callback",
-                        systemDefaultTrackingCallback.waitForAvailable());
+                        systemDefaultCallback.waitForAvailable());
+                final Network perUidNetwork = perUidCallback.waitForAvailable();
+                assertNotNull("Did not receive onAvailable on per-UID default network callback",
+                        perUidNetwork);
+                assertEquals(defaultNetwork, perUidNetwork);
             }
+
         } catch (InterruptedException e) {
             fail("Broadcast receiver or NetworkCallback wait was interrupted.");
         } finally {
             mCm.unregisterNetworkCallback(callback);
             mCm.unregisterNetworkCallback(defaultTrackingCallback);
             if (shouldTestSApis()) {
-                runWithShellPermissionIdentity(
-                        () -> mCm.unregisterNetworkCallback(systemDefaultTrackingCallback),
-                        NETWORK_SETTINGS);
+                mCm.unregisterNetworkCallback(systemDefaultCallback);
+                mCm.unregisterNetworkCallback(perUidCallback);
             }
         }
     }
