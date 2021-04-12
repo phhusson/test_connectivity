@@ -1184,6 +1184,11 @@ public class TetheringTest {
 
         assertTrue(mUpstreamNetworkMonitor.getCurrentPreferredUpstream().linkProperties
                 .hasIPv4Address());
+
+        // Check that the code does not crash if onLinkPropertiesChanged is received after onLost.
+        mobile.fakeDisconnect();
+        mobile.sendLinkProperties();
+        mLooper.dispatchAll();
     }
 
     private void runNcmTethering() {
