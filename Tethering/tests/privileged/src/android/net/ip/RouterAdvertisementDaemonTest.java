@@ -16,6 +16,8 @@
 
 package android.net.ip;
 
+import static android.net.RouteInfo.RTN_UNICAST;
+
 import static com.android.net.module.util.NetworkStackConstants.ETHER_HEADER_LEN;
 import static com.android.net.module.util.NetworkStackConstants.ETHER_TYPE_IPV6;
 import static com.android.net.module.util.NetworkStackConstants.ICMPV6_ND_OPTION_MTU;
@@ -27,6 +29,8 @@ import static com.android.net.module.util.NetworkStackConstants.ICMPV6_ROUTER_AD
 import static com.android.net.module.util.NetworkStackConstants.IPV6_ADDR_ALL_NODES_MULTICAST;
 import static com.android.net.module.util.NetworkStackConstants.IPV6_ADDR_LEN;
 import static com.android.net.module.util.NetworkStackConstants.IPV6_HEADER_LEN;
+import static com.android.net.module.util.NetworkStackConstants.PIO_FLAG_AUTONOMOUS;
+import static com.android.net.module.util.NetworkStackConstants.PIO_FLAG_ON_LINK;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -38,7 +42,9 @@ import android.content.Context;
 import android.net.INetd;
 import android.net.IpPrefix;
 import android.net.MacAddress;
+import android.net.RouteInfo;
 import android.net.ip.RouterAdvertisementDaemon.RaParams;
+import android.net.shared.RouteUtils;
 import android.net.util.InterfaceParams;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -74,6 +80,7 @@ import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.util.HashSet;
+import java.util.List;
 
 @RunWith(AndroidJUnit4.class)
 @SmallTest
@@ -96,8 +103,6 @@ public final class RouterAdvertisementDaemonTest {
 
     @BeforeClass
     public static void setupOnce() {
-        System.loadLibrary("tetherutilsjni");
-
         final Instrumentation inst = InstrumentationRegistry.getInstrumentation();
         final IBinder netdIBinder =
                 (IBinder) inst.getContext().getSystemService(Context.NETD_SERVICE);
@@ -151,7 +156,7 @@ public final class RouterAdvertisementDaemonTest {
             mNewParams = newParams;
         }
 
-        public boolean isPacketMatched(final byte[] pkt) throws Exception {
+        public boolean isPacketMatched(final byte[] pkt, boolean multicast) throws Exception {
             if (pkt.length < (ETHER_HEADER_LEN + IPV6_HEADER_LEN + ICMPV6_RA_HEADER_LEN)) {
                 return false;
             }
@@ -172,6 +177,15 @@ public final class RouterAdvertisementDaemonTest {
             final Icmpv6Header icmpv6Hdr = Struct.parse(Icmpv6Header.class, buf);
             if (icmpv6Hdr.type != (short) ICMPV6_ROUTER_ADVERTISEMENT) return false;
 
+            // Check whether IPv6 destination address is multicast or unicast
+            if (multicast) {
+                assertEquals(ipv6Hdr.dstIp, IPV6_ADDR_ALL_NODES_MULTICAST);
+            } else {
+                // The unicast IPv6 destination address in RA can be either link-local or global
+                // IPv6 address. This test only expects link-local address.
+                assertTrue(ipv6Hdr.dstIp.isLinkLocalAddress());
+            }
+
             // Parse RA header
             final RaHeader raHdr = Struct.parse(RaHeader.class, buf);
             assertEquals(mNewParams.hopLimit, raHdr.hopLimit);
@@ -182,13 +196,15 @@ public final class RouterAdvertisementDaemonTest {
                 final int length = Byte.toUnsignedInt(buf.get());
                 switch (type) {
                     case ICMPV6_ND_OPTION_PIO:
+                        // length is 4 because this test only expects one PIO included in the
+                        // router advertisement packet.
                         assertEquals(4, length);
 
                         final ByteBuffer pioBuf = ByteBuffer.wrap(buf.array(), currentPos,
                                 Struct.getSize(PrefixInformationOption.class));
                         final PrefixInformationOption pio =
                                 Struct.parse(PrefixInformationOption.class, pioBuf);
-                        assertEquals((byte) 0xc0, pio.flags); // L & A set
+                        assertEquals((byte) (PIO_FLAG_ON_LINK | PIO_FLAG_AUTONOMOUS), pio.flags);
 
                         final InetAddress address = InetAddress.getByAddress(pio.prefix);
                         final IpPrefix prefix = new IpPrefix(address, pio.prefixLen);
@@ -199,7 +215,7 @@ public final class RouterAdvertisementDaemonTest {
                             assertEquals(0, pio.validLifetime);
                             assertEquals(0, pio.preferredLifetime);
                         } else {
-                            fail("Unepxected prefix: " + prefix);
+                            fail("Unexpected prefix: " + prefix);
                         }
 
                         // Move ByteBuffer position to the next option.
@@ -261,13 +277,22 @@ public final class RouterAdvertisementDaemonTest {
         return params;
     }
 
-    private boolean assertRaPacket(final TestRaPacket testRa)
-            throws Exception {
+    private boolean isRaPacket(final TestRaPacket testRa, boolean multicast) throws Exception {
         byte[] packet;
         while ((packet = mTetheredPacketReader.poll(PACKET_TIMEOUT_MS)) != null) {
-            if (testRa.isPacketMatched(packet)) return true;
+            if (testRa.isPacketMatched(packet, multicast)) {
+                return true;
+            }
         }
         return false;
+    }
+
+    private void assertUnicastRaPacket(final TestRaPacket testRa) throws Exception {
+        assertTrue(isRaPacket(testRa, false /* multicast */));
+    }
+
+    private void assertMulticastRaPacket(final TestRaPacket testRa) throws Exception {
+        assertTrue(isRaPacket(testRa, true /* multicast */));
     }
 
     private ByteBuffer createRsPacket(final String srcIp) throws Exception {
@@ -284,22 +309,36 @@ public final class RouterAdvertisementDaemonTest {
         assertTrue(mRaDaemon.start());
         final RaParams params1 = createRaParams("2001:1122:3344::5566");
         mRaDaemon.buildNewRa(null, params1);
-        assertRaPacket(new TestRaPacket(null, params1));
+        assertMulticastRaPacket(new TestRaPacket(null, params1));
 
         final RaParams params2 = createRaParams("2006:3344:5566::7788");
         mRaDaemon.buildNewRa(params1, params2);
-        assertRaPacket(new TestRaPacket(params1, params2));
+        assertMulticastRaPacket(new TestRaPacket(params1, params2));
     }
 
     @Test
     public void testSolicitRouterAdvertisement() throws Exception {
+        // Enable IPv6 forwarding is necessary, which makes kernel process RS correctly and
+        // create the neighbor entry for peer's link-layer address and IPv6 address. Otherwise,
+        // when device receives RS with IPv6 link-local address as source address, it has to
+        // initiate the address resolution first before responding the unicast RA.
+        sNetd.setProcSysNet(INetd.IPV6, INetd.CONF, mTetheredParams.name, "forwarding", "1");
+
         assertTrue(mRaDaemon.start());
         final RaParams params1 = createRaParams("2001:1122:3344::5566");
         mRaDaemon.buildNewRa(null, params1);
-        assertRaPacket(new TestRaPacket(null, params1));
+        assertMulticastRaPacket(new TestRaPacket(null, params1));
+
+        // Add a default route "fe80::/64 -> ::" to local network, otherwise, device will fail to
+        // send the unicast RA out due to the ENETUNREACH error(No route to the peer's link-local
+        // address is present).
+        final String iface = mTetheredParams.name;
+        final RouteInfo linkLocalRoute =
+                new RouteInfo(new IpPrefix("fe80::/64"), null, iface, RTN_UNICAST);
+        RouteUtils.addRoutesToLocalNetwork(sNetd, iface, List.of(linkLocalRoute));
 
         final ByteBuffer rs = createRsPacket("fe80::1122:3344:5566:7788");
         mTetheredPacketReader.sendResponse(rs);
-        assertRaPacket(new TestRaPacket(null, params1));
+        assertUnicastRaPacket(new TestRaPacket(null, params1));
     }
 }

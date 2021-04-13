@@ -43,6 +43,7 @@ import android.util.Log;
 import android.util.SparseIntArray;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.util.StateMachine;
@@ -402,13 +403,20 @@ public class UpstreamNetworkMonitor {
         notifyTarget(EVENT_ON_CAPABILITIES, network);
     }
 
-    private void updateLinkProperties(Network network, LinkProperties newLp) {
+    private @Nullable UpstreamNetworkState updateLinkProperties(@NonNull Network network,
+            LinkProperties newLp) {
         final UpstreamNetworkState prev = mNetworkMap.get(network);
         if (prev == null || newLp.equals(prev.linkProperties)) {
             // Ignore notifications about networks for which we have not yet
             // received onAvailable() (should never happen) and any duplicate
             // notifications (e.g. matching more than one of our callbacks).
-            return;
+            //
+            // Also, it can happen that onLinkPropertiesChanged is called after
+            // onLost removed the state from mNetworkMap. This appears to be due
+            // to a bug in disconnectAndDestroyNetwork, which calls
+            // nai.clatd.update() after the onLost callbacks.
+            // TODO: fix the bug and make this method void.
+            return null;
         }
 
         if (VDBG) {
@@ -416,13 +424,17 @@ public class UpstreamNetworkMonitor {
                     network, newLp));
         }
 
-        mNetworkMap.put(network, new UpstreamNetworkState(
-                newLp, prev.networkCapabilities, network));
+        final UpstreamNetworkState ns = new UpstreamNetworkState(newLp, prev.networkCapabilities,
+                network);
+        mNetworkMap.put(network, ns);
+        return ns;
     }
 
     private void handleLinkProp(Network network, LinkProperties newLp) {
-        updateLinkProperties(network, newLp);
-        notifyTarget(EVENT_ON_LINKPROPERTIES, network);
+        final UpstreamNetworkState ns = updateLinkProperties(network, newLp);
+        if (ns != null) {
+            notifyTarget(EVENT_ON_LINKPROPERTIES, ns);
+        }
     }
 
     private void handleLost(Network network) {
